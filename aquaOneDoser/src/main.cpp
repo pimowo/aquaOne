@@ -1,5 +1,10 @@
 #include <Arduino.h>
 
+#include <AquaCore/System/SystemService.h>
+#include <AquaCore/System/DeviceIdentity.h>
+#include <AquaCore/Logging/Logger.h>
+#include <AquaCore/Logging/SerialLogSink.h>
+
 #include "app_config.h"
 #include "secrets.h"
 #include "PumpManager.h"
@@ -10,6 +15,10 @@
 #include "TimeManager.h"
 #include "WiFiManager.h"
 #include "WebManager.h"
+
+AquaCore::SystemService systemService;
+AquaCore::SerialLogSink serialLogSink(Serial);
+AquaCore::Logger logger(serialLogSink);
 
 TimeManager timeManager;
 PumpManager pumpManager;
@@ -23,6 +32,16 @@ unsigned long lastStatusPrint = 0;
 
 void setup() {
     Serial.begin(115200);
+    const AquaCore::DeviceIdentity identity(
+        "dosing-controller",
+        APP_NAME,
+        APP_VERSION,
+        "ESP32-S3-SuperMini"
+    );
+    systemService.begin(identity);
+
+    logger.info("System", "AquaCore initialized");
+
     pumpDriver.begin();
     Serial.println();
     Serial.println("==================================");
