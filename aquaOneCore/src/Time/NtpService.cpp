@@ -162,6 +162,8 @@ bool NtpService::begin(
     syncInProgress_ = false;
     hasSyncResult_ = false;
     lastSyncSucceeded_ = false;
+    lastFetchSucceeded_ = false;
+    newUtcPending_ = false;
     hasSuccessfulSync_ = false;
     serverCount_ = 0U;
 
@@ -216,6 +218,7 @@ bool NtpService::requestSync(
     if (!wifiAvailable) {
         hasSyncResult_ = true;
         lastSyncSucceeded_ = false;
+        lastFetchSucceeded_ = false;
         periodicAnchorMs_ = nowMs;
         return false;
     }
@@ -234,6 +237,7 @@ bool NtpService::requestSync(
         backend_.stop();
         hasSyncResult_ = true;
         lastSyncSucceeded_ = false;
+        lastFetchSucceeded_ = false;
         periodicAnchorMs_ = nowMs;
         return false;
     }
@@ -265,7 +269,7 @@ void NtpService::update(
         !wifiAvailable ||
         nowMs - attemptStartedMs_ >= timeoutMs_
     ) {
-        finishAttempt(false, nowMs);
+        finishAttempt(false, false, nowMs);
         return;
     }
 
@@ -288,9 +292,12 @@ void NtpService::update(
             utc.second
         )
     ) {
-        finishAttempt(false, nowMs);
+        finishAttempt(false, false, nowMs);
         return;
     }
+
+    lastReceivedUtc_ = utc;
+    newUtcPending_ = true;
 
     const bool rtcUpdated = rtc_.setUtc(
         utc.year,
@@ -301,7 +308,7 @@ void NtpService::update(
         utc.second
     );
 
-    finishAttempt(rtcUpdated, nowMs);
+    finishAttempt(true, rtcUpdated, nowMs);
 }
 
 bool NtpService::isInitialized() const {
@@ -318,6 +325,20 @@ bool NtpService::hasSyncResult() const {
 
 bool NtpService::lastSyncSucceeded() const {
     return hasSyncResult_ && lastSyncSucceeded_;
+}
+
+bool NtpService::lastFetchSucceeded() const {
+    return hasSyncResult_ && lastFetchSucceeded_;
+}
+
+bool NtpService::takeReceivedUtc(UtcDateTime& output) {
+    if (!newUtcPending_) {
+        return false;
+    }
+
+    output = lastReceivedUtc_;
+    newUtcPending_ = false;
+    return true;
 }
 
 bool NtpService::isPeriodicSyncDue(
@@ -343,17 +364,19 @@ bool NtpService::lastSuccessfulSyncAgeMs(
 }
 
 void NtpService::finishAttempt(
-    bool succeeded,
+    bool fetchSucceeded,
+    bool rtcUpdated,
     uint32_t nowMs
 ) {
     backend_.stop();
 
     syncInProgress_ = false;
     hasSyncResult_ = true;
-    lastSyncSucceeded_ = succeeded;
+    lastFetchSucceeded_ = fetchSucceeded;
+    lastSyncSucceeded_ = fetchSucceeded && rtcUpdated;
     periodicAnchorMs_ = nowMs;
 
-    if (succeeded) {
+    if (lastSyncSucceeded_) {
         hasSuccessfulSync_ = true;
         lastSuccessfulSyncMs_ = nowMs;
     }

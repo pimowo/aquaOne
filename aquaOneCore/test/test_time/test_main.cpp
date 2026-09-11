@@ -1051,6 +1051,292 @@ void test_resilient_custom_recovery_threshold() {
     TEST_ASSERT_TRUE(time.isRtcHealthy());
 }
 
+void test_ntp_fetch_success_and_rtc_write_success() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 1U, 1U, 0U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    TEST_ASSERT_TRUE(rtc.begin());
+    FakeNtpBackend backend;
+    backend.result = NtpBackendResult::Success;
+    backend.utc = utcAt(2028U, 2U, 29U, 21U, 45U, 37U);
+    NtpService ntp(rtc, backend);
+    TEST_ASSERT_TRUE(ntp.begin());
+
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 100U));
+    ntp.update(true, 101U);
+
+    TEST_ASSERT_TRUE(ntp.lastFetchSucceeded());
+    TEST_ASSERT_TRUE(ntp.lastSyncSucceeded());
+
+    UtcDateTime output {};
+    TEST_ASSERT_TRUE(ntp.takeReceivedUtc(output));
+    TEST_ASSERT_EQUAL_UINT16(2028U, output.year);
+    TEST_ASSERT_EQUAL_UINT8(2U, output.month);
+    TEST_ASSERT_EQUAL_UINT8(29U, output.day);
+    TEST_ASSERT_EQUAL_UINT8(21U, output.hour);
+    TEST_ASSERT_EQUAL_UINT8(45U, output.minute);
+    TEST_ASSERT_EQUAL_UINT8(37U, output.second);
+}
+
+void test_ntp_fetch_success_even_when_rtc_write_fails() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 8U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    TEST_ASSERT_TRUE(rtc.begin());
+    FakeNtpBackend backend;
+    backend.result = NtpBackendResult::Success;
+    backend.utc = utcAt(2026U, 9U, 8U, 12U, 34U, 56U);
+    NtpService ntp(rtc, backend);
+    TEST_ASSERT_TRUE(ntp.begin());
+    bus.failWriteOnCall = 1; // Zapis do DS3231 zawiedzie
+
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 100U));
+    ntp.update(true, 101U);
+
+    TEST_ASSERT_TRUE(ntp.hasSyncResult());
+    TEST_ASSERT_TRUE(ntp.lastFetchSucceeded());
+    TEST_ASSERT_FALSE(ntp.lastSyncSucceeded()); // Pełny sync fail przez błąd RTC
+
+    UtcDateTime output {};
+    TEST_ASSERT_TRUE(ntp.takeReceivedUtc(output));
+    TEST_ASSERT_EQUAL_UINT16(2026U, output.year);
+    TEST_ASSERT_EQUAL_UINT8(9U, output.month);
+    TEST_ASSERT_EQUAL_UINT8(8U, output.day);
+    TEST_ASSERT_EQUAL_UINT8(12U, output.hour);
+    TEST_ASSERT_EQUAL_UINT8(34U, output.minute);
+    TEST_ASSERT_EQUAL_UINT8(56U, output.second);
+}
+
+void test_ntp_take_received_utc_consumes_result_exactly_once() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 1U, 1U, 0U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    TEST_ASSERT_TRUE(rtc.begin());
+    FakeNtpBackend backend;
+    backend.result = NtpBackendResult::Success;
+    backend.utc = utcAt(2026U, 9U, 11U, 15U, 0U, 0U);
+    NtpService ntp(rtc, backend);
+    TEST_ASSERT_TRUE(ntp.begin());
+
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 100U));
+    ntp.update(true, 101U);
+
+    UtcDateTime first {};
+    TEST_ASSERT_TRUE(ntp.takeReceivedUtc(first));
+    TEST_ASSERT_EQUAL_UINT8(15U, first.hour);
+
+    UtcDateTime second {};
+    TEST_ASSERT_FALSE(ntp.takeReceivedUtc(second));
+    TEST_ASSERT_EQUAL_UINT8(0U, second.hour);
+}
+
+void test_ntp_invalid_utc_does_not_set_fetch_success() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 1U, 1U, 0U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    TEST_ASSERT_TRUE(rtc.begin());
+    FakeNtpBackend backend;
+    backend.result = NtpBackendResult::Success;
+    backend.utc = utcAt(2027U, 2U, 29U, 12U, 0U, 0U); // 29 lutego w roku nieprzestępnym
+    NtpService ntp(rtc, backend);
+    TEST_ASSERT_TRUE(ntp.begin());
+
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 100U));
+    ntp.update(true, 101U);
+
+    TEST_ASSERT_FALSE(ntp.lastFetchSucceeded());
+    TEST_ASSERT_FALSE(ntp.lastSyncSucceeded());
+    UtcDateTime output {};
+    TEST_ASSERT_FALSE(ntp.takeReceivedUtc(output));
+}
+
+void test_ntp_backend_failure_resets_fetch_success() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 1U, 1U, 0U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    TEST_ASSERT_TRUE(rtc.begin());
+    FakeNtpBackend backend;
+    backend.result = NtpBackendResult::Failure;
+    NtpService ntp(rtc, backend);
+    TEST_ASSERT_TRUE(ntp.begin());
+
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 100U));
+    ntp.update(true, 101U);
+
+    TEST_ASSERT_FALSE(ntp.lastFetchSucceeded());
+    TEST_ASSERT_FALSE(ntp.lastSyncSucceeded());
+    UtcDateTime output {};
+    TEST_ASSERT_FALSE(ntp.takeReceivedUtc(output));
+}
+
+void test_ntp_timeout_resets_fetch_success() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 1U, 1U, 0U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    TEST_ASSERT_TRUE(rtc.begin());
+    FakeNtpBackend backend;
+    backend.result = NtpBackendResult::Pending;
+    NtpService ntp(rtc, backend);
+    NtpConfig config = NtpService::defaultConfig();
+    config.timeoutMs = 100U;
+    TEST_ASSERT_TRUE(ntp.begin(config, 0U));
+
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 100U));
+    ntp.update(true, 201U);
+
+    TEST_ASSERT_FALSE(ntp.lastFetchSucceeded());
+    TEST_ASSERT_FALSE(ntp.lastSyncSucceeded());
+    UtcDateTime output {};
+    TEST_ASSERT_FALSE(ntp.takeReceivedUtc(output));
+}
+
+void test_ntp_wifi_loss_resets_fetch_success() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 1U, 1U, 0U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    TEST_ASSERT_TRUE(rtc.begin());
+    FakeNtpBackend backend;
+    backend.result = NtpBackendResult::Pending;
+    NtpService ntp(rtc, backend);
+    TEST_ASSERT_TRUE(ntp.begin(0U));
+
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 100U));
+    ntp.update(false, 110U);
+
+    TEST_ASSERT_FALSE(ntp.lastFetchSucceeded());
+    TEST_ASSERT_FALSE(ntp.lastSyncSucceeded());
+    UtcDateTime output {};
+    TEST_ASSERT_FALSE(ntp.takeReceivedUtc(output));
+}
+
+void test_ntp_subsequent_sync_produces_new_consumable_utc() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 1U, 1U, 0U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    TEST_ASSERT_TRUE(rtc.begin());
+    FakeNtpBackend backend;
+    NtpService ntp(rtc, backend);
+    NtpConfig config = NtpService::defaultConfig();
+    config.syncIntervalMs = 1000U;
+    TEST_ASSERT_TRUE(ntp.begin(config, 0U));
+
+    backend.result = NtpBackendResult::Success;
+    backend.utc = utcAt(2026U, 9U, 11U, 10U, 0U, 0U);
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 100U));
+    ntp.update(true, 101U);
+
+    UtcDateTime first {};
+    TEST_ASSERT_TRUE(ntp.takeReceivedUtc(first));
+    TEST_ASSERT_EQUAL_UINT8(10U, first.hour);
+
+    backend.utc = utcAt(2026U, 9U, 11U, 11U, 0U, 0U);
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 2000U));
+    ntp.update(true, 2001U);
+
+    UtcDateTime second {};
+    TEST_ASSERT_TRUE(ntp.takeReceivedUtc(second));
+    TEST_ASSERT_EQUAL_UINT8(11U, second.hour);
+}
+
+void test_ntp_two_fetches_without_consumption_keeps_latest() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 1U, 1U, 0U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    TEST_ASSERT_TRUE(rtc.begin());
+    FakeNtpBackend backend;
+    NtpService ntp(rtc, backend);
+    NtpConfig config = NtpService::defaultConfig();
+    config.syncIntervalMs = 1000U;
+    TEST_ASSERT_TRUE(ntp.begin(config, 0U));
+
+    backend.result = NtpBackendResult::Success;
+    backend.utc = utcAt(2026U, 9U, 11U, 10U, 0U, 0U);
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 100U));
+    ntp.update(true, 101U);
+
+    backend.utc = utcAt(2026U, 9U, 11U, 12U, 0U, 0U);
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 2000U));
+    ntp.update(true, 2001U);
+
+    UtcDateTime output {};
+    TEST_ASSERT_TRUE(ntp.takeReceivedUtc(output));
+    TEST_ASSERT_EQUAL_UINT8(12U, output.hour);
+    TEST_ASSERT_FALSE(ntp.takeReceivedUtc(output));
+}
+
+void test_ntp_pending_preserved_if_subsequent_attempt_fails() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 1U, 1U, 0U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    TEST_ASSERT_TRUE(rtc.begin());
+    FakeNtpBackend backend;
+    NtpService ntp(rtc, backend);
+    NtpConfig config = NtpService::defaultConfig();
+    config.syncIntervalMs = 1000U;
+    TEST_ASSERT_TRUE(ntp.begin(config, 0U));
+
+    backend.result = NtpBackendResult::Success;
+    backend.utc = utcAt(2026U, 9U, 11U, 10U, 0U, 0U);
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 100U));
+    ntp.update(true, 101U);
+
+    backend.result = NtpBackendResult::Failure;
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 2000U));
+    ntp.update(true, 2001U);
+
+    TEST_ASSERT_FALSE(ntp.lastFetchSucceeded());
+    UtcDateTime output {};
+    TEST_ASSERT_TRUE(ntp.takeReceivedUtc(output));
+    TEST_ASSERT_EQUAL_UINT8(10U, output.hour);
+}
+
+void test_ntp_instances_are_isolated() {
+    FakeRtcBus firstBus;
+    FakeRtcBus secondBus;
+    fillRegisters(firstBus, 2026U, 1U, 1U, 0U, 0U, 0U);
+    fillRegisters(secondBus, 2026U, 1U, 1U, 0U, 0U, 0U);
+    RtcService firstRtc(firstBus, rtcConfig());
+    RtcService secondRtc(secondBus, rtcConfig());
+
+    FakeNtpBackend firstBackend;
+    FakeNtpBackend secondBackend;
+    NtpService firstNtp(firstRtc, firstBackend);
+    NtpService secondNtp(secondRtc, secondBackend);
+    firstNtp.begin(0U);
+    secondNtp.begin(0U);
+
+    firstBackend.result = NtpBackendResult::Success;
+    firstBackend.utc = utcAt(2026U, 9U, 11U, 10U, 0U, 0U);
+    firstNtp.requestSync(true, 100U);
+    firstNtp.update(true, 101U);
+
+    UtcDateTime first {};
+    UtcDateTime second {};
+    TEST_ASSERT_TRUE(firstNtp.takeReceivedUtc(first));
+    TEST_ASSERT_FALSE(secondNtp.takeReceivedUtc(second));
+}
+
+void test_ntp_begin_clears_pending_and_fetch_state() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 1U, 1U, 0U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    TEST_ASSERT_TRUE(rtc.begin());
+    FakeNtpBackend backend;
+    backend.result = NtpBackendResult::Success;
+    backend.utc = utcAt(2026U, 9U, 11U, 10U, 0U, 0U);
+    NtpService ntp(rtc, backend);
+    TEST_ASSERT_TRUE(ntp.begin());
+
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 100U));
+    ntp.update(true, 101U);
+    TEST_ASSERT_TRUE(ntp.lastFetchSucceeded());
+
+    TEST_ASSERT_TRUE(ntp.begin(200U));
+    TEST_ASSERT_FALSE(ntp.lastFetchSucceeded());
+    UtcDateTime output {};
+    TEST_ASSERT_FALSE(ntp.takeReceivedUtc(output));
+}
+
 } // namespace
 
 void setup() {
@@ -1104,6 +1390,18 @@ void setup() {
     RUN_TEST(test_resilient_calendar_transitions);
     RUN_TEST(test_resilient_custom_failure_threshold);
     RUN_TEST(test_resilient_custom_recovery_threshold);
+    RUN_TEST(test_ntp_fetch_success_and_rtc_write_success);
+    RUN_TEST(test_ntp_fetch_success_even_when_rtc_write_fails);
+    RUN_TEST(test_ntp_take_received_utc_consumes_result_exactly_once);
+    RUN_TEST(test_ntp_invalid_utc_does_not_set_fetch_success);
+    RUN_TEST(test_ntp_backend_failure_resets_fetch_success);
+    RUN_TEST(test_ntp_timeout_resets_fetch_success);
+    RUN_TEST(test_ntp_wifi_loss_resets_fetch_success);
+    RUN_TEST(test_ntp_subsequent_sync_produces_new_consumable_utc);
+    RUN_TEST(test_ntp_two_fetches_without_consumption_keeps_latest);
+    RUN_TEST(test_ntp_pending_preserved_if_subsequent_attempt_fails);
+    RUN_TEST(test_ntp_instances_are_isolated);
+    RUN_TEST(test_ntp_begin_clears_pending_and_fetch_state);
 
     UNITY_END();
 }

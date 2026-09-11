@@ -87,6 +87,8 @@ public:
     bool isSyncInProgress() const;
     bool hasSyncResult() const;
     bool lastSyncSucceeded() const;
+    bool lastFetchSucceeded() const;
+    bool takeReceivedUtc(UtcDateTime& output);
     bool isPeriodicSyncDue(uint32_t nowMs) const;
 
     bool lastSuccessfulSyncAgeMs(
@@ -109,6 +111,10 @@ private:
     uint32_t periodicAnchorMs_ = 0U;
     uint32_t lastSuccessfulSyncMs_ = 0U;
 
+    UtcDateTime lastReceivedUtc_ {};
+    bool newUtcPending_ = false;
+    bool lastFetchSucceeded_ = false;
+
     bool initialized_ = false;
     bool syncInProgress_ = false;
     bool hasSyncResult_ = false;
@@ -116,7 +122,8 @@ private:
     bool hasSuccessfulSync_ = false;
 
     void finishAttempt(
-        bool succeeded,
+        bool fetchSucceeded,
+        bool rtcUpdated,
         uint32_t nowMs
     );
 };
