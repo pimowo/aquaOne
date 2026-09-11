@@ -48,6 +48,8 @@ bool NetworkService::begin(const NetworkConfig& config) {
     apIpAddress_ = {};
     reconnectCount_ = 0U;
     reconnectAnchorMs_ = 0U;
+    activeReconnectIntervalMs_ = DEFAULT_RECONNECT_INTERVAL_MS;
+    connectingStartedMs_ = 0U;
     hasReconnectAnchor_ = false;
     clearStaRuntime();
 
@@ -57,7 +59,14 @@ bool NetworkService::begin(const NetworkConfig& config) {
     }
 
     config_ = config;
+    activeReconnectIntervalMs_ = config_.reconnectIntervalMs;
     initialized_ = true;
+
+    backend_.applyRadioPolicy(
+        config_.persistent,
+        config_.sdkAutoReconnect,
+        config_.powerSave
+    );
 
     if (!config_.staEnabled && !config_.apEnabled) {
         return true;
@@ -121,6 +130,7 @@ void NetworkService::update(uint32_t nowMs) {
 
         state_ = NetworkState::Connected;
         hasReconnectAnchor_ = false;
+        connectingStartedMs_ = 0U;
         ipAddress_ = backend_.localIp();
         rssi_ = backend_.rssi();
         return;
@@ -129,6 +139,17 @@ void NetworkService::update(uint32_t nowMs) {
     if (backendState == BackendStaState::Connecting) {
         state_ = NetworkState::Connecting;
         clearStaRuntime();
+
+        if (connectingStartedMs_ == 0U) {
+            connectingStartedMs_ = nowMs;
+        } else if (
+            config_.connectTimeoutMs > 0U &&
+            (nowMs - connectingStartedMs_ >= config_.connectTimeoutMs)
+        ) {
+            observeDisconnected(BackendStaState::Disconnected, nowMs);
+            return;
+        }
+
         return;
     }
 
@@ -250,30 +271,52 @@ void NetworkService::observeDisconnected(
     uint32_t nowMs
 ) {
     clearStaRuntime();
+    connectingStartedMs_ = 0U;
 
     state_ = backendState == BackendStaState::Error
         ? NetworkState::Error
         : NetworkState::Disconnected;
 
+    const NetworkDisconnectReason reason =
+        backend_.consumeDisconnectReason();
+
     if (!hasReconnectAnchor_) {
         reconnectAnchorMs_ = nowMs;
         hasReconnectAnchor_ = true;
+
+        const bool isFastCandidate = (
+            reason == NetworkDisconnectReason::AssociationExpired ||
+            reason == NetworkDisconnectReason::ConnectionFailed ||
+            reason == NetworkDisconnectReason::AssociationComebackTooLong
+        );
+
+        if (
+            config_.fastRetryEnabled &&
+            isFastCandidate &&
+            config_.fastReconnectIntervalMs > 0U
+        ) {
+            activeReconnectIntervalMs_ = config_.fastReconnectIntervalMs;
+        } else {
+            activeReconnectIntervalMs_ = config_.reconnectIntervalMs;
+        }
+
         return;
     }
 
     if (
         !config_.autoReconnect ||
-        nowMs - reconnectAnchorMs_ <
-            config_.reconnectIntervalMs
+        nowMs - reconnectAnchorMs_ < activeReconnectIntervalMs_
     ) {
         return;
     }
 
     reconnectAnchorMs_ = nowMs;
+    hasReconnectAnchor_ = false;
     ++reconnectCount_;
 
     if (backend_.reconnectSta()) {
         state_ = NetworkState::Connecting;
+        connectingStartedMs_ = nowMs;
     } else {
         state_ = NetworkState::Error;
     }

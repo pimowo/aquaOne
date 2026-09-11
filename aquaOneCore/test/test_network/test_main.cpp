@@ -27,6 +27,18 @@ namespace {
 
 class MockNetworkBackend final : public NetworkBackend {
 public:
+    bool applyRadioPolicy(
+        TriStateSetting persistentVal,
+        TriStateSetting sdkAutoReconnectVal,
+        WifiPowerSaveMode powerSaveVal
+    ) override {
+        ++applyRadioPolicyCalls;
+        persistent = persistentVal;
+        sdkAutoReconnect = sdkAutoReconnectVal;
+        powerSave = powerSaveVal;
+        return applyRadioPolicyResult;
+    }
+
     bool setHostname(const char* value) override {
         ++setHostnameCalls;
         copy(hostname, sizeof(hostname), value);
@@ -68,6 +80,13 @@ public:
         return staRssi;
     }
 
+    NetworkDisconnectReason consumeDisconnectReason() override {
+        ++consumeDisconnectReasonCalls;
+        const NetworkDisconnectReason reason = nextDisconnectReason;
+        nextDisconnectReason = NetworkDisconnectReason::None;
+        return reason;
+    }
+
     bool startAccessPoint(
         const char* ssidValue,
         const char* passwordValue
@@ -106,6 +125,12 @@ public:
         destination[capacity - 1U] = '\0';
     }
 
+    bool applyRadioPolicyResult = true;
+    TriStateSetting persistent = TriStateSetting::FrameworkDefault;
+    TriStateSetting sdkAutoReconnect = TriStateSetting::FrameworkDefault;
+    WifiPowerSaveMode powerSave = WifiPowerSaveMode::FrameworkDefault;
+    uint16_t applyRadioPolicyCalls = 0U;
+
     bool setHostnameResult = true;
     bool beginStaResult = true;
     bool reconnectResult = true;
@@ -117,6 +142,10 @@ public:
     IpAddress staIp {{192U, 168U, 1U, 44U}};
     IpAddress apIp {{192U, 168U, 4U, 1U}};
     int32_t staRssi = -57;
+
+    NetworkDisconnectReason nextDisconnectReason =
+        NetworkDisconnectReason::None;
+    mutable uint16_t consumeDisconnectReasonCalls = 0U;
 
     char hostname[WIFI_HOSTNAME_CAPACITY] {};
     char ssid[WIFI_SSID_CAPACITY] {};
@@ -605,6 +634,352 @@ void test_network_has_no_web_mqtt_or_ha_dependency() {
     assertState(NetworkState::Disabled, service);
 }
 
+void test_default_config_preserves_core_v1() {
+    NetworkConfig config {};
+    TEST_ASSERT_EQUAL_UINT32(0U, config.connectTimeoutMs);
+    TEST_ASSERT_FALSE(config.fastRetryEnabled);
+    TEST_ASSERT_EQUAL_UINT32(0U, config.fastReconnectIntervalMs);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(TriStateSetting::FrameworkDefault),
+        static_cast<uint8_t>(config.persistent)
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(TriStateSetting::FrameworkDefault),
+        static_cast<uint8_t>(config.sdkAutoReconnect)
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(WifiPowerSaveMode::FrameworkDefault),
+        static_cast<uint8_t>(config.powerSave)
+    );
+}
+
+void test_connect_timeout_disabled_by_default() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.connectTimeoutMs = 0U;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    backend.currentState = BackendStaState::Connecting;
+
+    service.update(100U);
+    service.update(30000U);
+
+    assertState(NetworkState::Connecting, service);
+    TEST_ASSERT_EQUAL_UINT16(0U, backend.reconnectCalls);
+}
+
+void test_configured_connect_timeout() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.connectTimeoutMs = 15000U;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    backend.currentState = BackendStaState::Connecting;
+
+    service.update(100U);
+    assertState(NetworkState::Connecting, service);
+
+    service.update(15099U);
+    assertState(NetworkState::Connecting, service);
+
+    service.update(15100U);
+    assertState(NetworkState::Disconnected, service);
+}
+
+void test_normal_reconnect_interval() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.reconnectIntervalMs = 5000U;
+    config.fastRetryEnabled = true;
+    config.fastReconnectIntervalMs = 1500U;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    backend.currentState = BackendStaState::Disconnected;
+    backend.nextDisconnectReason = NetworkDisconnectReason::Other;
+
+    service.update(100U);
+    service.update(5099U);
+    TEST_ASSERT_EQUAL_UINT16(0U, backend.reconnectCalls);
+
+    service.update(5100U);
+    TEST_ASSERT_EQUAL_UINT16(1U, backend.reconnectCalls);
+}
+
+void test_fast_retry_association_expired() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.reconnectIntervalMs = 5000U;
+    config.fastRetryEnabled = true;
+    config.fastReconnectIntervalMs = 1500U;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    backend.currentState = BackendStaState::Disconnected;
+    backend.nextDisconnectReason = NetworkDisconnectReason::AssociationExpired;
+
+    service.update(100U);
+    service.update(1599U);
+    TEST_ASSERT_EQUAL_UINT16(0U, backend.reconnectCalls);
+
+    service.update(1600U);
+    TEST_ASSERT_EQUAL_UINT16(1U, backend.reconnectCalls);
+}
+
+void test_fast_retry_connection_failed() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.reconnectIntervalMs = 5000U;
+    config.fastRetryEnabled = true;
+    config.fastReconnectIntervalMs = 1500U;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    backend.currentState = BackendStaState::Disconnected;
+    backend.nextDisconnectReason = NetworkDisconnectReason::ConnectionFailed;
+
+    service.update(100U);
+    service.update(1600U);
+    TEST_ASSERT_EQUAL_UINT16(1U, backend.reconnectCalls);
+}
+
+void test_fast_retry_association_comeback_too_long() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.reconnectIntervalMs = 5000U;
+    config.fastRetryEnabled = true;
+    config.fastReconnectIntervalMs = 1500U;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    backend.currentState = BackendStaState::Disconnected;
+    backend.nextDisconnectReason = NetworkDisconnectReason::AssociationComebackTooLong;
+
+    service.update(100U);
+    service.update(1600U);
+    TEST_ASSERT_EQUAL_UINT16(1U, backend.reconnectCalls);
+}
+
+void test_auth_failure_uses_normal_retry() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.reconnectIntervalMs = 5000U;
+    config.fastRetryEnabled = true;
+    config.fastReconnectIntervalMs = 1500U;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    backend.currentState = BackendStaState::Disconnected;
+    backend.nextDisconnectReason = NetworkDisconnectReason::AuthenticationFailed;
+
+    service.update(100U);
+    service.update(1600U);
+    TEST_ASSERT_EQUAL_UINT16(0U, backend.reconnectCalls);
+
+    service.update(5100U);
+    TEST_ASSERT_EQUAL_UINT16(1U, backend.reconnectCalls);
+}
+
+void test_ap_not_found_uses_normal_retry() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.reconnectIntervalMs = 5000U;
+    config.fastRetryEnabled = true;
+    config.fastReconnectIntervalMs = 1500U;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    backend.currentState = BackendStaState::Disconnected;
+    backend.nextDisconnectReason = NetworkDisconnectReason::ApNotFound;
+
+    service.update(100U);
+    service.update(1600U);
+    TEST_ASSERT_EQUAL_UINT16(0U, backend.reconnectCalls);
+
+    service.update(5100U);
+    TEST_ASSERT_EQUAL_UINT16(1U, backend.reconnectCalls);
+}
+
+void test_unknown_reason_uses_normal_retry() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.reconnectIntervalMs = 5000U;
+    config.fastRetryEnabled = true;
+    config.fastReconnectIntervalMs = 1500U;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    backend.currentState = BackendStaState::Disconnected;
+    backend.nextDisconnectReason = NetworkDisconnectReason::Unknown;
+
+    service.update(100U);
+    service.update(1600U);
+    TEST_ASSERT_EQUAL_UINT16(0U, backend.reconnectCalls);
+
+    service.update(5100U);
+    TEST_ASSERT_EQUAL_UINT16(1U, backend.reconnectCalls);
+}
+
+void test_fast_retry_disabled_uses_normal_retry() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.reconnectIntervalMs = 5000U;
+    config.fastRetryEnabled = false;
+    config.fastReconnectIntervalMs = 1500U;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    backend.currentState = BackendStaState::Disconnected;
+    backend.nextDisconnectReason = NetworkDisconnectReason::AssociationExpired;
+
+    service.update(100U);
+    service.update(1600U);
+    TEST_ASSERT_EQUAL_UINT16(0U, backend.reconnectCalls);
+
+    service.update(5100U);
+    TEST_ASSERT_EQUAL_UINT16(1U, backend.reconnectCalls);
+}
+
+void test_fast_reconnect_interval_zero_fallback() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.reconnectIntervalMs = 5000U;
+    config.fastRetryEnabled = true;
+    config.fastReconnectIntervalMs = 0U;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    backend.currentState = BackendStaState::Disconnected;
+    backend.nextDisconnectReason = NetworkDisconnectReason::AssociationExpired;
+
+    service.update(100U);
+    service.update(1600U);
+    TEST_ASSERT_EQUAL_UINT16(0U, backend.reconnectCalls);
+
+    service.update(5100U);
+    TEST_ASSERT_EQUAL_UINT16(1U, backend.reconnectCalls);
+}
+
+void test_millis_rollover_connect_timeout() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.connectTimeoutMs = 15000U;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    backend.currentState = BackendStaState::Connecting;
+
+    service.update(UINT32_MAX - 5000U);
+    assertState(NetworkState::Connecting, service);
+
+    service.update(9999U);
+    assertState(NetworkState::Connecting, service);
+
+    service.update(10000U);
+    assertState(NetworkState::Disconnected, service);
+}
+
+void test_millis_rollover_retry() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.reconnectIntervalMs = 5000U;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    backend.currentState = BackendStaState::Disconnected;
+
+    service.update(UINT32_MAX - 2000U);
+    service.update(2999U);
+    TEST_ASSERT_EQUAL_UINT16(0U, backend.reconnectCalls);
+
+    service.update(3000U);
+    TEST_ASSERT_EQUAL_UINT16(1U, backend.reconnectCalls);
+}
+
+void test_radio_policy_framework_default() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    TEST_ASSERT_EQUAL_UINT16(1U, backend.applyRadioPolicyCalls);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(TriStateSetting::FrameworkDefault),
+        static_cast<uint8_t>(backend.persistent)
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(TriStateSetting::FrameworkDefault),
+        static_cast<uint8_t>(backend.sdkAutoReconnect)
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(WifiPowerSaveMode::FrameworkDefault),
+        static_cast<uint8_t>(backend.powerSave)
+    );
+}
+
+void test_explicit_radio_policy_forwarded() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.persistent = TriStateSetting::Disabled;
+    config.sdkAutoReconnect = TriStateSetting::Disabled;
+    config.powerSave = WifiPowerSaveMode::None;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    TEST_ASSERT_EQUAL_UINT16(1U, backend.applyRadioPolicyCalls);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(TriStateSetting::Disabled),
+        static_cast<uint8_t>(backend.persistent)
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(TriStateSetting::Disabled),
+        static_cast<uint8_t>(backend.sdkAutoReconnect)
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(WifiPowerSaveMode::None),
+        static_cast<uint8_t>(backend.powerSave)
+    );
+}
+
+void test_reconnect_success_transitions_to_connected() {
+    MockNetworkBackend backend;
+    NetworkService service(backend);
+    NetworkConfig config = staConfig();
+    config.reconnectIntervalMs = 5000U;
+
+    TEST_ASSERT_TRUE(service.begin(config));
+    backend.currentState = BackendStaState::Disconnected;
+
+    service.update(0U);
+    service.update(5000U);
+    TEST_ASSERT_EQUAL_UINT16(1U, backend.reconnectCalls);
+    assertState(NetworkState::Connecting, service);
+
+    backend.currentState = BackendStaState::Connected;
+    service.update(5100U);
+    assertState(NetworkState::Connected, service);
+    TEST_ASSERT_TRUE(service.isConnected());
+}
+
+void test_event_reason_consumed_once() {
+    MockNetworkBackend backend;
+    backend.nextDisconnectReason = NetworkDisconnectReason::AssociationExpired;
+
+    const NetworkDisconnectReason first = backend.consumeDisconnectReason();
+    const NetworkDisconnectReason second = backend.consumeDisconnectReason();
+
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(NetworkDisconnectReason::AssociationExpired),
+        static_cast<uint8_t>(first)
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(NetworkDisconnectReason::None),
+        static_cast<uint8_t>(second)
+    );
+}
+
 } // namespace
 
 void setUp() {
@@ -641,6 +1016,25 @@ void setup() {
     RUN_TEST(test_diagnostics_reports_network);
     RUN_TEST(test_network_has_no_lumasense_dependency);
     RUN_TEST(test_network_has_no_web_mqtt_or_ha_dependency);
+
+    RUN_TEST(test_default_config_preserves_core_v1);
+    RUN_TEST(test_connect_timeout_disabled_by_default);
+    RUN_TEST(test_configured_connect_timeout);
+    RUN_TEST(test_normal_reconnect_interval);
+    RUN_TEST(test_fast_retry_association_expired);
+    RUN_TEST(test_fast_retry_connection_failed);
+    RUN_TEST(test_fast_retry_association_comeback_too_long);
+    RUN_TEST(test_auth_failure_uses_normal_retry);
+    RUN_TEST(test_ap_not_found_uses_normal_retry);
+    RUN_TEST(test_unknown_reason_uses_normal_retry);
+    RUN_TEST(test_fast_retry_disabled_uses_normal_retry);
+    RUN_TEST(test_fast_reconnect_interval_zero_fallback);
+    RUN_TEST(test_millis_rollover_connect_timeout);
+    RUN_TEST(test_millis_rollover_retry);
+    RUN_TEST(test_radio_policy_framework_default);
+    RUN_TEST(test_explicit_radio_policy_forwarded);
+    RUN_TEST(test_reconnect_success_transitions_to_connected);
+    RUN_TEST(test_event_reason_consumed_once);
 
     UNITY_END();
 }

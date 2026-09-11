@@ -47,6 +47,8 @@ private:
     int32_t rssi_ = 0;
     uint32_t reconnectCount_ = 0U;
     uint32_t reconnectAnchorMs_ = 0U;
+    uint32_t activeReconnectIntervalMs_ = DEFAULT_RECONNECT_INTERVAL_MS;
+    uint32_t connectingStartedMs_ = 0U;
     uint32_t connectedSinceMs_ = 0U;
     bool initialized_ = false;
     bool hasReconnectAnchor_ = false;

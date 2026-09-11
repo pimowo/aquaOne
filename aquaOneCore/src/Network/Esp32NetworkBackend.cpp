@@ -50,7 +50,95 @@ IpAddress copyAddress(const ::IPAddress& source) {
     return result;
 }
 
+NetworkDisconnectReason mapEspReason(uint8_t reason) {
+    switch (reason) {
+        case WIFI_REASON_ASSOC_EXPIRE:
+            return NetworkDisconnectReason::AssociationExpired;
+        case WIFI_REASON_CONNECTION_FAIL:
+            return NetworkDisconnectReason::ConnectionFailed;
+        case WIFI_REASON_ASSOC_COMEBACK_TIME_TOO_LONG:
+            return NetworkDisconnectReason::AssociationComebackTooLong;
+        case WIFI_REASON_AUTH_EXPIRE:
+        case WIFI_REASON_AUTH_FAIL:
+        case WIFI_REASON_4WAY_HANDSHAKE_TIMEOUT:
+        case WIFI_REASON_HANDSHAKE_TIMEOUT:
+            return NetworkDisconnectReason::AuthenticationFailed;
+        case WIFI_REASON_NO_AP_FOUND:
+            return NetworkDisconnectReason::ApNotFound;
+        default:
+            return reason != 0U
+                ? NetworkDisconnectReason::Other
+                : NetworkDisconnectReason::None;
+    }
+}
+
 } // namespace
+
+Esp32NetworkBackend* Esp32NetworkBackend::activeInstance_ = nullptr;
+
+Esp32NetworkBackend::Esp32NetworkBackend() {
+    activeInstance_ = this;
+}
+
+Esp32NetworkBackend::~Esp32NetworkBackend() {
+    if (eventHandlerId_ != 0) {
+        WiFi.removeEvent(eventHandlerId_);
+        eventHandlerId_ = 0;
+    }
+    if (activeInstance_ == this) {
+        activeInstance_ = nullptr;
+    }
+}
+
+void Esp32NetworkBackend::ensureEventHandler() {
+    activeInstance_ = this;
+    if (eventHandlerId_ == 0) {
+        eventHandlerId_ = static_cast<int>(WiFi.onEvent(
+            [](WiFiEvent_t event, WiFiEventInfo_t info) {
+                if (
+                    activeInstance_ != nullptr &&
+                    event == ARDUINO_EVENT_WIFI_STA_DISCONNECTED
+                ) {
+                    activeInstance_->pendingEspReason_.store(
+                        info.wifi_sta_disconnected.reason,
+                        std::memory_order_relaxed
+                    );
+                    activeInstance_->hasPendingReason_.store(
+                        true,
+                        std::memory_order_release
+                    );
+                }
+            },
+            ARDUINO_EVENT_WIFI_STA_DISCONNECTED
+        ));
+    }
+}
+
+bool Esp32NetworkBackend::applyRadioPolicy(
+    TriStateSetting persistent,
+    TriStateSetting sdkAutoReconnect,
+    WifiPowerSaveMode powerSave
+) {
+    ensureEventHandler();
+
+    if (persistent == TriStateSetting::Enabled) {
+        WiFi.persistent(true);
+    } else if (persistent == TriStateSetting::Disabled) {
+        WiFi.persistent(false);
+    }
+
+    if (sdkAutoReconnect == TriStateSetting::Enabled) {
+        WiFi.setAutoReconnect(true);
+    } else if (sdkAutoReconnect == TriStateSetting::Disabled) {
+        WiFi.setAutoReconnect(false);
+    }
+
+    if (powerSave == WifiPowerSaveMode::None) {
+        WiFi.setSleep(false);
+    }
+
+    return true;
+}
 
 bool Esp32NetworkBackend::setHostname(
     const char* hostname
@@ -64,6 +152,8 @@ bool Esp32NetworkBackend::beginSta(
     const char* ssid,
     const char* password
 ) {
+    ensureEventHandler();
+
     if (ssid == nullptr || !enableStaMode()) {
         return false;
     }
@@ -111,6 +201,16 @@ IpAddress Esp32NetworkBackend::localIp() const {
 
 int32_t Esp32NetworkBackend::rssi() const {
     return static_cast<int32_t>(WiFi.RSSI());
+}
+
+NetworkDisconnectReason Esp32NetworkBackend::consumeDisconnectReason() {
+    if (!hasPendingReason_.exchange(false, std::memory_order_acq_rel)) {
+        return NetworkDisconnectReason::None;
+    }
+
+    const uint8_t reason =
+        pendingEspReason_.load(std::memory_order_relaxed);
+    return mapEspReason(reason);
 }
 
 bool Esp32NetworkBackend::startAccessPoint(

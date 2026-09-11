@@ -39,5 +39,16 @@ enum class BackendStaState : uint8_t {
     Error
 };
 
+enum class NetworkDisconnectReason : uint8_t {
+    None = 0U,
+    Unknown,
+    AssociationExpired,
+    ConnectionFailed,
+    AssociationComebackTooLong,
+    AuthenticationFailed,
+    ApNotFound,
+    Other
+};
+
 } // namespace Network
 } // namespace AquaCore
