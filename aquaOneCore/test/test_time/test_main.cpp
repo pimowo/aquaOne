@@ -337,6 +337,7 @@ void test_ntp_request_starts_non_blocking() {
     TEST_ASSERT_EQUAL_UINT16(1U, backend.startCalls);
     TEST_ASSERT_EQUAL_UINT16(0U, backend.pollCalls);
 }
+
 void test_ntp_timeout_finishes_as_failure() {
     FakeRtcBus bus;
     fillRegisters(bus, 2026U, 9U, 8U, 10U, 0U, 0U);

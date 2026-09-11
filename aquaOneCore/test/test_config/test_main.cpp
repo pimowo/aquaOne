@@ -1,4 +1,4 @@
-﻿#include <Arduino.h>
+#include <Arduino.h>
 #include <unity.h>
 
 #include <stddef.h>
@@ -625,4 +625,3 @@ void setup() {
 
 void loop() {
 }
-
