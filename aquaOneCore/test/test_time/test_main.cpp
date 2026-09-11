@@ -6,6 +6,7 @@
 
 #include "AquaCore/Time/EuropeWarsawTimeService.h"
 #include "AquaCore/Time/NtpService.h"
+#include "AquaCore/Time/ResilientTimeService.h"
 #include "AquaCore/Time/RtcService.h"
 
 using namespace AquaCore::Time;
@@ -564,6 +565,492 @@ void test_ntp_recovers_invalid_rtc() {
     );
 }
 
+void test_resilient_boot_valid_rtc_is_healthy_and_valid() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+
+    TEST_ASSERT_TRUE(time.begin(1000U));
+    TEST_ASSERT_TRUE(time.isRtcHealthy());
+    TEST_ASSERT_TRUE(time.isValid());
+    TEST_ASSERT_EQUAL_UINT8(0U, time.consecutiveFailures());
+    TEST_ASSERT_EQUAL_UINT8(3U, time.consecutiveSuccesses());
+    assertDateTime(time.now(1000U), 2026U, 9U, 11U, 10U, 0U, 0U);
+}
+
+void test_resilient_boot_failed_rtc_is_unhealthy_and_invalid() {
+    FakeRtcBus bus;
+    bus.failNextRead = true;
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+
+    TEST_ASSERT_FALSE(time.begin(1000U));
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+    TEST_ASSERT_FALSE(time.isValid());
+    TEST_ASSERT_EQUAL_UINT8(1U, time.consecutiveFailures());
+    TEST_ASSERT_EQUAL_UINT8(0U, time.consecutiveSuccesses());
+    TEST_ASSERT_FALSE(time.now(1000U).valid);
+}
+
+void test_resilient_single_failure_maintains_healthy() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    bus.failNextRead = true;
+    time.poll(1000U);
+
+    TEST_ASSERT_TRUE(time.isRtcHealthy());
+    TEST_ASSERT_TRUE(time.isValid());
+    TEST_ASSERT_EQUAL_UINT8(1U, time.consecutiveFailures());
+    TEST_ASSERT_EQUAL_UINT8(0U, time.consecutiveSuccesses());
+}
+
+void test_resilient_two_failures_maintain_healthy() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    bus.failNextRead = true;
+    time.poll(1000U);
+    bus.failNextRead = true;
+    time.poll(2000U);
+
+    TEST_ASSERT_TRUE(time.isRtcHealthy());
+    TEST_ASSERT_TRUE(time.isValid());
+    TEST_ASSERT_EQUAL_UINT8(2U, time.consecutiveFailures());
+}
+
+void test_resilient_three_failures_drop_healthy() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    bus.failNextRead = true;
+    time.poll(1000U);
+    bus.failNextRead = true;
+    time.poll(2000U);
+    bus.failNextRead = true;
+    time.poll(3000U);
+
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+    TEST_ASSERT_EQUAL_UINT8(3U, time.consecutiveFailures());
+}
+
+void test_resilient_cache_remains_valid_when_rtc_unhealthy() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    bus.failNextRead = true;
+    time.poll(1000U);
+    bus.failNextRead = true;
+    time.poll(2000U);
+    bus.failNextRead = true;
+    time.poll(3000U);
+
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+    TEST_ASSERT_TRUE(time.isValid());
+}
+
+void test_resilient_interpolation_works_when_rtc_unhealthy() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 12U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    bus.failNextRead = true;
+    time.poll(1000U);
+    bus.failNextRead = true;
+    time.poll(2000U);
+    bus.failNextRead = true;
+    time.poll(3000U);
+
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+    assertDateTime(time.now(15000U), 2026U, 9U, 11U, 12U, 0U, 15U);
+}
+
+void test_resilient_recovery_requires_exact_threshold_successes() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    bus.failNextRead = true;
+    time.poll(1000U);
+    bus.failNextRead = true;
+    time.poll(2000U);
+    bus.failNextRead = true;
+    time.poll(3000U);
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 4U);
+    time.poll(4000U);
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+    TEST_ASSERT_EQUAL_UINT8(1U, time.consecutiveSuccesses());
+
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 5U);
+    time.poll(5000U);
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+    TEST_ASSERT_EQUAL_UINT8(2U, time.consecutiveSuccesses());
+
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 6U);
+    time.poll(6000U);
+    TEST_ASSERT_TRUE(time.isRtcHealthy());
+    TEST_ASSERT_EQUAL_UINT8(3U, time.consecutiveSuccesses());
+}
+
+void test_resilient_failure_during_recovery_resets_success_counter() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    bus.failNextRead = true;
+    time.poll(1000U);
+    bus.failNextRead = true;
+    time.poll(2000U);
+    bus.failNextRead = true;
+    time.poll(3000U);
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 4U);
+    time.poll(4000U);
+    TEST_ASSERT_EQUAL_UINT8(1U, time.consecutiveSuccesses());
+
+    bus.failNextRead = true;
+    time.poll(5000U);
+    TEST_ASSERT_EQUAL_UINT8(0U, time.consecutiveSuccesses());
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+}
+
+void test_resilient_success_during_failure_sequence_resets_failure_counter() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    bus.failNextRead = true;
+    time.poll(1000U);
+    bus.failNextRead = true;
+    time.poll(2000U);
+    TEST_ASSERT_EQUAL_UINT8(2U, time.consecutiveFailures());
+
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 3U);
+    time.poll(3000U);
+    TEST_ASSERT_EQUAL_UINT8(0U, time.consecutiveFailures());
+    TEST_ASSERT_TRUE(time.isRtcHealthy());
+}
+
+void test_resilient_successful_poll_refreshes_cache() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 5U);
+    time.poll(5000U);
+
+    TEST_ASSERT_EQUAL_UINT32(5000U, time.cachedAtMs());
+    assertDateTime(time.now(5000U), 2026U, 9U, 11U, 10U, 0U, 5U);
+}
+
+void test_resilient_invalid_rtc_reading_treated_as_failure() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    bus.registers[0x0F] = 0x80U; // OSF set
+    time.poll(1000U);
+
+    TEST_ASSERT_EQUAL_UINT8(1U, time.consecutiveFailures());
+}
+
+void test_resilient_interpolation_advances_65_seconds() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    assertDateTime(time.now(65000U), 2026U, 9U, 11U, 10U, 1U, 5U);
+}
+
+void test_resilient_handles_millis_rollover() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(UINT32_MAX - 5000U));
+
+    const LocalTime result = time.now(5000U);
+    assertDateTime(result, 2026U, 9U, 11U, 10U, 0U, 10U);
+}
+
+void test_resilient_sync_utc_updates_cache() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    LocalTime newUtc {};
+    newUtc.valid = true;
+    newUtc.year = 2028U;
+    newUtc.month = 2U;
+    newUtc.day = 29U;
+    newUtc.hour = 23U;
+    newUtc.minute = 59U;
+    newUtc.second = 50U;
+    newUtc.minuteOfDay = 23U * 60U + 59U;
+
+    time.syncUtc(newUtc, 10000U);
+
+    assertDateTime(time.now(10000U), 2028U, 2U, 29U, 23U, 59U, 50U);
+    assertDateTime(time.now(25000U), 2028U, 3U, 1U, 0U, 0U, 5U);
+}
+
+void test_resilient_sync_utc_does_not_mark_hardware_healthy() {
+    FakeRtcBus bus;
+    bus.failNextRead = true;
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_FALSE(time.begin(0U));
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+
+    LocalTime newUtc {};
+    newUtc.valid = true;
+    newUtc.year = 2026U;
+    newUtc.month = 9U;
+    newUtc.day = 11U;
+    newUtc.hour = 12U;
+    newUtc.minute = 0U;
+    newUtc.second = 0U;
+    newUtc.minuteOfDay = 720U;
+
+    time.syncUtc(newUtc, 1000U);
+
+    TEST_ASSERT_TRUE(time.isValid());
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+    assertDateTime(time.now(1000U), 2026U, 9U, 11U, 12U, 0U, 0U);
+}
+
+void test_resilient_two_instances_are_isolated() {
+    FakeRtcBus firstBus;
+    FakeRtcBus secondBus;
+    fillRegisters(firstBus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    fillRegisters(secondBus, 2026U, 9U, 11U, 15U, 30U, 0U);
+
+    RtcService firstRtc(firstBus, rtcConfig());
+    RtcService secondRtc(secondBus, rtcConfig());
+
+    ResilientTimeService firstTime(firstRtc);
+    ResilientTimeService secondTime(secondRtc);
+
+    TEST_ASSERT_TRUE(firstTime.begin(0U));
+    TEST_ASSERT_TRUE(secondTime.begin(0U));
+
+    firstBus.failNextRead = true;
+    firstTime.poll(1000U);
+    firstBus.failNextRead = true;
+    firstTime.poll(2000U);
+    firstBus.failNextRead = true;
+    firstTime.poll(3000U);
+
+    TEST_ASSERT_FALSE(firstTime.isRtcHealthy());
+    TEST_ASSERT_TRUE(secondTime.isRtcHealthy());
+    TEST_ASSERT_EQUAL_UINT8(3U, firstTime.consecutiveFailures());
+    TEST_ASSERT_EQUAL_UINT8(0U, secondTime.consecutiveFailures());
+
+    assertDateTime(firstTime.now(3000U), 2026U, 9U, 11U, 10U, 0U, 3U);
+    assertDateTime(secondTime.now(3000U), 2026U, 9U, 11U, 15U, 30U, 3U);
+}
+
+void test_resilient_counters_do_not_overflow() {
+    FakeRtcBus bus;
+    bus.failNextRead = true;
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_FALSE(time.begin(0U));
+
+    for (int i = 0; i < 300; ++i) {
+        bus.failNextRead = true;
+        time.poll(static_cast<uint32_t>(i * 1000));
+    }
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, time.consecutiveFailures());
+
+    for (int i = 0; i < 300; ++i) {
+        fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+        time.poll(static_cast<uint32_t>(300000 + i * 1000));
+    }
+    TEST_ASSERT_EQUAL_UINT8(UINT8_MAX, time.consecutiveSuccesses());
+    TEST_ASSERT_EQUAL_UINT8(0U, time.consecutiveFailures());
+}
+
+void test_resilient_custom_failure_threshold() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeConfig config {};
+    config.failureThreshold = 5U;
+    config.recoveryThreshold = 2U;
+    ResilientTimeService time(rtc, config);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    for (uint32_t i = 1U; i <= 4U; ++i) {
+        bus.failNextRead = true;
+        time.poll(i * 1000U);
+        TEST_ASSERT_TRUE(time.isRtcHealthy());
+    }
+
+    bus.failNextRead = true;
+    time.poll(5000U);
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+}
+
+void test_resilient_sync_utc_rejects_invalid_date_fields() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    // month = 13
+    LocalTime badMonth {};
+    badMonth.valid = true;
+    badMonth.year = 2026U; badMonth.month = 13U; badMonth.day = 1U;
+    time.syncUtc(badMonth, 1000U);
+    assertDateTime(time.now(1000U), 2026U, 9U, 11U, 10U, 0U, 1U); // cache nie zmieniony
+
+    // hour = 25
+    LocalTime badHour {};
+    badHour.valid = true;
+    badHour.year = 2026U; badHour.month = 9U; badHour.day = 11U; badHour.hour = 25U;
+    time.syncUtc(badHour, 2000U);
+    assertDateTime(time.now(2000U), 2026U, 9U, 11U, 10U, 0U, 2U);
+
+    // 31 lutego
+    LocalTime badFeb31 {};
+    badFeb31.valid = true;
+    badFeb31.year = 2026U; badFeb31.month = 2U; badFeb31.day = 31U;
+    time.syncUtc(badFeb31, 3000U);
+    assertDateTime(time.now(3000U), 2026U, 9U, 11U, 10U, 0U, 3U);
+
+    // 29 lutego w roku nieprzestępnym
+    LocalTime badFeb29NonLeap {};
+    badFeb29NonLeap.valid = true;
+    badFeb29NonLeap.year = 2027U; badFeb29NonLeap.month = 2U; badFeb29NonLeap.day = 29U;
+    time.syncUtc(badFeb29NonLeap, 4000U);
+    assertDateTime(time.now(4000U), 2026U, 9U, 11U, 10U, 0U, 4U);
+
+    // poprawny 29 lutego w roku przestępnym
+    LocalTime goodFeb29Leap {};
+    goodFeb29Leap.valid = true;
+    goodFeb29Leap.year = 2028U; goodFeb29Leap.month = 2U; goodFeb29Leap.day = 29U;
+    goodFeb29Leap.hour = 12U; goodFeb29Leap.minute = 0U; goodFeb29Leap.second = 0U;
+    time.syncUtc(goodFeb29Leap, 5000U);
+    assertDateTime(time.now(5000U), 2028U, 2U, 29U, 12U, 0U, 0U);
+}
+
+void test_resilient_normalizes_zero_thresholds_to_one() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeConfig config {};
+    config.failureThreshold = 0U;
+    config.recoveryThreshold = 0U;
+    ResilientTimeService time(rtc, config);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    bus.failNextRead = true;
+    time.poll(1000U);
+    TEST_ASSERT_FALSE(time.isRtcHealthy()); // próg 1 zadziałał natychmiast
+
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 2U);
+    time.poll(2000U);
+    TEST_ASSERT_TRUE(time.isRtcHealthy()); // próg recovery 1 zadziałał natychmiast
+}
+
+void test_resilient_calendar_transitions() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 1U, 31U, 23U, 59U, 59U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+
+    // 2026-01-31 23:59:59 + 1s -> 2026-02-01 00:00:00
+    TEST_ASSERT_TRUE(time.begin(0U));
+    assertDateTime(time.now(1000U), 2026U, 2U, 1U, 0U, 0U, 0U);
+
+    // 2026-02-28 23:59:59 + 1s -> 2026-03-01 00:00:00 (non-leap)
+    LocalTime feb28NonLeap {};
+    feb28NonLeap.valid = true;
+    feb28NonLeap.year = 2026U; feb28NonLeap.month = 2U; feb28NonLeap.day = 28U;
+    feb28NonLeap.hour = 23U; feb28NonLeap.minute = 59U; feb28NonLeap.second = 59U;
+    time.syncUtc(feb28NonLeap, 10000U);
+    assertDateTime(time.now(11000U), 2026U, 3U, 1U, 0U, 0U, 0U);
+
+    // 2028-02-28 23:59:59 + 1s -> 2028-02-29 00:00:00 (leap)
+    LocalTime feb28Leap {};
+    feb28Leap.valid = true;
+    feb28Leap.year = 2028U; feb28Leap.month = 2U; feb28Leap.day = 28U;
+    feb28Leap.hour = 23U; feb28Leap.minute = 59U; feb28Leap.second = 59U;
+    time.syncUtc(feb28Leap, 20000U);
+    assertDateTime(time.now(21000U), 2028U, 2U, 29U, 0U, 0U, 0U);
+
+    // 2028-02-29 23:59:59 + 1s -> 2028-03-01 00:00:00 (leap end)
+    LocalTime feb29Leap {};
+    feb29Leap.valid = true;
+    feb29Leap.year = 2028U; feb29Leap.month = 2U; feb29Leap.day = 29U;
+    feb29Leap.hour = 23U; feb29Leap.minute = 59U; feb29Leap.second = 59U;
+    time.syncUtc(feb29Leap, 30000U);
+    assertDateTime(time.now(31000U), 2028U, 3U, 1U, 0U, 0U, 0U);
+
+    // 2026-12-31 23:59:59 + 1s -> 2027-01-01 00:00:00 (year boundary)
+    LocalTime dec31 {};
+    dec31.valid = true;
+    dec31.year = 2026U; dec31.month = 12U; dec31.day = 31U;
+    dec31.hour = 23U; dec31.minute = 59U; dec31.second = 59U;
+    time.syncUtc(dec31, 40000U);
+    assertDateTime(time.now(41000U), 2027U, 1U, 1U, 0U, 0U, 0U);
+}
+
+void test_resilient_custom_recovery_threshold() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeConfig config {};
+    config.failureThreshold = 2U;
+    config.recoveryThreshold = 1U;
+    ResilientTimeService time(rtc, config);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    bus.failNextRead = true;
+    time.poll(1000U);
+    bus.failNextRead = true;
+    time.poll(2000U);
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 3U);
+    time.poll(3000U);
+    TEST_ASSERT_TRUE(time.isRtcHealthy());
+}
+
 } // namespace
 
 void setup() {
@@ -594,6 +1081,29 @@ void setup() {
     RUN_TEST(test_dst_end_boundary_is_unchanged);
     RUN_TEST(test_invalid_rtc_remains_invalid);
     RUN_TEST(test_ntp_recovers_invalid_rtc);
+    RUN_TEST(test_resilient_boot_valid_rtc_is_healthy_and_valid);
+    RUN_TEST(test_resilient_boot_failed_rtc_is_unhealthy_and_invalid);
+    RUN_TEST(test_resilient_single_failure_maintains_healthy);
+    RUN_TEST(test_resilient_two_failures_maintain_healthy);
+    RUN_TEST(test_resilient_three_failures_drop_healthy);
+    RUN_TEST(test_resilient_cache_remains_valid_when_rtc_unhealthy);
+    RUN_TEST(test_resilient_interpolation_works_when_rtc_unhealthy);
+    RUN_TEST(test_resilient_recovery_requires_exact_threshold_successes);
+    RUN_TEST(test_resilient_failure_during_recovery_resets_success_counter);
+    RUN_TEST(test_resilient_success_during_failure_sequence_resets_failure_counter);
+    RUN_TEST(test_resilient_successful_poll_refreshes_cache);
+    RUN_TEST(test_resilient_invalid_rtc_reading_treated_as_failure);
+    RUN_TEST(test_resilient_interpolation_advances_65_seconds);
+    RUN_TEST(test_resilient_handles_millis_rollover);
+    RUN_TEST(test_resilient_sync_utc_updates_cache);
+    RUN_TEST(test_resilient_sync_utc_does_not_mark_hardware_healthy);
+    RUN_TEST(test_resilient_two_instances_are_isolated);
+    RUN_TEST(test_resilient_counters_do_not_overflow);
+    RUN_TEST(test_resilient_sync_utc_rejects_invalid_date_fields);
+    RUN_TEST(test_resilient_normalizes_zero_thresholds_to_one);
+    RUN_TEST(test_resilient_calendar_transitions);
+    RUN_TEST(test_resilient_custom_failure_threshold);
+    RUN_TEST(test_resilient_custom_recovery_threshold);
 
     UNITY_END();
 }
