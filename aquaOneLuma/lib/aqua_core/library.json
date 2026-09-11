@@ -1,0 +1,9 @@
+{
+  "name": "AquaCore",
+  "version": "0.6.2",
+  "description": "Shared technical services for autonomous Aqua devices",
+  "build": {
+    "includeDir": "include",
+    "srcDir": "src"
+  }
+}

@@ -1,0 +1,23 @@
+ekrany startowe
+- yoPILOT -> yoPILOT <versja>
+
+ekran głośności
+- ip do lewej
+- IP:xxx.xxx.xxx.xxx
+
+ekran główny
+- czasami późno pokazuje się zegar
+- nie czyści lcd przed deep sleep
+- nr stacji? www -> tak/nie
+- bufor audio [xx] (nad ikoną ładowania) 
+
+ekran radia
+-
+
+www
+-
+
+inne
+- poprawki WebSocket
+- aktualizacja przez wwww
+- zabezpieczenie, klucze do jednego ESP

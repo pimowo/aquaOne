@@ -1,0 +1,36 @@
+﻿# PlatformIO
+.pio/
+**/.pio/
+.pioenvs/
+.piolibdeps/
+
+# VS Code - pliki generowane lokalnie
+**/.vscode/
+
+# Python / cache
+__pycache__/
+*.pyc
+.cache/
+
+# System
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logi i pliki tymczasowe
+*.log
+*.tmp
+*.bak
+
+# Dane poufne
+**/secrets.h
+**/Secrets.h
+**/NetworkSecrets.h
+**/network_secrets.h
+
+# Lokalne środowiska
+.env
+**/.env
+
+# Wyniki kompilacji
+**/build_output.txt

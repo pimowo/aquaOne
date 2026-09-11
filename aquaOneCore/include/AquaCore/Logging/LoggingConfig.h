@@ -1,0 +1,9 @@
+#pragma once
+
+#ifndef AQUA_CORE_LOGGING_ENABLED
+#define AQUA_CORE_LOGGING_ENABLED 1
+#endif
+
+#if     AQUA_CORE_LOGGING_ENABLED != 0 &&     AQUA_CORE_LOGGING_ENABLED != 1
+#error "AQUA_CORE_LOGGING_ENABLED must be 0 or 1"
+#endif
