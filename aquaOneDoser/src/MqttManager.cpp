@@ -231,7 +231,7 @@ bool MqttManager::applyPumpCommand(size_t index, const char* path, const char* v
                    pumps->setCalibration(index, number);
     } else if (strcmp(path, "remaining/set") == 0) {
         float number;
-        const uint32_t timestamp = time->getUtcTime().unixtime();
+        const uint32_t timestamp = time->getUtcTimestamp();
         accepted = parseFloat(value, number) && number >= 0.0F && number <= MAX_REMAINING_ML &&
                    timestamp >= 1700000000UL &&
                    pumps->setRemainingMl(index, number, timestamp);
@@ -374,7 +374,7 @@ void MqttManager::publishDiagnostics() {
                 diagnostics->isAutomaticDosingActive() ? "ON" : "OFF");
     publishText(BASE_TOPIC "/device/suspension_reason/state", diagnostics->getSuspensionReason());
 
-    const uint32_t now = time->getUtcTime().unixtime();
+    const uint32_t now = time->getUtcTimestamp();
     formatTimestamp(now, value, sizeof(value));
     publishText(BASE_TOPIC "/device/local_time/state", value);
     formatTimestamp(time->getLastNtpSyncTimestamp(), value, sizeof(value));

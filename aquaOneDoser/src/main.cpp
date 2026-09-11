@@ -59,7 +59,7 @@ void setup() {
     if (!pumpManager.isConfigurationInitialized()) {
         Serial.println("[PUMPS] Pierwsze uruchomienie - zapis konfiguracji testowej");
         constexpr uint8_t MONDAY_TO_FRIDAY = 0x1F;
-        const uint32_t timestamp = timeManager.getUtcTime().unixtime();
+        const uint32_t timestamp = timeManager.getUtcTimestamp();
         const bool configured =
             pumpManager.setName(0, "Mikro") &&
             pumpManager.setEnabled(0, true) &&

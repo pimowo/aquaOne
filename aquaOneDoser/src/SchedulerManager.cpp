@@ -39,7 +39,7 @@ bool SchedulerManager::begin(PumpManager& pumpManager, TimeManager& timeManager,
     tm initialLocal{};
     time_t initialTimestamp = 0;
     automaticDosingActive = getReliableLocalTime(initialLocal, initialTimestamp);
-    suspensionReason = automaticDosingActive ? "None" : (time->isRtcOk() ? "TIME_INVALID" : "RTC_ERROR");
+    suspensionReason = automaticDosingActive ? "None" : (time->isTimeValid() ? "TIME_INVALID" : "RTC_ERROR");
     Serial.println(automaticDosingActive ? "[SCHEDULER] Scheduler aktywny" :
                    "[SCHEDULER] Automatic dosing suspended: RTC communication error");
     return true;
@@ -73,9 +73,9 @@ void SchedulerManager::loop() {
     if (!getReliableLocalTime(local, timestamp)) {
         if (driver->anyRunning()) driver->stopAll();
         automaticDosingActive = false;
-        suspensionReason = time->isRtcOk() ? "TIME_INVALID" : "RTC_ERROR";
+        suspensionReason = time->isTimeValid() ? "TIME_INVALID" : "RTC_ERROR";
         if (!timeWarningLogged) {
-            Serial.println(time->isRtcOk() ?
+            Serial.println(time->isTimeValid() ?
                 "[SCHEDULER] Automatic dosing suspended: invalid time" :
                 "[SCHEDULER] Automatic dosing suspended: RTC communication error");
             timeWarningLogged = true;
@@ -140,9 +140,8 @@ PumpConfig& SchedulerManager::mutablePumpAt(size_t index) {
 }
 
 bool SchedulerManager::getReliableLocalTime(tm& local, time_t& utcTimestamp) const {
-    if (time == nullptr || !time->isRtcOk()) return false;
-    const DateTime utc = time->getUtcTime();
-    utcTimestamp = static_cast<time_t>(utc.unixtime());
+    if (time == nullptr || !time->isTimeValid()) return false;
+    utcTimestamp = static_cast<time_t>(time->getUtcTimestamp());
     if (utcTimestamp < static_cast<time_t>(MIN_VALID_TIMESTAMP)) return false;
     local = time->getLocalTime();
     return local.tm_year + 1900 >= 2023;
