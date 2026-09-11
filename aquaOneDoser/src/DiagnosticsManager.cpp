@@ -73,10 +73,15 @@ void DiagnosticsManager::loop() {
         currentSystemStatus = status;
         changed = true;
         Serial.printf("[DIAG] Status: %s\n", getSystemStatusText());
-        if (status == SystemStatus::ERROR && !time->isRtcOk())
-            Serial.println("[DIAG] Reason: RTC communication error");
-        else if (status == SystemStatus::WARNING && !time->isNtpSynced())
+        if (status == SystemStatus::ERROR) {
+            if (time->isRtcConfigured() && !time->isRtcOk()) {
+                Serial.println("[DIAG] Reason: RTC communication error");
+            } else if (!time->isTimeValid()) {
+                Serial.println("[DIAG] Reason: Waiting for time synchronization");
+            }
+        } else if (status == SystemStatus::WARNING && time->isNtpConfigured() && !time->isNtpSynced()) {
             Serial.println("[DIAG] Reason: NTP unavailable");
+        }
     }
     if (changed) ++revision;
 }
@@ -85,7 +90,7 @@ DiagnosticsManager::SystemStatus DiagnosticsManager::calculateSystemStatus() con
     if (scheduler == nullptr || !scheduler->isAutomaticDosingActive())
         return SystemStatus::ERROR;
 
-    bool warning = !time->isNtpSynced() || !mqtt->isConnected();
+    bool warning = (time->isNtpConfigured() && !time->isNtpSynced()) || !mqtt->isConnected();
     for (size_t i = 0; i < PUMP_COUNT; ++i) {
         if (currentPumpStatus[i] != PumpStatus::PUMP_DISABLED &&
             currentPumpStatus[i] != PumpStatus::OK) warning = true;

@@ -8,6 +8,11 @@
 #define PIN_I2C_SDA     8
 #define PIN_I2C_SCL     9
 
+// Konfiguracja modulow czasu
+constexpr bool TIME_MODULE_ENABLED = true;
+constexpr bool RTC_MODULE_ENABLED = false; // Prototyp Doser nie posiada fizycznie DS3231 (NTP-only)
+constexpr bool NTP_MODULE_ENABLED = true;
+
 // Strefa czasowa Polska
 #define TZ_INFO "CET-1CEST,M3.5.0,M10.5.0/3"
 

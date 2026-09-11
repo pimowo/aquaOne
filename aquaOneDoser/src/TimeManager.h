@@ -17,8 +17,11 @@ public:
     bool begin();
     void loop();
 
+    bool isTimeEnabled() const;
+    bool isRtcConfigured() const;
     bool isRtcOk() const;
     bool isTimeValid() const;
+    bool isNtpConfigured() const;
     bool isNtpSynced() const;
     uint32_t getLastNtpSyncTimestamp() const;
 
@@ -35,7 +38,15 @@ private:
     AquaCore::Time::EspNtpBackend* ntpBackend_ = nullptr;
     AquaCore::Time::NtpService* ntpService_ = nullptr;
 
+    bool timeEnabled_ = true;
+    bool rtcEnabled_ = true;
+    bool ntpEnabled_ = true;
+
     unsigned long lastRtcPoll_ = 0;
+    unsigned long lastNtpRequestAttempt_ = 0;
+    bool wifiWasAvailable_ = false;
     bool ntpSynced_ = false;
     uint32_t lastNtpSyncTimestamp_ = 0;
+    bool rtcWarningLogged_ = false;
+    bool timeValidLogged_ = false;
 };

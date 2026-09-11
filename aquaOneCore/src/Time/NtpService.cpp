@@ -198,6 +198,7 @@ bool NtpService::begin(
     serverCount_ = config.serverCount;
     timeoutMs_ = config.timeoutMs;
     syncIntervalMs_ = config.syncIntervalMs;
+    rtcSyncEnabled_ = config.rtcSyncEnabled;
     attemptStartedMs_ = nowMs;
     periodicAnchorMs_ = nowMs;
     lastSuccessfulSyncMs_ = 0U;
@@ -299,14 +300,17 @@ void NtpService::update(
     lastReceivedUtc_ = utc;
     newUtcPending_ = true;
 
-    const bool rtcUpdated = rtc_.setUtc(
-        utc.year,
-        utc.month,
-        utc.day,
-        utc.hour,
-        utc.minute,
-        utc.second
-    );
+    bool rtcUpdated = false;
+    if (rtcSyncEnabled_) {
+        rtcUpdated = rtc_.setUtc(
+            utc.year,
+            utc.month,
+            utc.day,
+            utc.hour,
+            utc.minute,
+            utc.second
+        );
+    }
 
     finishAttempt(true, rtcUpdated, nowMs);
 }

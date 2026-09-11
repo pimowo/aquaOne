@@ -39,9 +39,14 @@ bool SchedulerManager::begin(PumpManager& pumpManager, TimeManager& timeManager,
     tm initialLocal{};
     time_t initialTimestamp = 0;
     automaticDosingActive = getReliableLocalTime(initialLocal, initialTimestamp);
-    suspensionReason = automaticDosingActive ? "None" : (time->isTimeValid() ? "TIME_INVALID" : "RTC_ERROR");
-    Serial.println(automaticDosingActive ? "[SCHEDULER] Scheduler aktywny" :
-                   "[SCHEDULER] Automatic dosing suspended: RTC communication error");
+    suspensionReason = automaticDosingActive ? "None" : (time->isTimeValid() ? "TIME_INVALID" : (time->isRtcConfigured() ? "RTC_ERROR" : "NO_TIME_SOURCE"));
+    if (automaticDosingActive) {
+        Serial.println("[SCHEDULER] Scheduler aktywny");
+    } else if (time->isRtcConfigured()) {
+        Serial.println("[SCHEDULER] Automatic dosing suspended: RTC communication error");
+    } else {
+        Serial.println("[SCHEDULER] Automatic dosing suspended: waiting for time synchronization");
+    }
     return true;
 }
 
@@ -73,11 +78,15 @@ void SchedulerManager::loop() {
     if (!getReliableLocalTime(local, timestamp)) {
         if (driver->anyRunning()) driver->stopAll();
         automaticDosingActive = false;
-        suspensionReason = time->isTimeValid() ? "TIME_INVALID" : "RTC_ERROR";
+        suspensionReason = time->isTimeValid() ? "TIME_INVALID" : (time->isRtcConfigured() ? "RTC_ERROR" : "NO_TIME_SOURCE");
         if (!timeWarningLogged) {
-            Serial.println(time->isTimeValid() ?
-                "[SCHEDULER] Automatic dosing suspended: invalid time" :
-                "[SCHEDULER] Automatic dosing suspended: RTC communication error");
+            if (time->isTimeValid()) {
+                Serial.println("[SCHEDULER] Automatic dosing suspended: invalid time");
+            } else if (time->isRtcConfigured()) {
+                Serial.println("[SCHEDULER] Automatic dosing suspended: RTC communication error");
+            } else {
+                Serial.println("[SCHEDULER] Automatic dosing suspended: waiting for time synchronization");
+            }
             timeWarningLogged = true;
         }
         return;

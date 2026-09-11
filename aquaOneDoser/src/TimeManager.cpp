@@ -110,7 +110,11 @@ int dayOfWeek(uint16_t year, uint8_t month, uint8_t day) {
 
 } // namespace
 
-TimeManager::TimeManager() = default;
+TimeManager::TimeManager()
+    : timeEnabled_(TIME_MODULE_ENABLED),
+      rtcEnabled_(RTC_MODULE_ENABLED),
+      ntpEnabled_(NTP_MODULE_ENABLED) {
+}
 
 TimeManager::~TimeManager() {
     delete ntpService_;
@@ -121,7 +125,10 @@ TimeManager::~TimeManager() {
 }
 
 bool TimeManager::begin() {
-    Wire.setTimeOut(100);
+    if (!timeEnabled_) {
+        Serial.println("[TIME] Moduł czasu wyłączony w konfiguracji");
+        return true;
+    }
 
     bus_ = new DoserRtcBus();
 
@@ -133,45 +140,103 @@ bool TimeManager::begin() {
     rtc_ = new AquaCore::Time::RtcService(*bus_, rtcCfg);
 
     AquaCore::Time::ResilientTimeConfig resilientCfg {};
+    resilientCfg.rtcEnabled = rtcEnabled_;
     resilientCfg.failureThreshold = RTC_FAILURE_THRESHOLD;
     resilientCfg.recoveryThreshold = RTC_RECOVERY_THRESHOLD;
+    resilientCfg.unhealthyProbeIntervalMs = 30000U;
 
     resilientTime_ = new AquaCore::Time::ResilientTimeService(*rtc_, resilientCfg);
 
     const uint32_t nowMs = millis();
-    const bool rtcOk = resilientTime_->begin(nowMs);
 
-    if (rtcOk) {
-        Serial.println("[RTC] DS3231 OK");
+    if (rtcEnabled_) {
+        Wire.setTimeOut(100);
+        const bool rtcOk = resilientTime_->begin(nowMs);
+        if (rtcOk) {
+            Serial.println("[RTC] DS3231 OK");
+            rtcWarningLogged_ = false;
+        } else {
+            Serial.println("[RTC] DS3231 nie odpowiada (przejście w probe co 30 s)");
+            rtcWarningLogged_ = true;
+        }
     } else {
-        Serial.println("[RTC] DS3231 nie znaleziony lub odczyt nieudany");
+        resilientTime_->begin(nowMs);
+        Serial.println("[RTC] DS3231 wyłączony w konfiguracji sprzętowej (NTP-only mode)");
+        rtcWarningLogged_ = false;
     }
 
-    ntpBackend_ = new AquaCore::Time::EspNtpBackend();
-    ntpService_ = new AquaCore::Time::NtpService(*rtc_, *ntpBackend_);
-    ntpService_->begin(nowMs);
+    if (ntpEnabled_) {
+        ntpBackend_ = new AquaCore::Time::EspNtpBackend();
+        ntpService_ = new AquaCore::Time::NtpService(*rtc_, *ntpBackend_);
+        AquaCore::Time::NtpConfig ntpCfg = AquaCore::Time::NtpService::defaultConfig();
+        ntpCfg.rtcSyncEnabled = rtcEnabled_;
+        ntpService_->begin(ntpCfg, nowMs);
+    }
 
     lastRtcPoll_ = nowMs;
-    return rtcOk;
+    return isTimeValid() || (rtcEnabled_ && isRtcOk()) || ntpEnabled_;
 }
 
 void TimeManager::loop() {
+    if (!timeEnabled_) {
+        return;
+    }
+
     const unsigned long nowMs = millis();
 
-    if (nowMs - lastRtcPoll_ >= RTC_READ_INTERVAL_MS) {
-        lastRtcPoll_ = nowMs;
-        if (resilientTime_ != nullptr) {
-            resilientTime_->poll(nowMs);
+    if (rtcEnabled_ && resilientTime_ != nullptr) {
+        if (resilientTime_->isRtcHealthy()) {
+            if (nowMs - lastRtcPoll_ >= RTC_READ_INTERVAL_MS) {
+                lastRtcPoll_ = nowMs;
+                resilientTime_->poll(nowMs);
+                if (!resilientTime_->isRtcHealthy() && !rtcWarningLogged_) {
+                    Serial.println("[RTC] DS3231 utracony (przejście w probe co 30 s)");
+                    rtcWarningLogged_ = true;
+                }
+            }
+        } else {
+            if (resilientTime_->isProbeDue(nowMs)) {
+                lastRtcPoll_ = nowMs;
+                resilientTime_->poll(nowMs);
+                if (resilientTime_->isRtcHealthy()) {
+                    Serial.println("[RTC] DS3231 odzyskany - wznowiono standardowy polling");
+                    rtcWarningLogged_ = false;
+                }
+            }
         }
     }
 
     const bool wifiAvailable = (WiFi.status() == WL_CONNECTED);
 
-    if (ntpService_ != nullptr) {
+    if (ntpEnabled_ && ntpService_ != nullptr) {
+        // 1. Zmiana stanu sieci (pojawienie się Wi-Fi) -> natychmiastowe żądanie synchronizacji
+        if (wifiAvailable && !wifiWasAvailable_) {
+            Serial.println("[NTP] Wykryto połączenie Wi-Fi - żądanie synchronizacji NTP");
+            if (ntpService_->requestSync(true, nowMs)) {
+                lastNtpRequestAttempt_ = nowMs;
+            }
+        }
+        // 2. Jeśli Wi-Fi jest dostępne, ale jeszcze nie zsynchronizowano NTP (lub czas jest niepoprawny),
+        // ponawiaj żądanie co 10 s
+        else if (wifiAvailable && (!ntpSynced_ || !resilientTime_->isValid())) {
+            if (!ntpService_->isSyncInProgress() && (nowMs - lastNtpRequestAttempt_ >= 10000UL)) {
+                lastNtpRequestAttempt_ = nowMs;
+                Serial.println("[NTP] Ponawianie żądania synchronizacji NTP...");
+                ntpService_->requestSync(true, nowMs);
+            }
+        }
+        // 3. Po udanej synchronizacji - okresowa synchronizacja według harmonogramu NtpService
+        else if (wifiAvailable) {
+            ntpService_->requestPeriodicSync(true, nowMs);
+        }
+
+        const bool wasInProgress = ntpService_->isSyncInProgress();
+
         ntpService_->update(wifiAvailable, nowMs);
 
-        if (wifiAvailable) {
-            ntpService_->requestPeriodicSync(true, nowMs);
+        // Obsługa zakończenia próby, która nie powiodła się
+        if (wasInProgress && !ntpService_->isSyncInProgress() && !ntpService_->lastFetchSucceeded()) {
+            Serial.println("[NTP] Próba synchronizacji nie powiodła się (oczekiwanie na ponowienie)");
         }
 
         AquaCore::Time::UtcDateTime fetchedUtc {};
@@ -192,21 +257,41 @@ void TimeManager::loop() {
 
             ntpSynced_ = true;
             lastNtpSyncTimestamp_ = localTimeToEpoch(localUtc);
-            Serial.println("[NTP] Synchronizacja OK");
+            Serial.printf("[NTP] Synchronizacja OK: %04u-%02u-%02u %02u:%02u:%02u UTC\n",
+                          fetchedUtc.year, fetchedUtc.month, fetchedUtc.day,
+                          fetchedUtc.hour, fetchedUtc.minute, fetchedUtc.second);
+            if (!timeValidLogged_) {
+                Serial.println("[TIME] Czas systemowy poprawny (zsynchronizowany z NTP)");
+                timeValidLogged_ = true;
+            }
         }
+
+        wifiWasAvailable_ = wifiAvailable;
     }
 }
 
+bool TimeManager::isTimeEnabled() const {
+    return timeEnabled_;
+}
+
+bool TimeManager::isRtcConfigured() const {
+    return rtcEnabled_;
+}
+
 bool TimeManager::isRtcOk() const {
-    return resilientTime_ != nullptr && resilientTime_->isRtcHealthy();
+    return timeEnabled_ && rtcEnabled_ && resilientTime_ != nullptr && resilientTime_->isRtcHealthy();
 }
 
 bool TimeManager::isTimeValid() const {
-    return resilientTime_ != nullptr && resilientTime_->isValid();
+    return timeEnabled_ && resilientTime_ != nullptr && resilientTime_->isValid();
+}
+
+bool TimeManager::isNtpConfigured() const {
+    return ntpEnabled_;
 }
 
 bool TimeManager::isNtpSynced() const {
-    return ntpSynced_;
+    return timeEnabled_ && ntpEnabled_ && ntpSynced_;
 }
 
 uint32_t TimeManager::getLastNtpSyncTimestamp() const {
@@ -214,7 +299,7 @@ uint32_t TimeManager::getLastNtpSyncTimestamp() const {
 }
 
 uint32_t TimeManager::getUtcTimestamp() const {
-    if (resilientTime_ == nullptr || !resilientTime_->isValid()) {
+    if (!isTimeValid()) {
         return 0U;
     }
 
@@ -225,7 +310,7 @@ uint32_t TimeManager::getUtcTimestamp() const {
 
 tm TimeManager::getLocalTime() const {
     tm result {};
-    if (resilientTime_ == nullptr || !resilientTime_->isValid()) {
+    if (!isTimeValid()) {
         return result;
     }
 
@@ -252,8 +337,16 @@ tm TimeManager::getLocalTime() const {
 }
 
 void TimeManager::printStatus() {
+    if (!timeEnabled_) {
+        Serial.println("[TIME] Moduł czasu: WYŁĄCZONY");
+        return;
+    }
+
+    const char* rtcStr = !rtcEnabled_ ? "DISABLED" : (isRtcOk() ? "OK" : "ERROR");
+    const char* ntpStr = !ntpEnabled_ ? "DISABLED" : (isNtpSynced() ? "OK" : "BRAK");
+
     if (!isTimeValid()) {
-        Serial.println("[TIME] RTC ERROR");
+        Serial.printf("[TIME] RTC: %s | Time: INVALID | NTP: %s\n", rtcStr, ntpStr);
         return;
     }
 
@@ -265,6 +358,5 @@ void TimeManager::printStatus() {
                   utc.year, utc.month, utc.day, utc.hour, utc.minute, utc.second,
                   local.tm_year + 1900, local.tm_mon + 1, local.tm_mday,
                   local.tm_hour, local.tm_min, local.tm_sec,
-                  isRtcOk() ? "OK" : "ERROR",
-                  isNtpSynced() ? "OK" : "BRAK");
+                  rtcStr, ntpStr);
 }

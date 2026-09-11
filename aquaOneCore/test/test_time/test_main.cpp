@@ -1469,6 +1469,149 @@ void test_convert_utc_to_warsaw_matches_existing_service_now() {
     TEST_ASSERT_EQUAL_UINT16(fromService.minuteOfDay, fromStatic.minuteOfDay);
 }
 
+void test_resilient_is_probe_due_when_healthy() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 9U, 11U, 10U, 0U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeService time(rtc);
+    TEST_ASSERT_TRUE(time.begin(0U));
+
+    TEST_ASSERT_TRUE(time.isRtcHealthy());
+    TEST_ASSERT_TRUE(time.isProbeDue(100U));
+    TEST_ASSERT_TRUE(time.isProbeDue(1000U));
+}
+
+void test_resilient_is_probe_due_throttled_when_unhealthy() {
+    FakeRtcBus bus;
+    bus.failNextRead = true;
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeConfig config {};
+    config.unhealthyProbeIntervalMs = 30000U;
+    ResilientTimeService time(rtc, config);
+
+    TEST_ASSERT_FALSE(time.begin(1000U));
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+
+    // Przed uplywem 30s probe is NOT due
+    TEST_ASSERT_FALSE(time.isProbeDue(15000U));
+    TEST_ASSERT_FALSE(time.isProbeDue(30999U));
+
+    // Po 30s od ostatniego poll (1000U + 30000U = 31000U) probe is DUE
+    TEST_ASSERT_TRUE(time.isProbeDue(31000U));
+    TEST_ASSERT_TRUE(time.isProbeDue(35000U));
+
+    // Po wykonaniu poll timer przesuwa sie o kolejne 30s
+    bus.failNextRead = true;
+    time.poll(31000U);
+    TEST_ASSERT_FALSE(time.isProbeDue(31500U));
+    TEST_ASSERT_FALSE(time.isProbeDue(60999U));
+    TEST_ASSERT_TRUE(time.isProbeDue(61000U));
+}
+
+void test_resilient_is_probe_due_handles_millis_rollover() {
+    FakeRtcBus bus;
+    bus.failNextRead = true;
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeConfig config {};
+    config.unhealthyProbeIntervalMs = 30000U;
+    ResilientTimeService time(rtc, config);
+
+    TEST_ASSERT_FALSE(time.begin(UINT32_MAX - 5000U));
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+
+    TEST_ASSERT_FALSE(time.isProbeDue(UINT32_MAX - 1000U));
+    TEST_ASSERT_FALSE(time.isProbeDue(24999U));
+    TEST_ASSERT_TRUE(time.isProbeDue(25000U));
+}
+
+void test_resilient_ntp_only_operation_without_rtc() {
+    FakeRtcBus bus;
+    bus.failNextRead = true; // Brak RTC fizycznie
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeConfig config {};
+    config.unhealthyProbeIntervalMs = 30000U;
+    ResilientTimeService time(rtc, config);
+
+    TEST_ASSERT_FALSE(time.begin(0U));
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+    TEST_ASSERT_FALSE(time.isValid());
+
+    // Odbieramy czas z NTP i synchronizujemy do ResilientTimeService
+    LocalTime ntpUtc {};
+    ntpUtc.valid = true;
+    ntpUtc.year = 2026U; ntpUtc.month = 9U; ntpUtc.day = 11U;
+    ntpUtc.hour = 14U; ntpUtc.minute = 30U; ntpUtc.second = 0U;
+    ntpUtc.minuteOfDay = 14U * 60U + 30U;
+
+    time.syncUtc(ntpUtc, 5000U);
+
+    // Czas staje sie w pelni VALID, mimo ze RTC pozostaje UNHEALTHY
+    TEST_ASSERT_TRUE(time.isValid());
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+
+    // Sprawdzamy monotoniczna interpolacje
+    assertDateTime(time.now(5000U), 2026U, 9U, 11U, 14U, 30U, 0U);
+    assertDateTime(time.now(15000U), 2026U, 9U, 11U, 14U, 30U, 10U);
+    assertDateTime(time.now(65000U), 2026U, 9U, 11U, 14U, 31U, 0U);
+}
+
+void test_resilient_disabled_rtc_never_touches_hardware() {
+    FakeRtcBus bus;
+    RtcService rtc(bus, rtcConfig());
+    ResilientTimeConfig config {};
+    config.rtcEnabled = false; // RTC jawnie wylaczony w konfiguracji
+    ResilientTimeService time(rtc, config);
+
+    TEST_ASSERT_TRUE(time.begin(0U));
+    TEST_ASSERT_FALSE(time.isRtcConfigured());
+    TEST_ASSERT_FALSE(time.isRtcHealthy());
+    TEST_ASSERT_FALSE(time.isValid());
+    TEST_ASSERT_FALSE(time.isProbeDue(100000U));
+    TEST_ASSERT_EQUAL_INT(0, bus.readCalls);
+    TEST_ASSERT_EQUAL_INT(0, bus.writeCalls);
+
+    // Poll nie wykonuje zadnych operacji I2C
+    time.poll(1000U);
+    time.poll(31000U);
+    TEST_ASSERT_EQUAL_INT(0, bus.readCalls);
+
+    // Po syncUtc staje sie w pelni VALID
+    LocalTime ntpUtc {};
+    ntpUtc.valid = true;
+    ntpUtc.year = 2026U; ntpUtc.month = 9U; ntpUtc.day = 11U;
+    ntpUtc.hour = 16U; ntpUtc.minute = 0U; ntpUtc.second = 0U;
+    ntpUtc.minuteOfDay = 16U * 60U;
+
+    time.syncUtc(ntpUtc, 35000U);
+    TEST_ASSERT_TRUE(time.isValid());
+    assertDateTime(time.now(36000U), 2026U, 9U, 11U, 16U, 0U, 1U);
+}
+
+void test_ntp_service_rtc_sync_disabled_skips_rtc_write() {
+    FakeRtcBus bus;
+    RtcService rtc(bus, rtcConfig());
+    FakeNtpBackend backend;
+    backend.result = NtpBackendResult::Success;
+    backend.utc = utcAt(2026U, 9U, 11U, 12U, 0U, 0U);
+
+    NtpService ntp(rtc, backend);
+    NtpConfig config = NtpService::defaultConfig();
+    config.rtcSyncEnabled = false; // Wylaczony zapis do RTC
+
+    TEST_ASSERT_TRUE(ntp.begin(config, 0U));
+    TEST_ASSERT_TRUE(ntp.requestSync(true, 100U));
+    ntp.update(true, 101U);
+
+    TEST_ASSERT_TRUE(ntp.lastFetchSucceeded());
+    TEST_ASSERT_FALSE(ntp.lastSyncSucceeded()); // Bo rtcUpdated == false
+    TEST_ASSERT_EQUAL_INT(0, bus.writeCalls);   // ZERO zapisow do DS3231
+
+    UtcDateTime output {};
+    TEST_ASSERT_TRUE(ntp.takeReceivedUtc(output));
+    TEST_ASSERT_EQUAL_UINT16(2026U, output.year);
+    TEST_ASSERT_EQUAL_UINT8(12U, output.hour);
+}
+
 } // namespace
 
 void setup() {
@@ -1544,6 +1687,12 @@ void setup() {
     RUN_TEST(test_convert_utc_to_warsaw_dst_october_transitions);
     RUN_TEST(test_convert_utc_to_warsaw_minute_of_day_correct);
     RUN_TEST(test_convert_utc_to_warsaw_matches_existing_service_now);
+    RUN_TEST(test_resilient_is_probe_due_when_healthy);
+    RUN_TEST(test_resilient_is_probe_due_throttled_when_unhealthy);
+    RUN_TEST(test_resilient_is_probe_due_handles_millis_rollover);
+    RUN_TEST(test_resilient_ntp_only_operation_without_rtc);
+    RUN_TEST(test_resilient_disabled_rtc_never_touches_hardware);
+    RUN_TEST(test_ntp_service_rtc_sync_disabled_skips_rtc_write);
 
     UNITY_END();
 }

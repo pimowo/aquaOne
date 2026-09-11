@@ -50,6 +50,7 @@ struct NtpConfig {
     uint8_t serverCount = 0U;
     uint32_t timeoutMs = NTP_SYNC_TIMEOUT_MS;
     uint32_t syncIntervalMs = NTP_SYNC_INTERVAL_MS;
+    bool rtcSyncEnabled = true;
 };
 
 class NtpService {
@@ -120,6 +121,7 @@ private:
     bool hasSyncResult_ = false;
     bool lastSyncSucceeded_ = false;
     bool hasSuccessfulSync_ = false;
+    bool rtcSyncEnabled_ = true;
 
     void finishAttempt(
         bool fetchSucceeded,

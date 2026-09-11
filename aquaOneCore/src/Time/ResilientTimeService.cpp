@@ -73,6 +73,16 @@ ResilientTimeService::ResilientTimeService(
 }
 
 bool ResilientTimeService::begin(uint32_t nowMs) {
+    lastPollMs_ = nowMs;
+
+    if (!config_.rtcEnabled) {
+        rtcHealthy_ = false;
+        hasValidCache_ = false;
+        consecutiveFailures_ = 0U;
+        consecutiveSuccesses_ = 0U;
+        return true;
+    }
+
     if (!rtc_.begin()) {
         rtcHealthy_ = false;
         hasValidCache_ = false;
@@ -100,6 +110,11 @@ bool ResilientTimeService::begin(uint32_t nowMs) {
 }
 
 void ResilientTimeService::poll(uint32_t nowMs) {
+    if (!config_.rtcEnabled) {
+        return;
+    }
+
+    lastPollMs_ = nowMs;
     const LocalTime reading = rtc_.read();
 
     if (reading.valid) {
@@ -144,8 +159,28 @@ bool ResilientTimeService::isValid() const {
     return hasValidCache_;
 }
 
+bool ResilientTimeService::isRtcConfigured() const {
+    return config_.rtcEnabled;
+}
+
 bool ResilientTimeService::isRtcHealthy() const {
     return rtcHealthy_;
+}
+
+bool ResilientTimeService::isProbeDue(uint32_t nowMs) const {
+    if (!config_.rtcEnabled) {
+        return false;
+    }
+
+    if (rtcHealthy_) {
+        return true;
+    }
+
+    if (config_.unhealthyProbeIntervalMs == 0U) {
+        return true;
+    }
+
+    return (nowMs - lastPollMs_ >= config_.unhealthyProbeIntervalMs);
 }
 
 uint8_t ResilientTimeService::consecutiveFailures() const {
