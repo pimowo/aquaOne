@@ -17,13 +17,13 @@ public:
     bool rtcInitialized() const;
     const LocalTime& current() const;
 
+    static LocalTime convertUtcToWarsaw(
+        const LocalTime& utc
+    );
+
 private:
     RtcService& rtc_;
     LocalTime current_ {};
-
-    LocalTime convertUtcToLocal(
-        const LocalTime& utc
-    ) const;
 };
 
 } // namespace Time

@@ -1337,6 +1337,138 @@ void test_ntp_begin_clears_pending_and_fetch_state() {
     TEST_ASSERT_FALSE(ntp.takeReceivedUtc(output));
 }
 
+void test_convert_utc_to_warsaw_invalid_utc() {
+    LocalTime invalidUtc {};
+    invalidUtc.valid = false;
+    LocalTime warsaw = EuropeWarsawTimeService::convertUtcToWarsaw(invalidUtc);
+    TEST_ASSERT_FALSE(warsaw.valid);
+}
+
+void test_convert_utc_to_warsaw_winter_day() {
+    LocalTime utc {};
+    utc.valid = true;
+    utc.year = 2026U; utc.month = 1U; utc.day = 15U;
+    utc.hour = 12U; utc.minute = 0U; utc.second = 0U;
+    utc.minuteOfDay = 12U * 60U;
+
+    LocalTime warsaw = EuropeWarsawTimeService::convertUtcToWarsaw(utc);
+    assertDateTime(warsaw, 2026U, 1U, 15U, 13U, 0U, 0U);
+}
+
+void test_convert_utc_to_warsaw_summer_day() {
+    LocalTime utc {};
+    utc.valid = true;
+    utc.year = 2026U; utc.month = 7U; utc.day = 15U;
+    utc.hour = 12U; utc.minute = 0U; utc.second = 0U;
+    utc.minuteOfDay = 12U * 60U;
+
+    LocalTime warsaw = EuropeWarsawTimeService::convertUtcToWarsaw(utc);
+    assertDateTime(warsaw, 2026U, 7U, 15U, 14U, 0U, 0U);
+}
+
+void test_convert_utc_to_warsaw_midnight_winter() {
+    LocalTime utc {};
+    utc.valid = true;
+    utc.year = 2026U; utc.month = 1U; utc.day = 15U;
+    utc.hour = 23U; utc.minute = 30U; utc.second = 0U;
+    utc.minuteOfDay = 23U * 60U + 30U;
+
+    LocalTime warsaw = EuropeWarsawTimeService::convertUtcToWarsaw(utc);
+    assertDateTime(warsaw, 2026U, 1U, 16U, 0U, 30U, 0U);
+}
+
+void test_convert_utc_to_warsaw_midnight_summer() {
+    LocalTime utc {};
+    utc.valid = true;
+    utc.year = 2026U; utc.month = 7U; utc.day = 15U;
+    utc.hour = 22U; utc.minute = 45U; utc.second = 0U;
+    utc.minuteOfDay = 22U * 60U + 45U;
+
+    LocalTime warsaw = EuropeWarsawTimeService::convertUtcToWarsaw(utc);
+    assertDateTime(warsaw, 2026U, 7U, 16U, 0U, 45U, 0U);
+}
+
+void test_convert_utc_to_warsaw_year_boundary() {
+    LocalTime utc {};
+    utc.valid = true;
+    utc.year = 2026U; utc.month = 12U; utc.day = 31U;
+    utc.hour = 23U; utc.minute = 30U; utc.second = 0U;
+    utc.minuteOfDay = 23U * 60U + 30U;
+
+    LocalTime warsaw = EuropeWarsawTimeService::convertUtcToWarsaw(utc);
+    assertDateTime(warsaw, 2027U, 1U, 1U, 0U, 30U, 0U);
+}
+
+void test_convert_utc_to_warsaw_dst_march_transitions() {
+    // 2024-03-31 00:59:00 UTC (przed zmiana: CET = UTC+1 -> 01:59:00)
+    LocalTime beforeUtc {};
+    beforeUtc.valid = true;
+    beforeUtc.year = 2024U; beforeUtc.month = 3U; beforeUtc.day = 31U;
+    beforeUtc.hour = 0U; beforeUtc.minute = 59U; beforeUtc.second = 0U;
+    beforeUtc.minuteOfDay = 59U;
+
+    LocalTime beforeWarsaw = EuropeWarsawTimeService::convertUtcToWarsaw(beforeUtc);
+    assertDateTime(beforeWarsaw, 2024U, 3U, 31U, 1U, 59U, 0U);
+
+    // 2024-03-31 01:00:00 UTC (po zmianie: CEST = UTC+2 -> 03:00:00)
+    LocalTime afterUtc {};
+    afterUtc.valid = true;
+    afterUtc.year = 2024U; afterUtc.month = 3U; afterUtc.day = 31U;
+    afterUtc.hour = 1U; afterUtc.minute = 0U; afterUtc.second = 0U;
+    afterUtc.minuteOfDay = 60U;
+
+    LocalTime afterWarsaw = EuropeWarsawTimeService::convertUtcToWarsaw(afterUtc);
+    assertDateTime(afterWarsaw, 2024U, 3U, 31U, 3U, 0U, 0U);
+}
+
+void test_convert_utc_to_warsaw_dst_october_transitions() {
+    // 2024-10-27 00:59:00 UTC (przed zmiana: CEST = UTC+2 -> 02:59:00)
+    LocalTime beforeUtc {};
+    beforeUtc.valid = true;
+    beforeUtc.year = 2024U; beforeUtc.month = 10U; beforeUtc.day = 27U;
+    beforeUtc.hour = 0U; beforeUtc.minute = 59U; beforeUtc.second = 0U;
+    beforeUtc.minuteOfDay = 59U;
+
+    LocalTime beforeWarsaw = EuropeWarsawTimeService::convertUtcToWarsaw(beforeUtc);
+    assertDateTime(beforeWarsaw, 2024U, 10U, 27U, 2U, 59U, 0U);
+
+    // 2024-10-27 01:00:00 UTC (po zmianie: CET = UTC+1 -> 02:00:00)
+    LocalTime afterUtc {};
+    afterUtc.valid = true;
+    afterUtc.year = 2024U; afterUtc.month = 10U; afterUtc.day = 27U;
+    afterUtc.hour = 1U; afterUtc.minute = 0U; afterUtc.second = 0U;
+    afterUtc.minuteOfDay = 60U;
+
+    LocalTime afterWarsaw = EuropeWarsawTimeService::convertUtcToWarsaw(afterUtc);
+    assertDateTime(afterWarsaw, 2024U, 10U, 27U, 2U, 0U, 0U);
+}
+
+void test_convert_utc_to_warsaw_minute_of_day_correct() {
+    LocalTime utc {};
+    utc.valid = true;
+    utc.year = 2026U; utc.month = 7U; utc.day = 15U;
+    utc.hour = 8U; utc.minute = 45U; utc.second = 10U;
+    utc.minuteOfDay = 8U * 60U + 45U;
+
+    LocalTime warsaw = EuropeWarsawTimeService::convertUtcToWarsaw(utc);
+    TEST_ASSERT_EQUAL_UINT16(10U * 60U + 45U, warsaw.minuteOfDay);
+}
+
+void test_convert_utc_to_warsaw_matches_existing_service_now() {
+    FakeRtcBus bus;
+    fillRegisters(bus, 2026U, 7U, 15U, 10U, 30U, 0U);
+    RtcService rtc(bus, rtcConfig());
+    EuropeWarsawTimeService service(rtc);
+    TEST_ASSERT_TRUE(service.begin());
+
+    LocalTime fromService = service.now();
+    LocalTime fromStatic = EuropeWarsawTimeService::convertUtcToWarsaw(rtc.read());
+
+    assertDateTime(fromService, fromStatic.year, fromStatic.month, fromStatic.day,
+                   fromStatic.hour, fromStatic.minute, fromStatic.second);
+    TEST_ASSERT_EQUAL_UINT16(fromService.minuteOfDay, fromStatic.minuteOfDay);
+}
+
 } // namespace
 
 void setup() {
@@ -1402,6 +1534,16 @@ void setup() {
     RUN_TEST(test_ntp_pending_preserved_if_subsequent_attempt_fails);
     RUN_TEST(test_ntp_instances_are_isolated);
     RUN_TEST(test_ntp_begin_clears_pending_and_fetch_state);
+    RUN_TEST(test_convert_utc_to_warsaw_invalid_utc);
+    RUN_TEST(test_convert_utc_to_warsaw_winter_day);
+    RUN_TEST(test_convert_utc_to_warsaw_summer_day);
+    RUN_TEST(test_convert_utc_to_warsaw_midnight_winter);
+    RUN_TEST(test_convert_utc_to_warsaw_midnight_summer);
+    RUN_TEST(test_convert_utc_to_warsaw_year_boundary);
+    RUN_TEST(test_convert_utc_to_warsaw_dst_march_transitions);
+    RUN_TEST(test_convert_utc_to_warsaw_dst_october_transitions);
+    RUN_TEST(test_convert_utc_to_warsaw_minute_of_day_correct);
+    RUN_TEST(test_convert_utc_to_warsaw_matches_existing_service_now);
 
     UNITY_END();
 }

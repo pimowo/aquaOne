@@ -171,7 +171,7 @@ bool EuropeWarsawTimeService::begin() {
         return false;
     }
 
-    current_ = convertUtcToLocal(utc);
+    current_ = convertUtcToWarsaw(utc);
     return current_.valid;
 }
 
@@ -183,7 +183,7 @@ LocalTime EuropeWarsawTimeService::now() {
         return current_;
     }
 
-    current_ = convertUtcToLocal(utc);
+    current_ = convertUtcToWarsaw(utc);
     return current_;
 }
 
@@ -200,9 +200,9 @@ EuropeWarsawTimeService::current() const {
     return current_;
 }
 
-LocalTime EuropeWarsawTimeService::convertUtcToLocal(
+LocalTime EuropeWarsawTimeService::convertUtcToWarsaw(
     const LocalTime& utc
-) const {
+) {
     if (!utc.valid) {
         return {};
     }
