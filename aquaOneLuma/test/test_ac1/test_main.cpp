@@ -8,7 +8,6 @@
 
 #include "AquaCore/System/SystemService.h"
 #include "AquaCore/Version.h"
-#include "../../lib/aqua_core/src/System/Esp32RestartReason.h"
 
 using namespace AquaCore;
 
@@ -98,76 +97,27 @@ void test_uptime_handles_millis_overflow() {
     );
 }
 
-void test_restart_reason_maps_power_on() {
-    TEST_ASSERT_EQUAL_INT(
-        static_cast<int>(RestartReason::PowerOn),
-        static_cast<int>(
-            Detail::mapEsp32RestartReason(ESP_RST_POWERON)
-        )
-    );
-}
+void test_system_service_returns_backend_restart_reason() {
+    FakeSystemBackend backend;
+    backend.reason = RestartReason::Watchdog;
+    SystemService service(backend);
 
-void test_restart_reason_maps_software_reset() {
-    TEST_ASSERT_EQUAL_INT(
-        static_cast<int>(RestartReason::Software),
-        static_cast<int>(
-            Detail::mapEsp32RestartReason(ESP_RST_SW)
-        )
-    );
-}
-
-void test_restart_reason_maps_watchdogs() {
+    TEST_ASSERT_TRUE(service.begin(identity()));
     TEST_ASSERT_EQUAL_INT(
         static_cast<int>(RestartReason::Watchdog),
-        static_cast<int>(
-            Detail::mapEsp32RestartReason(ESP_RST_INT_WDT)
-        )
-    );
-    TEST_ASSERT_EQUAL_INT(
-        static_cast<int>(RestartReason::Watchdog),
-        static_cast<int>(
-            Detail::mapEsp32RestartReason(ESP_RST_TASK_WDT)
-        )
-    );
-    TEST_ASSERT_EQUAL_INT(
-        static_cast<int>(RestartReason::Watchdog),
-        static_cast<int>(
-            Detail::mapEsp32RestartReason(ESP_RST_WDT)
-        )
+        static_cast<int>(service.restartReason())
     );
 }
 
-void test_restart_reason_maps_brownout() {
-    TEST_ASSERT_EQUAL_INT(
-        static_cast<int>(RestartReason::Brownout),
-        static_cast<int>(
-            Detail::mapEsp32RestartReason(ESP_RST_BROWNOUT)
-        )
-    );
-}
-
-void test_restart_reason_maps_panic() {
-    TEST_ASSERT_EQUAL_INT(
-        static_cast<int>(RestartReason::Panic),
-        static_cast<int>(
-            Detail::mapEsp32RestartReason(ESP_RST_PANIC)
-        )
-    );
-}
-
-void test_restart_reason_maps_unknown_and_other() {
-    TEST_ASSERT_EQUAL_INT(
-        static_cast<int>(RestartReason::Unknown),
-        static_cast<int>(
-            Detail::mapEsp32RestartReason(ESP_RST_UNKNOWN)
-        )
-    );
-    TEST_ASSERT_EQUAL_INT(
-        static_cast<int>(RestartReason::Other),
-        static_cast<int>(
-            Detail::mapEsp32RestartReason(ESP_RST_EXT)
-        )
-    );
+void test_restart_reason_names() {
+    TEST_ASSERT_EQUAL_STRING("POWER_ON", restartReasonName(RestartReason::PowerOn));
+    TEST_ASSERT_EQUAL_STRING("SOFTWARE", restartReasonName(RestartReason::Software));
+    TEST_ASSERT_EQUAL_STRING("WATCHDOG", restartReasonName(RestartReason::Watchdog));
+    TEST_ASSERT_EQUAL_STRING("BROWNOUT", restartReasonName(RestartReason::Brownout));
+    TEST_ASSERT_EQUAL_STRING("DEEP_SLEEP", restartReasonName(RestartReason::DeepSleep));
+    TEST_ASSERT_EQUAL_STRING("PANIC", restartReasonName(RestartReason::Panic));
+    TEST_ASSERT_EQUAL_STRING("OTHER", restartReasonName(RestartReason::Other));
+    TEST_ASSERT_EQUAL_STRING("UNKNOWN", restartReasonName(RestartReason::Unknown));
 }
 
 void test_begin_does_not_modify_input_identity() {
@@ -231,12 +181,8 @@ void setup() {
     RUN_TEST(test_aqua_core_version_is_0_6_2);
     RUN_TEST(test_uptime_increases);
     RUN_TEST(test_uptime_handles_millis_overflow);
-    RUN_TEST(test_restart_reason_maps_power_on);
-    RUN_TEST(test_restart_reason_maps_software_reset);
-    RUN_TEST(test_restart_reason_maps_watchdogs);
-    RUN_TEST(test_restart_reason_maps_brownout);
-    RUN_TEST(test_restart_reason_maps_panic);
-    RUN_TEST(test_restart_reason_maps_unknown_and_other);
+    RUN_TEST(test_system_service_returns_backend_restart_reason);
+    RUN_TEST(test_restart_reason_names);
     RUN_TEST(test_begin_does_not_modify_input_identity);
     RUN_TEST(test_services_keep_independent_device_identities);
 
