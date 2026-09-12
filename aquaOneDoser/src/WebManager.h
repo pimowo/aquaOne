@@ -1,37 +1,32 @@
 #pragma once
 
 #include <Arduino.h>
-#include <WebServer.h>
+#include <AquaCore/Web/WebTypes.h>
 
-class DiagnosticsManager;
-class MqttManager;
-class PumpDriver;
-class SchedulerManager;
-class TimeManager;
-class WiFiManager;
+class WebManagerRuntime;
+
+namespace AquaCore {
+namespace Web {
+class WebService;
+}
+}
 
 class WebManager {
 public:
-    bool begin(TimeManager& timeManager, MqttManager& mqttManager,
-               DiagnosticsManager& diagnosticsManager, SchedulerManager& schedulerManager,
-               WiFiManager& wifiManager, PumpDriver& pumpDriver);
+    bool begin(AquaCore::Web::WebService& webService,
+               WebManagerRuntime& runtime,
+               const char* adminUser, const char* adminPassword);
     void loop();
     bool isOtaInProgress() const;
+    bool isRestartPending() const;
 
 private:
-    static constexpr uint16_t HTTP_PORT = 80;
     static constexpr unsigned long RESTART_DELAY_MS = 1000UL;
 
-    WebServer server{HTTP_PORT};
-    TimeManager* time = nullptr;
-    MqttManager* mqtt = nullptr;
-    DiagnosticsManager* diagnostics = nullptr;
-    SchedulerManager* scheduler = nullptr;
-    WiFiManager* wifi = nullptr;
-    PumpDriver* driver = nullptr;
+    WebManagerRuntime* runtime_ = nullptr;
+    const char* adminUser_ = nullptr;
+    const char* adminPassword_ = nullptr;
     bool routesConfigured = false;
-    bool serverStarted = false;
-    bool wifiWasConnected = false;
     bool otaInProgress = false;
     bool otaAuthorized = false;
     bool otaAccepted = false;
@@ -42,18 +37,28 @@ private:
     bool restartPending = false;
     unsigned long restartAt = 0;
 
-    void configureRoutes();
-    void startServer();
-    bool authenticateAdmin();
-    void handleRoot();
-    void handleStatus();
-    void handleRestart();
-    void handleUpdatePage();
-    void handleUpdateResult();
-    void handleUpload();
+    bool configureRoutes(AquaCore::Web::WebService& webService);
+    bool authenticateAdmin(const AquaCore::Web::WebRequest& request,
+                           AquaCore::Web::WebResponseWriter& response);
+    void handleRestart(const AquaCore::Web::WebRequest& request,
+                       AquaCore::Web::WebResponseWriter& response);
+    void handleUpdatePage(const AquaCore::Web::WebRequest& request,
+                          AquaCore::Web::WebResponseWriter& response);
+    void handleUpdateResult(const AquaCore::Web::WebRequest& request,
+                            AquaCore::Web::WebResponseWriter& response);
+    void handleUpload(const AquaCore::Web::WebRequest& request,
+                      const AquaCore::Web::WebUploadEvent& event);
     void failOta(const String& message);
+    void resetUploadState();
     void scheduleRestart();
     void serviceDuringUpload();
-    static String jsonEscape(const String& value);
-    static String formatLocalTimestamp(uint32_t timestamp);
+
+    static void restartRoute(void* context, const AquaCore::Web::WebRequest& request,
+                             AquaCore::Web::WebResponseWriter& response);
+    static void updatePageRoute(void* context, const AquaCore::Web::WebRequest& request,
+                                AquaCore::Web::WebResponseWriter& response);
+    static void updateResultRoute(void* context, const AquaCore::Web::WebRequest& request,
+                                  AquaCore::Web::WebResponseWriter& response);
+    static void uploadRoute(void* context, const AquaCore::Web::WebRequest& request,
+                            const AquaCore::Web::WebUploadEvent& event);
 };

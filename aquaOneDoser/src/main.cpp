@@ -4,6 +4,9 @@
 #include <AquaCore/System/DeviceIdentity.h>
 #include <AquaCore/Logging/Logger.h>
 #include <AquaCore/Logging/SerialLogSink.h>
+#include <AquaCore/Web/Esp32WebBackend.h>
+#include <AquaCore/Web/WebConfig.h>
+#include <AquaCore/Web/WebService.h>
 
 #include "app_config.h"
 #include "secrets.h"
@@ -14,6 +17,7 @@
 #include "SchedulerManager.h"
 #include "TimeManager.h"
 #include "WiFiManager.h"
+#include "DoserWebRuntime.h"
 #include "WebManager.h"
 
 AquaCore::SystemService systemService;
@@ -28,6 +32,12 @@ DiagnosticsManager diagnosticsManager;
 SchedulerManager schedulerManager;
 WiFiManager wifiManager;
 WebManager webManager;
+DoserWebRuntime webRuntime(
+    timeManager, mqttManager, diagnosticsManager,
+    schedulerManager, wifiManager, pumpDriver
+);
+AquaCore::Web::Esp32WebBackend webBackend;
+AquaCore::Web::WebService webService(webBackend, systemService);
 unsigned long lastStatusPrint = 0;
 
 void setup() {
@@ -76,13 +86,20 @@ void setup() {
     schedulerManager.printNextDoses();
     diagnosticsManager.begin(timeManager, pumpManager, schedulerManager, mqttManager);
     mqttManager.begin(pumpManager, schedulerManager, timeManager, diagnosticsManager, pumpDriver);
-    webManager.begin(timeManager, mqttManager, diagnosticsManager, schedulerManager, wifiManager, pumpDriver);
+    const bool legacyRoutesOk = webManager.begin(webService, webRuntime, WEB_USER, WEB_PASS);
+    AquaCore::Web::WebConfig webConfig {};
+    webConfig.enabled = true;
+    webConfig.port = 80U;
+    webConfig.navigationMask = 0U;
+    const bool webOk = legacyRoutesOk && webService.begin(webConfig);
+    Serial.println(webOk ? "[WEB] Server started" : "[WEB] Server start failed");
 }
 
 void loop() {
     pumpDriver.loop();
     wifiManager.loop();
     timeManager.loop();
+    webService.update();
     webManager.loop();
     schedulerManager.loop();
     diagnosticsManager.loop();

@@ -178,6 +178,25 @@ Projekt wybiera które moduły potrzebuje:
 
 Moduły Core NIE inicjalizują się automatycznie. App musi je uruchomić w `begin()`.
 
+### 5.1. Własność transportu HTTP i polityki produktu
+
+W jednym firmware działa dokładnie jeden fizyczny serwer HTTP. `AquaCore::Web::Esp32WebBackend`
+jest właścicielem instancji Arduino `WebServer`, a `WebService` udostępnia neutralny transport,
+routing, request/response, nagłówki, Basic Auth i lifecycle uploadu. Kod produktu nie tworzy
+drugiego serwera i rejestruje własne trasy na tej samej usłudze.
+
+Core nie podejmuje decyzji domenowych. W Doserze polityka restartu i OTA pozostaje w
+`WebManager`: autoryzacja, zatrzymanie pomp, maintenance, zapis firmware, cleanup po błędzie
+i opóźniony restart są efektami produktu wykonywanymi przez `WebManagerRuntime`.
+
+Etapy integracji Web:
+
+- **W1 (zakończony):** neutralny transport AquaCore Web i pojedynczy backend ESP32;
+- **W1.5 (bieżący):** most Dosera dla autoryzowanego restartu i OTA na wspólnym serwerze;
+- **W2 (później):** dalsza migracja stron/API produktu, dopiero po testach sprzętowych W1.5.
+
+W1.5 nie obejmuje MQTT ani zmiany kontraktu Home Assistant.
+
 ### 6. EuropeWarsawTimeService — Specjalizacja
 
 ```cpp
@@ -280,3 +299,4 @@ Core rozwija się niezależnie; projekty integrują wybrane moduły Core.
 | Logging pluggable | Można wyłączyć w release, zmienić sink |
 | No config inheritance | Każde urządzenie ma swoją konfigurację |
 | Brak centralnego "orchestrator" | Każde urządzenie orchestruje siebie |
+| Jeden fizyczny serwer HTTP | Core posiada transport; urządzenie posiada trasy i politykę efektów |

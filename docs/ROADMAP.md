@@ -84,9 +84,10 @@ Roadmap opisuje logiczną sekwencję prac. Terminy są elastyczne; kolejność j
 4. Test conversions
 
 ### Etap 4d: Web migration
-1. WebService + Esp32WebBackend
-2. Re-route WebManager handlers
-3. Switch, test
+1. ✅ W1: WebService + Esp32WebBackend jako jedyny fizyczny serwer HTTP
+2. W1.5: trasy restart/OTA Dosera na wspólnym transporcie; polityka i efekty pozostają w Doserze
+3. Testy sprzętowe auth, OTA success/failure/abort i opóźnionego restartu
+4. W2: pozostałe strony i API produktu po zamknięciu bramy W1.5
 
 ### Etap 4e: Cleanup
 1. Usunąć reimplementacje (WiFiManager, StorageManager, TimeManager, WebManager)
@@ -163,20 +164,23 @@ Podobnie jak Clima.
 
 Składowe:
 - MqttService + MqttBackend
-- Esp32MqttBackend (PubSubClient wrapper)
+- T0: spike linkowania i lifecycle natywnego ESP-MQTT na ESP32/ESP32-S3
+- Esp32MqttBackend (ESP-MQTT za neutralnym interfejsem; decyzja finalna po T0)
 - HA discovery helpers
 - Entity registration mechanism
+- Minimalny read-only adapter Dosera: 5 encji na pompę + `automatic_dosing`
 
 **Wymagania:**
 - Doser migracja (Faza 4) — reference implementation
 - Core stable (Fazy 1-7)
 
 **Dostarczenia:**
+- Raport T0 z QoS 1/PUBACK, reconnect, LWT, RAM i Flash
 - AquaCore with MQTT support
 - MQTT integration guide
 
 **Ryzyko:** Medium
-**Status:** FUTURE (brak konkretnej wersji)
+**Status:** FUTURE; T0 przed implementacją Core MQTT. `text` i `time`: CAN WAIT.
 
 ---
 

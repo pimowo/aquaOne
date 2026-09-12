@@ -190,7 +190,11 @@ public:
     }
     bool upload(const char* path, WebUploadStatus status,
                 const char* filename = nullptr,
-                const uint8_t* data = nullptr, size_t dataLength = 0U) {
+                const uint8_t* data = nullptr, size_t dataLength = 0U,
+                const RequestHeader* headers = nullptr,
+                size_t headerCount = 0U,
+                const char* username = nullptr,
+                const char* password = nullptr) {
         for (size_t i = 0U; i < count; ++i) {
             Route& route = routes[i];
             if (route.method != HttpMethod::Post ||
@@ -198,7 +202,9 @@ public:
                 !route.options.uploadHandler) continue;
             if (status == WebUploadStatus::Start) route.uploadBytes = 0U;
             if (status == WebUploadStatus::Chunk) route.uploadBytes += dataLength;
-            RequestContext requestContext(nullptr, 0U, nullptr, nullptr, output);
+            RequestContext requestContext(
+                headers, headerCount, username, password, output
+            );
             WebRequest request {
                 HttpMethod::Post, path, nullptr, 0U, &requestContext
             };
@@ -375,6 +381,29 @@ struct UploadState {
     char filenames[12][24] {};
     size_t count = 0U;
 };
+
+struct SecuredUploadState {
+    bool authorizedAtStart = false;
+    bool sizeHeaderPresentAtStart = false;
+    size_t sizeHeaderLength = 0U;
+    char sizeHeader[16] {};
+    size_t chunksAccepted = 0U;
+};
+
+void securedUploadHandler(void* value, const WebRequest& request,
+                          const WebUploadEvent& event) {
+    SecuredUploadState* state = static_cast<SecuredUploadState*>(value);
+    if (event.status == WebUploadStatus::Start) {
+        state->authorizedAtStart = request.authenticateBasic("admin", "secret");
+        state->sizeHeaderPresentAtStart = request.hasHeader("X-Firmware-Size");
+        state->sizeHeaderLength = request.copyHeader(
+            "X-Firmware-Size", state->sizeHeader, sizeof(state->sizeHeader)
+        );
+    } else if (event.status == WebUploadStatus::Chunk &&
+               state->authorizedAtStart) {
+        ++state->chunksAccepted;
+    }
+}
 void uploadHandler(void* value, const WebRequest& request,
                    const WebUploadEvent& event) {
     UploadState* state = static_cast<UploadState*>(value);
@@ -817,6 +846,31 @@ void test_upload_requires_post_route() {
     ));
 }
 
+void test_upload_start_has_auth_and_headers() {
+    MockBackend backend; WebService web(backend); SecuredUploadState state;
+    WebRouteOptions options {};
+    options.uploadHandler = securedUploadHandler;
+    options.uploadContext = &state;
+    TEST_ASSERT_TRUE(web.addRoute(
+        "/update", HttpMethod::Post, uploadCompletionHandler, nullptr, options
+    ));
+    const RequestHeader header {"X-Firmware-Size", "4096"};
+    const uint8_t bytes[] = {1U, 2U};
+    backend.upload(
+        "/update", WebUploadStatus::Start, "firmware.bin",
+        nullptr, 0U, &header, 1U, "admin", "secret"
+    );
+    backend.upload(
+        "/update", WebUploadStatus::Chunk, "firmware.bin",
+        bytes, sizeof(bytes), &header, 1U, "admin", "secret"
+    );
+    TEST_ASSERT_TRUE(state.authorizedAtStart);
+    TEST_ASSERT_TRUE(state.sizeHeaderPresentAtStart);
+    TEST_ASSERT_EQUAL_UINT32(4U, state.sizeHeaderLength);
+    TEST_ASSERT_EQUAL_STRING("4096", state.sizeHeader);
+    TEST_ASSERT_EQUAL_UINT32(1U, state.chunksAccepted);
+}
+
 } // namespace
 
 void setUp() {}
@@ -875,6 +929,7 @@ void setup() {
     RUN_TEST(test_upload_abort_and_cleanup);
     RUN_TEST(test_zero_byte_and_independent_uploads);
     RUN_TEST(test_upload_requires_post_route);
+    RUN_TEST(test_upload_start_has_auth_and_headers);
     UNITY_END();
 }
 void loop() {}
