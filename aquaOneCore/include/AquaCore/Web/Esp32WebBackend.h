@@ -18,6 +18,13 @@ public:
         WebRouteHandler handler,
         void* context
     ) override;
+    bool addRoute(
+        const char* path,
+        HttpMethod method,
+        WebRouteHandler handler,
+        void* context,
+        const WebRouteOptions& options
+    ) override;
     bool setNotFoundHandler(
         WebRouteHandler handler,
         void* context

@@ -15,6 +15,22 @@ public:
         WebRouteHandler handler,
         void* context
     ) = 0;
+    virtual bool addRoute(
+        const char* path,
+        HttpMethod method,
+        WebRouteHandler handler,
+        void* context,
+        const WebRouteOptions& options
+    ) {
+        if (
+            options.maxBodyLength != 0U ||
+            options.uploadHandler != nullptr ||
+            options.uploadContext != nullptr
+        ) {
+            return false;
+        }
+        return addRoute(path, method, handler, context);
+    }
     virtual bool setNotFoundHandler(
         WebRouteHandler handler,
         void* context

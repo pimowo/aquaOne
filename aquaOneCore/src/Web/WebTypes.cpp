@@ -5,6 +5,45 @@
 namespace AquaCore {
 namespace Web {
 
+bool WebRequest::hasHeader(const char* name) const {
+    return context != nullptr &&
+        name != nullptr &&
+        name[0] != '\0' &&
+        context->hasHeader(name);
+}
+
+size_t WebRequest::copyHeader(
+    const char* name,
+    char* output,
+    size_t outputSize
+) const {
+    if (
+        context == nullptr ||
+        name == nullptr ||
+        name[0] == '\0' ||
+        (output == nullptr && outputSize > 0U)
+    ) {
+        return 0U;
+    }
+
+    return context->copyHeader(name, output, outputSize);
+}
+
+bool WebRequest::authenticateBasic(
+    const char* username,
+    const char* password
+) const {
+    return context != nullptr &&
+        username != nullptr &&
+        password != nullptr &&
+        context->authenticateBasic(username, password);
+}
+
+bool WebRequest::requestBasicAuthentication(const char* realm) const {
+    return context != nullptr &&
+        context->requestBasicAuthentication(realm);
+}
+
 bool WebResponseWriter::writeText(const char* text) {
     if (text == nullptr) {
         return false;

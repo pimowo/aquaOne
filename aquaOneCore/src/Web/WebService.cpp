@@ -196,11 +196,40 @@ bool WebService::addRoute(
     WebRouteHandler handler,
     void* context
 ) {
+    return addRoute(
+        path,
+        method,
+        handler,
+        context,
+        WebRouteOptions {}
+    );
+}
+
+bool WebService::addRoute(
+    const char* path,
+    HttpMethod method,
+    WebRouteHandler handler,
+    void* context,
+    const WebRouteOptions& options
+) {
     if (!isValidPath(path) || handler == nullptr) {
         return false;
     }
 
-    return backend_.addRoute(path, method, handler, context);
+    if (
+        (options.uploadHandler != nullptr && method != HttpMethod::Post) ||
+        (options.uploadHandler == nullptr && options.uploadContext != nullptr)
+    ) {
+        return false;
+    }
+
+    return backend_.addRoute(
+        path,
+        method,
+        handler,
+        context,
+        options
+    );
 }
 
 bool WebService::addPage(WebPageProvider& provider) {

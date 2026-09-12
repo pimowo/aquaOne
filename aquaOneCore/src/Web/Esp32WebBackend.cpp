@@ -24,6 +24,66 @@ HttpMethod fromEspMethod(HTTPMethod method) {
         : HttpMethod::Get;
 }
 
+class Esp32RequestContext final : public WebRequestContext {
+public:
+    explicit Esp32RequestContext(WebServer& server)
+        : server_(server) {
+    }
+
+    bool hasHeader(const char* name) const override {
+        if (name == nullptr || name[0] == '\0') {
+            return false;
+        }
+
+        for (int index = 0; index < server_.headers(); ++index) {
+            if (server_.headerName(index).equalsIgnoreCase(name)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    size_t copyHeader(
+        const char* name,
+        char* output,
+        size_t outputSize
+    ) const override {
+        if (output != nullptr && outputSize > 0U) {
+            output[0] = '\0';
+        }
+        if (!hasHeader(name)) {
+            return 0U;
+        }
+
+        const String value = server_.header(name);
+        if (output != nullptr && outputSize > 0U) {
+            const size_t copyLength = value.length() < outputSize - 1U
+                ? value.length()
+                : outputSize - 1U;
+            std::memcpy(output, value.c_str(), copyLength);
+            output[copyLength] = '\0';
+        }
+        return value.length();
+    }
+
+    bool authenticateBasic(
+        const char* username,
+        const char* password
+    ) const override {
+        return username != nullptr &&
+            password != nullptr &&
+            server_.authenticate(username, password);
+    }
+
+    bool requestBasicAuthentication(const char* realm) const override {
+        server_.requestAuthentication(BASIC_AUTH, realm);
+        return true;
+    }
+
+private:
+    WebServer& server_;
+};
+
 class Esp32ResponseWriter final : public WebResponseWriter {
 public:
     explicit Esp32ResponseWriter(WebServer& server)
@@ -89,12 +149,30 @@ public:
         WebRouteHandler handler,
         void* context
     ) {
+        return addRoute(
+            path,
+            method,
+            handler,
+            context,
+            WebRouteOptions {}
+        );
+    }
+
+    bool addRoute(
+        const char* path,
+        HttpMethod method,
+        WebRouteHandler handler,
+        void* context,
+        const WebRouteOptions& options
+    ) {
         if (
             path == nullptr ||
             handler == nullptr ||
             path[0] != '/' ||
             std::strlen(path) > MAX_PATH_LENGTH ||
-            routeCount_ >= MAX_ROUTES
+            routeCount_ >= MAX_ROUTES ||
+            (options.uploadHandler != nullptr && method != HttpMethod::Post) ||
+            (options.uploadHandler == nullptr && options.uploadContext != nullptr)
         ) {
             return false;
         }
@@ -114,6 +192,7 @@ public:
         route.method = method;
         route.handler = handler;
         route.context = context;
+        route.options = options;
 
         const size_t index = routeCount_;
         ++routeCount_;
@@ -153,6 +232,7 @@ public:
         if (server_ == nullptr) {
             return false;
         }
+        server_->collectAllHeaders();
 
         port_ = port;
         for (size_t i = 0U; i < routeCount_; ++i) {
@@ -192,10 +272,23 @@ private:
         HttpMethod method = HttpMethod::Get;
         WebRouteHandler handler = nullptr;
         void* context = nullptr;
+        WebRouteOptions options {};
+        size_t uploadBytes = 0U;
     };
 
     void installRoute(size_t index) {
         if (server_ == nullptr || index >= routeCount_) {
+            return;
+        }
+
+        if (routes_[index].options.uploadHandler == nullptr) {
+            server_->on(
+                routes_[index].path,
+                toEspMethod(routes_[index].method),
+                [this, index]() {
+                    dispatch(routes_[index]);
+                }
+            );
             return;
         }
 
@@ -204,6 +297,9 @@ private:
             toEspMethod(routes_[index].method),
             [this, index]() {
                 dispatch(routes_[index]);
+            },
+            [this, index]() {
+                dispatchUpload(routes_[index]);
             }
         );
     }
@@ -227,8 +323,11 @@ private:
                 fromEspMethod(server_->method()),
                 path.c_str(),
                 body.length() > 0U ? body.c_str() : nullptr,
-                body.length()
+                body.length(),
+                nullptr
             };
+            Esp32RequestContext requestContext(*server_);
+            request.context = &requestContext;
             Esp32ResponseWriter response(*server_);
             notFoundHandler_(
                 notFoundContext_,
@@ -239,6 +338,18 @@ private:
     }
 
     void dispatch(const Route& route) {
+        const int contentLength = server_->clientContentLength();
+        if (
+            route.options.uploadHandler == nullptr &&
+            route.options.maxBodyLength > 0U &&
+            contentLength > 0 &&
+            static_cast<size_t>(contentLength) >
+                route.options.maxBodyLength
+        ) {
+            sendPayloadTooLarge();
+            return;
+        }
+
         String path = server_->uri();
         String body;
         if (
@@ -248,14 +359,93 @@ private:
             body = server_->arg("plain");
         }
 
+        if (
+            route.options.uploadHandler == nullptr &&
+            route.options.maxBodyLength > 0U &&
+            body.length() > route.options.maxBodyLength
+        ) {
+            sendPayloadTooLarge();
+            return;
+        }
+
         WebRequest request {
             route.method,
             path.c_str(),
             body.length() > 0U ? body.c_str() : nullptr,
-            body.length()
+            body.length(),
+            nullptr
         };
+        Esp32RequestContext requestContext(*server_);
+        request.context = &requestContext;
         Esp32ResponseWriter response(*server_);
         route.handler(route.context, request, response);
+    }
+
+    void dispatchUpload(Route& route) {
+        if (!server_->header("Content-Type").startsWith("multipart/")) {
+            return;
+        }
+
+        HTTPUpload& upload = server_->upload();
+        if (
+            upload.status == UPLOAD_FILE_WRITE &&
+            upload.currentSize == 0U
+        ) {
+            return;
+        }
+
+        WebUploadEvent event {};
+
+        switch (upload.status) {
+            case UPLOAD_FILE_START:
+                route.uploadBytes = 0U;
+                event.status = WebUploadStatus::Start;
+                break;
+            case UPLOAD_FILE_WRITE:
+                route.uploadBytes += upload.currentSize;
+                event.status = WebUploadStatus::Chunk;
+                event.data = upload.buf;
+                event.dataLength = upload.currentSize;
+                break;
+            case UPLOAD_FILE_END:
+                event.status = WebUploadStatus::End;
+                break;
+            case UPLOAD_FILE_ABORTED:
+                event.status = WebUploadStatus::Abort;
+                break;
+        }
+
+        WebRequest request {
+            route.method,
+            route.path,
+            nullptr,
+            0U,
+            nullptr
+        };
+        Esp32RequestContext requestContext(*server_);
+        request.context = &requestContext;
+        event.filename = upload.filename.c_str();
+        event.bytesReceived = route.uploadBytes;
+        route.options.uploadHandler(
+            route.options.uploadContext,
+            request,
+            event
+        );
+
+        if (
+            upload.status == UPLOAD_FILE_END ||
+            upload.status == UPLOAD_FILE_ABORTED
+        ) {
+            route.uploadBytes = 0U;
+        }
+    }
+
+    void sendPayloadTooLarge() {
+        server_->send(
+            413,
+            contentTypeName(ContentType::PlainText),
+            "Payload Too Large"
+        );
     }
 
     Route routes_[MAX_ROUTES] {};
@@ -284,6 +474,17 @@ bool Esp32WebBackend::addRoute(
 ) {
     return impl_ != nullptr &&
         impl_->addRoute(path, method, handler, context);
+}
+
+bool Esp32WebBackend::addRoute(
+    const char* path,
+    HttpMethod method,
+    WebRouteHandler handler,
+    void* context,
+    const WebRouteOptions& options
+) {
+    return impl_ != nullptr &&
+        impl_->addRoute(path, method, handler, context, options);
 }
 
 bool Esp32WebBackend::setNotFoundHandler(

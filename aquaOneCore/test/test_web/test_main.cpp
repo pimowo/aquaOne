@@ -55,6 +55,67 @@ public:
     size_t size = 0U;
 };
 
+struct RequestHeader {
+    const char* name = nullptr;
+    const char* value = nullptr;
+};
+
+class RequestContext final : public WebRequestContext {
+public:
+    RequestContext(const RequestHeader* headersValue, size_t headerCountValue,
+                   const char* usernameValue, const char* passwordValue,
+                   Writer& writerValue)
+        : headers(headersValue), headerCount(headerCountValue),
+          username(usernameValue), password(passwordValue), writer(writerValue) {}
+
+    bool hasHeader(const char* name) const override {
+        if (!name) return false;
+        for (size_t i = 0U; i < headerCount; ++i)
+            if (headers[i].name && strcmp(headers[i].name, name) == 0)
+                return true;
+        return false;
+    }
+    size_t copyHeader(const char* name, char* output,
+                      size_t outputSize) const override {
+        if (output && outputSize > 0U) output[0] = '\0';
+        if (!name) return 0U;
+        for (size_t i = 0U; i < headerCount; ++i) {
+            if (!headers[i].name || strcmp(headers[i].name, name) != 0)
+                continue;
+            const char* value = headers[i].value ? headers[i].value : "";
+            const size_t length = strlen(value);
+            if (output && outputSize > 0U) {
+                const size_t copied = length < outputSize - 1U
+                    ? length : outputSize - 1U;
+                memcpy(output, value, copied); output[copied] = '\0';
+            }
+            return length;
+        }
+        return 0U;
+    }
+    bool authenticateBasic(const char* expectedUsername,
+                           const char* expectedPassword) const override {
+        return username && password && expectedUsername && expectedPassword &&
+            strcmp(username, expectedUsername) == 0 &&
+            strcmp(password, expectedPassword) == 0;
+    }
+    bool requestBasicAuthentication(const char* realm) const override {
+        challenged = true;
+        strncpy(challengeRealm, realm ? realm : "", sizeof(challengeRealm) - 1U);
+        writer.beginResponse(401U, ContentType::PlainText);
+        writer.writeText("Unauthorized"); writer.endResponse();
+        return true;
+    }
+
+    const RequestHeader* headers;
+    size_t headerCount;
+    const char* username;
+    const char* password;
+    Writer& writer;
+    mutable bool challenged = false;
+    mutable char challengeRealm[32] {};
+};
+
 class MockBackend final : public WebBackend {
 public:
     struct Route {
@@ -62,6 +123,8 @@ public:
         HttpMethod method = HttpMethod::Get;
         WebRouteHandler handler = nullptr;
         void* context = nullptr;
+        WebRouteOptions options {};
+        size_t uploadBytes = 0U;
     };
     bool addRoute(const char* path, HttpMethod method,
                   WebRouteHandler handler, void* context) override {
@@ -76,6 +139,14 @@ public:
         routes[count].context = context;
         ++count; return true;
     }
+    bool addRoute(const char* path, HttpMethod method,
+                  WebRouteHandler handler, void* context,
+                  const WebRouteOptions& options) override {
+        if ((options.uploadHandler && method != HttpMethod::Post) ||
+            (!options.uploadHandler && options.uploadContext)) return false;
+        if (!addRoute(path, method, handler, context)) return false;
+        routes[count - 1U].options = options; return true;
+    }
     bool setNotFoundHandler(WebRouteHandler handler, void* context) override {
         if (!handler) return false;
         notFound = handler; notFoundContext = context; return true;
@@ -87,24 +158,69 @@ public:
     void stop() override { ++stopCalls; running = false; }
     bool isRunning() const override { return running; }
     bool request(const char* path, HttpMethod method = HttpMethod::Get,
-                 const char* body = nullptr) {
+                 const char* body = nullptr,
+                 const RequestHeader* headers = nullptr,
+                 size_t headerCount = 0U,
+                 const char* username = nullptr,
+                 const char* password = nullptr) {
         output.clear();
-        WebRequest request {method, path, body, body ? strlen(body) : 0U};
+        challenged = false; challengeRealm[0] = '\0';
+        const size_t bodyLength = body ? strlen(body) : 0U;
+        RequestContext requestContext(
+            headers, headerCount, username, password, output
+        );
+        WebRequest request {method, path, body, bodyLength, &requestContext};
         for (size_t i = 0; i < count; ++i) {
             if (routes[i].method == method &&
                 strcmp(routes[i].path, path) == 0) {
+                if (routes[i].options.maxBodyLength > 0U &&
+                    bodyLength > routes[i].options.maxBodyLength) {
+                    output.beginResponse(413U, ContentType::PlainText);
+                    output.writeText("Payload Too Large"); output.endResponse();
+                    return true;
+                }
                 routes[i].handler(routes[i].context, request, output);
+                challenged = requestContext.challenged;
+                strcpy(challengeRealm, requestContext.challengeRealm);
                 return true;
             }
         }
         if (!notFound) return false;
         notFound(notFoundContext, request, output); return true;
     }
+    bool upload(const char* path, WebUploadStatus status,
+                const char* filename = nullptr,
+                const uint8_t* data = nullptr, size_t dataLength = 0U) {
+        for (size_t i = 0U; i < count; ++i) {
+            Route& route = routes[i];
+            if (route.method != HttpMethod::Post ||
+                strcmp(route.path, path) != 0 ||
+                !route.options.uploadHandler) continue;
+            if (status == WebUploadStatus::Start) route.uploadBytes = 0U;
+            if (status == WebUploadStatus::Chunk) route.uploadBytes += dataLength;
+            RequestContext requestContext(nullptr, 0U, nullptr, nullptr, output);
+            WebRequest request {
+                HttpMethod::Post, path, nullptr, 0U, &requestContext
+            };
+            WebUploadEvent event {
+                status, filename, data, dataLength, route.uploadBytes
+            };
+            route.options.uploadHandler(
+                route.options.uploadContext, request, event
+            );
+            if (status == WebUploadStatus::End ||
+                status == WebUploadStatus::Abort) route.uploadBytes = 0U;
+            return true;
+        }
+        return false;
+    }
     Route routes[12] {};
     size_t count = 0U;
     WebRouteHandler notFound = nullptr;
     void* notFoundContext = nullptr;
     Writer output;
+    bool challenged = false;
+    char challengeRealm[32] {};
     bool beginResult = true;
     bool running = false;
     uint16_t port = 0U, beginCalls = 0U, updateCalls = 0U, stopCalls = 0U;
@@ -220,6 +336,72 @@ public:
     }
     uint16_t calls = 0U; size_t length = 0U;
 };
+
+struct HeaderState {
+    bool present = false;
+    bool missing = true;
+    bool emptyPresent = false;
+    size_t valueLength = 0U;
+    char value[32] {};
+};
+void headerHandler(void* value, const WebRequest& request,
+                   WebResponseWriter& response) {
+    HeaderState* state = static_cast<HeaderState*>(value);
+    state->present = request.hasHeader("X-Test");
+    state->missing = request.hasHeader("X-Missing");
+    state->emptyPresent = request.hasHeader("X-Empty");
+    state->valueLength = request.copyHeader(
+        "X-Test", state->value, sizeof(state->value)
+    );
+    response.beginResponse(200U, ContentType::PlainText); response.endResponse();
+}
+
+struct AuthState { uint16_t accepted = 0U; };
+void authHandler(void* value, const WebRequest& request,
+                 WebResponseWriter& response) {
+    AuthState* state = static_cast<AuthState*>(value);
+    if (!request.authenticateBasic("admin", "secret")) {
+        request.requestBasicAuthentication("Aqua Control"); return;
+    }
+    ++state->accepted;
+    response.beginResponse(204U, ContentType::PlainText); response.endResponse();
+}
+
+struct UploadState {
+    WebUploadStatus statuses[12] {};
+    size_t bytes[12] {};
+    size_t lengths[12] {};
+    const uint8_t* chunkPointers[12] {};
+    char filenames[12][24] {};
+    size_t count = 0U;
+};
+void uploadHandler(void* value, const WebRequest& request,
+                   const WebUploadEvent& event) {
+    UploadState* state = static_cast<UploadState*>(value);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(HttpMethod::Post),
+        static_cast<uint8_t>(request.method)
+    );
+    TEST_ASSERT_LESS_THAN_UINT32(12U, state->count);
+    const size_t index = state->count++;
+    state->statuses[index] = event.status;
+    state->bytes[index] = event.bytesReceived;
+    state->lengths[index] = event.dataLength;
+    state->chunkPointers[index] = event.data;
+    if (event.filename)
+        strncpy(state->filenames[index], event.filename, 23U);
+}
+void uploadCompletionHandler(void*, const WebRequest&,
+                             WebResponseWriter& response) {
+    response.beginResponse(200U, ContentType::PlainText);
+    response.writeText("done"); response.endResponse();
+}
+WebRouteOptions uploadOptions(UploadState& state) {
+    WebRouteOptions options {};
+    options.uploadHandler = uploadHandler;
+    options.uploadContext = &state;
+    return options;
+}
 
 void test_disabled() {
     Fixture f; WebConfig c {}; TEST_ASSERT_TRUE(f.web.begin(c));
@@ -468,6 +650,173 @@ void test_content_type_names() {
         contentTypeName(ContentType::PlainText));
 }
 
+void test_headers_existing_missing_and_empty() {
+    Fixture f; HeaderState state;
+    TEST_ASSERT_TRUE(f.web.addRoute(
+        "/headers", HttpMethod::Get, headerHandler, &state
+    ));
+    RequestHeader headers[] = {{"X-Test", "value"}, {"X-Empty", ""}};
+    f.backend.request("/headers", HttpMethod::Get, nullptr, headers, 2U);
+    TEST_ASSERT_TRUE(state.present); TEST_ASSERT_FALSE(state.missing);
+    TEST_ASSERT_TRUE(state.emptyPresent);
+    TEST_ASSERT_EQUAL_UINT32(5U, state.valueLength);
+    TEST_ASSERT_EQUAL_STRING("value", state.value);
+}
+void test_header_value_is_copied_during_request() {
+    Fixture f; HeaderState state; char source[] = "before";
+    TEST_ASSERT_TRUE(f.web.addRoute(
+        "/headers", HttpMethod::Get, headerHandler, &state
+    ));
+    RequestHeader header {"X-Test", source};
+    f.backend.request("/headers", HttpMethod::Get, nullptr, &header, 1U);
+    strcpy(source, "after");
+    TEST_ASSERT_EQUAL_STRING("before", state.value);
+}
+void test_auth_correct_credentials() {
+    Fixture f; AuthState state;
+    TEST_ASSERT_TRUE(f.web.addRoute(
+        "/private", HttpMethod::Get, authHandler, &state
+    ));
+    f.backend.request(
+        "/private", HttpMethod::Get, nullptr, nullptr, 0U,
+        "admin", "secret"
+    );
+    TEST_ASSERT_EQUAL_UINT16(1U, state.accepted);
+    TEST_ASSERT_EQUAL_UINT16(204U, f.backend.output.status);
+    TEST_ASSERT_FALSE(f.backend.challenged);
+}
+void test_auth_wrong_credentials_challenge() {
+    Fixture f; AuthState state;
+    TEST_ASSERT_TRUE(f.web.addRoute(
+        "/private", HttpMethod::Get, authHandler, &state
+    ));
+    f.backend.request(
+        "/private", HttpMethod::Get, nullptr, nullptr, 0U,
+        "admin", "wrong"
+    );
+    TEST_ASSERT_EQUAL_UINT16(0U, state.accepted);
+    TEST_ASSERT_EQUAL_UINT16(401U, f.backend.output.status);
+    TEST_ASSERT_TRUE(f.backend.challenged);
+    TEST_ASSERT_EQUAL_STRING("Aqua Control", f.backend.challengeRealm);
+}
+void test_auth_missing_credentials_challenge() {
+    Fixture f; AuthState state;
+    TEST_ASSERT_TRUE(f.web.addRoute(
+        "/private", HttpMethod::Get, authHandler, &state
+    ));
+    f.backend.request("/private");
+    TEST_ASSERT_EQUAL_UINT16(0U, state.accepted);
+    TEST_ASSERT_EQUAL_UINT16(401U, f.backend.output.status);
+    TEST_ASSERT_TRUE(f.backend.challenged);
+}
+void test_auth_does_not_affect_public_route() {
+    Fixture f; HandlerState state;
+    TEST_ASSERT_TRUE(f.web.addRoute(
+        "/public", HttpMethod::Get, routeHandler, &state
+    ));
+    f.backend.request("/public");
+    TEST_ASSERT_EQUAL_UINT16(1U, state.calls);
+    TEST_ASSERT_EQUAL_UINT16(201U, f.backend.output.status);
+}
+void test_body_below_and_exact_limit() {
+    Fixture f; HandlerState state; WebRouteOptions options {};
+    options.maxBodyLength = 4U;
+    TEST_ASSERT_TRUE(f.web.addRoute(
+        "/limited", HttpMethod::Post, routeHandler, &state, options
+    ));
+    f.backend.request("/limited", HttpMethod::Post, "abc");
+    f.backend.request("/limited", HttpMethod::Post, "abcd");
+    TEST_ASSERT_EQUAL_UINT16(2U, state.calls);
+    TEST_ASSERT_EQUAL_UINT16(201U, f.backend.output.status);
+}
+void test_body_above_limit_returns_413() {
+    Fixture f; HandlerState state; WebRouteOptions options {};
+    options.maxBodyLength = 4U;
+    TEST_ASSERT_TRUE(f.web.addRoute(
+        "/limited", HttpMethod::Post, routeHandler, &state, options
+    ));
+    f.backend.request("/limited", HttpMethod::Post, "abcde");
+    TEST_ASSERT_EQUAL_UINT16(0U, state.calls);
+    TEST_ASSERT_EQUAL_UINT16(413U, f.backend.output.status);
+}
+void test_empty_body_with_limit() {
+    Fixture f; HandlerState state; WebRouteOptions options {};
+    options.maxBodyLength = 4U;
+    TEST_ASSERT_TRUE(f.web.addRoute(
+        "/limited", HttpMethod::Post, routeHandler, &state, options
+    ));
+    f.backend.request("/limited", HttpMethod::Post);
+    TEST_ASSERT_EQUAL_UINT16(1U, state.calls);
+}
+void test_upload_start_chunks_end_and_filename() {
+    MockBackend backend; WebService web(backend); UploadState state;
+    TEST_ASSERT_TRUE(web.addRoute(
+        "/upload", HttpMethod::Post, uploadCompletionHandler, nullptr,
+        uploadOptions(state)
+    ));
+    const uint8_t first[] = {1U, 2U}; const uint8_t second[] = {3U};
+    backend.upload("/upload", WebUploadStatus::Start, "image.bin");
+    backend.upload("/upload", WebUploadStatus::Chunk, "image.bin", first, 2U);
+    backend.upload("/upload", WebUploadStatus::Chunk, "image.bin", second, 1U);
+    backend.upload("/upload", WebUploadStatus::End, "image.bin");
+    TEST_ASSERT_EQUAL_UINT32(4U, state.count);
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)WebUploadStatus::Start,
+                            (uint8_t)state.statuses[0]);
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)WebUploadStatus::Chunk,
+                            (uint8_t)state.statuses[1]);
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)WebUploadStatus::End,
+                            (uint8_t)state.statuses[3]);
+    TEST_ASSERT_EQUAL_UINT32(2U, state.bytes[1]);
+    TEST_ASSERT_EQUAL_UINT32(3U, state.bytes[2]);
+    TEST_ASSERT_EQUAL_UINT32(3U, state.bytes[3]);
+    TEST_ASSERT_EQUAL_STRING("image.bin", state.filenames[0]);
+    TEST_ASSERT_EQUAL_PTR(first, state.chunkPointers[1]);
+    TEST_ASSERT_EQUAL_PTR(second, state.chunkPointers[2]);
+}
+void test_upload_abort_and_cleanup() {
+    MockBackend backend; WebService web(backend); UploadState state;
+    TEST_ASSERT_TRUE(web.addRoute(
+        "/upload", HttpMethod::Post, uploadCompletionHandler, nullptr,
+        uploadOptions(state)
+    ));
+    const uint8_t bytes[] = {1U, 2U, 3U};
+    backend.upload("/upload", WebUploadStatus::Start, "first.bin");
+    backend.upload("/upload", WebUploadStatus::Chunk, "first.bin", bytes, 3U);
+    backend.upload("/upload", WebUploadStatus::Abort, "first.bin");
+    backend.upload("/upload", WebUploadStatus::Start, "second.bin");
+    backend.upload("/upload", WebUploadStatus::Chunk, "second.bin", bytes, 1U);
+    backend.upload("/upload", WebUploadStatus::End, "second.bin");
+    TEST_ASSERT_EQUAL_UINT8((uint8_t)WebUploadStatus::Abort,
+                            (uint8_t)state.statuses[2]);
+    TEST_ASSERT_EQUAL_UINT32(3U, state.bytes[2]);
+    TEST_ASSERT_EQUAL_UINT32(0U, state.bytes[3]);
+    TEST_ASSERT_EQUAL_UINT32(1U, state.bytes[4]);
+    TEST_ASSERT_EQUAL_STRING("second.bin", state.filenames[3]);
+}
+void test_zero_byte_and_independent_uploads() {
+    MockBackend backend; WebService web(backend); UploadState state;
+    TEST_ASSERT_TRUE(web.addRoute(
+        "/upload", HttpMethod::Post, uploadCompletionHandler, nullptr,
+        uploadOptions(state)
+    ));
+    backend.upload("/upload", WebUploadStatus::Start, "empty.bin");
+    backend.upload("/upload", WebUploadStatus::End, "empty.bin");
+    backend.upload("/upload", WebUploadStatus::Start, "next.bin");
+    backend.upload("/upload", WebUploadStatus::End, "next.bin");
+    TEST_ASSERT_EQUAL_UINT32(4U, state.count);
+    TEST_ASSERT_EQUAL_UINT32(0U, state.bytes[1]);
+    TEST_ASSERT_EQUAL_UINT32(0U, state.bytes[2]);
+    TEST_ASSERT_EQUAL_STRING("empty.bin", state.filenames[0]);
+    TEST_ASSERT_EQUAL_STRING("next.bin", state.filenames[2]);
+}
+void test_upload_requires_post_route() {
+    Fixture f; UploadState state;
+    TEST_ASSERT_FALSE(f.web.addRoute(
+        "/upload", HttpMethod::Get, routeHandler, nullptr,
+        uploadOptions(state)
+    ));
+}
+
 } // namespace
 
 void setUp() {}
@@ -513,6 +862,19 @@ void setup() {
     RUN_TEST(test_invalid_config);
     RUN_TEST(test_backend_only_service);
     RUN_TEST(test_content_type_names);
+    RUN_TEST(test_headers_existing_missing_and_empty);
+    RUN_TEST(test_header_value_is_copied_during_request);
+    RUN_TEST(test_auth_correct_credentials);
+    RUN_TEST(test_auth_wrong_credentials_challenge);
+    RUN_TEST(test_auth_missing_credentials_challenge);
+    RUN_TEST(test_auth_does_not_affect_public_route);
+    RUN_TEST(test_body_below_and_exact_limit);
+    RUN_TEST(test_body_above_limit_returns_413);
+    RUN_TEST(test_empty_body_with_limit);
+    RUN_TEST(test_upload_start_chunks_end_and_filename);
+    RUN_TEST(test_upload_abort_and_cleanup);
+    RUN_TEST(test_zero_byte_and_independent_uploads);
+    RUN_TEST(test_upload_requires_post_route);
     UNITY_END();
 }
 void loop() {}

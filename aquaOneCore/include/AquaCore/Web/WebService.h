@@ -35,6 +35,13 @@ public:
         WebRouteHandler handler,
         void* context = nullptr
     );
+    bool addRoute(
+        const char* path,
+        HttpMethod method,
+        WebRouteHandler handler,
+        void* context,
+        const WebRouteOptions& options
+    );
     bool addPage(WebPageProvider& provider);
     bool addApi(WebApiProvider& provider);
 
