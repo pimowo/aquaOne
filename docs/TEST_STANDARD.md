@@ -927,14 +927,19 @@ Testy i fixture'y nie powinny zawierać prawdziwych:
 
 Każdy release urządzenia powinien przejść skróconą checklistę:
 
+Każda pozycja ma wynik `PASS`, `FAIL` albo `N/A`. Jeśli feature istnieje w produkcie,
+odpowiedni test MUSI przejść. `N/A` jest dozwolone wyłącznie z podanym uzasadnieniem, gdy
+feature nie jest zaimplementowane, włączone ani wspierane przez dany projekt.
+
 ```text
 build clean
 unit/component tests pass
-config migration pass
-MQTT smoke pass
-WWW smoke pass
-alarm/safety smoke pass
-OTA pass
+config migration pass                         # jeśli projekt ma wersjonowaną konfigurację
+MQTT smoke pass                               # jeśli projekt używa MQTT
+WWW smoke pass                                # jeśli projekt używa Web
+time/RTC pass                                 # jeśli projekt używa czasu/RTC
+alarm/safety smoke pass                       # jeśli funkcjonalność istnieje lub jest wymagana
+OTA pass                                      # jeśli projekt wspiera OTA
 power-cycle pass
 ```
 
@@ -1308,16 +1313,17 @@ Projekt domenowy odpowiada za testy:
 
 # 101. Minimalny zestaw przed produkcyjnym release
 
-Minimum:
+Minimum stosuje tę samą semantykę `PASS` / `FAIL` / uzasadnione `N/A` z rozdziału 70:
 
 ```text
 Core unit tests PASS
 project build PASS
-config/migration PASS
-MQTT smoke PASS
-WWW smoke PASS
-alarm/safety PASS
-OTA PASS
+config/migration PASS lub N/A
+MQTT smoke PASS lub N/A
+WWW smoke PASS lub N/A
+time/RTC PASS lub N/A
+alarm/safety PASS lub N/A
+OTA PASS lub N/A
 restart/power-cycle PASS
 ```
 

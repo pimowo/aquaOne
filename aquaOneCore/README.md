@@ -7,7 +7,7 @@ Core dostarcza abstrakcje dla funkcji wspólnych do wszystkich urządzeń — bo
 ## 🟢 Status: STABLE & IN USE
 
 - 7 modułów zaimplementowanych i weryfikowanych
-- Używana (aquaOneLuma), integrowana (aquaOneHydro)
+- Używana przez Luma i Hydro; Doser ma integrację hybrydową; Gas używa Core Logging
 - API wdrażane; brak zmian breaking w bliskiej przyszłości
 
 ## 📦 Moduły (v0.6.2)
@@ -20,6 +20,9 @@ Boot status, device identity, restart reasons.
 #include <AquaCore/System/SystemService.h>
 
 AquaCore::SystemService system;
+AquaCore::DeviceIdentity deviceIdentity(
+    "luma", "Akwarium", "1.0.0", "AQMA"
+);
 if (system.begin(deviceIdentity)) {
     uint32_t uptime = system.uptimeMs();
     auto reason = system.restartReason();  // PowerOn, Software, Watchdog, ...
@@ -46,10 +49,10 @@ if (system.begin(deviceIdentity)) {
 Persistent storage with CRC32, schema versioning, dual-slot safety.
 
 ```cpp
+#include <Preferences.h>
 #include <AquaCore/Config/StorageService.h>
 #include <AquaCore/Config/PreferencesStorageBackend.h>
 
-Preferences prefs;
 AquaCore::Config::PreferencesStorageBackend<Preferences> backend;
 
 AquaCore::Config::StorageService storage(
@@ -62,15 +65,21 @@ AquaCore::Config::StorageService storage(
 struct MyConfig { /* ... */ };
 
 bool validator(const void* payload, size_t sz) {
-    auto cfg = (MyConfig*)payload;
-    return cfg->magic == 0xCAFE;
+    if (payload == nullptr || sz != sizeof(MyConfig)) {
+        return false;
+    }
+    const auto* cfg = static_cast<const MyConfig*>(payload);
+    return cfg->magic == 0xCAFEU;
 }
 
 if (storage.begin(sizeof(MyConfig), 1, validator)) {
-    MyConfig cfg;
-    storage.load(&cfg);
-    // ... modify ...
-    storage.save(&cfg);
+    MyConfig cfg {};
+    if (storage.load(&cfg)) {
+        // ... use and modify cfg ...
+    }
+    if (!storage.save(&cfg)) {
+        // Handle persistent write failure.
+    }
 }
 ```
 
@@ -92,7 +101,7 @@ if (storage.begin(sizeof(MyConfig), 1, validator)) {
 - aquaOneLuma ✅ (StorageService adapter)
 - aquaOneHydro ✅ (HydroSenseConfigStorage adapter)
 - aquaOneGas ❌ (planned)
-- aquaOneDoser ❌ (uses raw Preferences)
+- aquaOneDoser ✅ (StorageManager adapter: dwa StorageService + migracja legacy Preferences)
 
 ---
 
@@ -134,7 +143,8 @@ logger.error("module", "message");
 **Zastosowanie:**
 - aquaOneLuma ✅
 - aquaOneHydro ❌
-- aquaOneGas ⚠️ (imports, nie faktycznie używa)
+- aquaOneGas ✅ (Logger + SerialLogSink tworzone i używane w main.cpp)
+- aquaOneDoser ✅ (Logger + SerialLogSink; część lokalnych logów nadal używa Serial)
 
 ---
 
@@ -155,11 +165,11 @@ AquaCore::Diagnostics::DiagnosticsService diagnostics(
 );
 
 auto snapshot = diagnostics.snapshot();
-// snapshot.overallHealth — Good/Degraded/Failed
-// snapshot.system.state, .uptime, .restartReason
-// snapshot.time.rtcValid, .ntpValid, .lastSyncAge
-// snapshot.storage.backendReady, .hasValidPayload
-// snapshot.network.state, .signalStrength
+// snapshot.overallHealth — Ok/Unknown/Warning/Error
+// snapshot.system.ready, .uptimeMs, .restartReason
+// snapshot.time.rtcValid, .lastSyncResult, .lastSuccessfulSyncAgeMs
+// snapshot.storage.backendReady, .hasValidPayload, .activeGeneration
+// snapshot.network.state, .rssi, .reconnectCount
 ```
 
 **Cechy:**
@@ -190,9 +200,9 @@ AquaCore::Network::NetworkService network(backend);
 
 AquaCore::Network::NetworkConfig config;
 config.staEnabled = true;
-config.ssid = "MyWiFi";
-config.password = "pass123";
-config.hostname = "aqua-luma";
+snprintf(config.ssid, sizeof(config.ssid), "%s", "MyWiFi");
+snprintf(config.password, sizeof(config.password), "%s", "pass123");
+snprintf(config.hostname, sizeof(config.hostname), "%s", "aqua-luma");
 config.autoReconnect = true;
 config.reconnectIntervalMs = 10000;
 
@@ -201,22 +211,24 @@ if (network.begin(config)) {
     network.update(millis());
     
     if (network.isConnected()) {
-        Serial.print("IP: ");
-        Serial.println(network.ipAddress());
+        const AquaCore::Network::IpAddress ip = network.ipAddress();
+        Serial.printf("IP: %u.%u.%u.%u\n",
+                      ip.octets[0], ip.octets[1],
+                      ip.octets[2], ip.octets[3]);
     }
 }
 ```
 
 **State machine:**
-- Disabled → Initializing → Ready → Connected/Disconnected
+- `Disabled`, `Idle`, `Connecting`, `Connected`, `Disconnected`, `Error`
 - Auto-retry with backoff
 - Tracks connection uptime, reconnect count, RSSI
 
 **AP (Access Point) mode:**
 ```cpp
 config.apEnabled = true;
-config.apSsid = "AquaOne-Setup";
-config.apPassword = "setup123";
+snprintf(config.apSsid, sizeof(config.apSsid), "%s", "AquaOne-Setup");
+snprintf(config.apPassword, sizeof(config.apPassword), "%s", "setup123");
 // network.startAccessPoint() called internally if needed
 ```
 
@@ -234,7 +246,7 @@ config.apPassword = "setup123";
 - aquaOneLuma ✅
 - aquaOneHydro ✅
 - aquaOneGas ❌ (planned)
-- aquaOneDoser ❌ (uses WiFiManager)
+- aquaOneDoser ✅ (lokalny WiFiManager deleguje do NetworkService/Esp32NetworkBackend)
 
 ---
 
@@ -254,22 +266,32 @@ AquaCore::Web::WebService web(
 );
 
 AquaCore::Web::WebConfig webConfig;
+webConfig.enabled = true;
 webConfig.port = 80;
-webConfig.navigationSections = /* flags */;
+webConfig.navigationMask =
+    AquaCore::Web::navigationSectionMask(
+        AquaCore::Web::NavigationSection::Dashboard
+    );
 
-if (web.begin(webConfig)) {
-    // Register custom pages/APIs
-    class MyPages : public WebPageProvider {
-        void registerRoutes(WebService& web) override {
-            web.addRoute("/api/status", GET, [](const WebRequest& req, WebResponseWriter& resp) {
-                resp.json("{\"status\":\"ok\"}");
-            });
+class StatusApi final : public AquaCore::Web::WebApiProvider {
+public:
+    const char* route() const override { return "/api/status"; }
+    AquaCore::Web::HttpMethod method() const override {
+        return AquaCore::Web::HttpMethod::Get;
+    }
+    void handle(
+        const AquaCore::Web::WebRequest&,
+        AquaCore::Web::WebResponseWriter& response
+    ) override {
+        if (response.beginResponse(200, AquaCore::Web::ContentType::Json)) {
+            response.writeText("{\"status\":\"ok\"}");
+            response.endResponse();
         }
-    };
-    
-    MyPages pages;
-    web.addPage(pages);
-    
+    }
+};
+
+StatusApi statusApi;
+if (web.addApi(statusApi) && web.begin(webConfig)) {
     // In loop():
     web.update();
 }
@@ -277,19 +299,24 @@ if (web.begin(webConfig)) {
 
 **Built-in routes:**
 - `GET /` — Home page
-- `GET /style.css` — CSS
+- `GET /assets/aqua.css` — CSS
 - `GET /api/system` — System info (JSON)
 - `GET /api/diagnostics` — Diagnostics (JSON)
 - `404` — Custom not found handler
 
 **Provider pattern:**
 ```cpp
-class MyApiProvider : public WebApiProvider {
-    void registerRoutes(WebService& web) override {
-        // Register GET, POST, PUT, DELETE handlers
+class StatusPage final : public AquaCore::Web::WebPageProvider {
+public:
+    const char* route() const override { return "/status"; }
+    const char* title() const override { return "Status"; }
+    void render(AquaCore::Web::WebResponseWriter& response) const override {
+        response.writeText("<h1>Status</h1>");
     }
 };
 ```
+
+Providery i własne trasy należy zarejestrować przed `web.begin()`.
 
 **API:**
 - `begin(WebConfig)` — Initialize server
@@ -304,13 +331,15 @@ class MyApiProvider : public WebApiProvider {
 - aquaOneLuma ✅
 - aquaOneHydro ✅
 - aquaOneGas ❌ (planned)
-- aquaOneDoser ❌ (uses WebManager)
+- aquaOneDoser ✅ (jeden Esp32WebBackend/WebService + lokalny WebManager dla domain policy)
 
 ---
 
 ### Time — ✅ READY
 
-Time module zawiera trzy komponenty: RtcService (DS3231), NtpService (synchronization), oraz EuropeWarsawTimeService (UTC to local time conversion with DST).
+Time module zawiera cztery komponenty: RtcService (DS3231), NtpService (synchronization),
+EuropeWarsawTimeService (UTC to local time conversion with DST) oraz ResilientTimeService
+(cache czasu, progi awarii i recovery RTC).
 
 #### RtcService
 
@@ -354,19 +383,17 @@ NTP synchronization via esp_sntp (non-blocking, async).
 
 AquaCore::Time::NtpService ntp(rtcService, ntpBackend);
 
-// Initialize
-if (ntp.begin()) {  // Uses default config
-    // NTP is now running in background
+const uint32_t startedAtMs = millis();
+if (ntp.begin(startedAtMs)) {  // Initialize state; does not start a sync.
+    ntp.requestSync(network.isConnected(), startedAtMs);
 }
 
 // In loop():
 network.update(millis());  // Update WiFi state
-
-if (networkService.isConnected()) {
-    ntp.update(true, millis());  // Trigger periodic sync
-} else {
-    ntp.update(false, millis());  // Handle WiFi loss
-}
+const uint32_t nowMs = millis();
+const bool wifiAvailable = network.isConnected();
+ntp.requestPeriodicSync(wifiAvailable, nowMs);
+ntp.update(wifiAvailable, nowMs);
 
 if (ntp.lastSyncSucceeded()) {
     Serial.println("NTP: Synchronized!");
@@ -387,7 +414,7 @@ if (ntp.lastSyncSucceeded()) {
 - Timeout handling (10s default)
 
 **API:**
-- `begin(NtpConfig)` — Initialize with config
+- `begin(nowMs)` / `begin(NtpConfig, nowMs)` — Initialize; does not request a sync
 - `requestSync(wifiAvailable, nowMs)` — Request immediate sync
 - `requestPeriodicSync(wifiAvailable, nowMs)` — Check if periodic sync is due
 - `update(wifiAvailable, nowMs)` — Process poll result
@@ -422,6 +449,32 @@ if (timeService.begin()) {
 - `isValid()` — Is cached time valid?
 - `current()` — Get cached (last read) time
 
+#### ResilientTimeService
+
+`ResilientTimeService` utrzymuje monotoniczny cache czasu i monitoruje kondycję RTC z
+konfigurowalnymi progami failure/recovery. Doser używa go przez lokalny `TimeManager`.
+
+```cpp
+#include <AquaCore/Time/ResilientTimeService.h>
+
+AquaCore::Time::ResilientTimeConfig resilientConfig {};
+resilientConfig.failureThreshold = 3;
+resilientConfig.recoveryThreshold = 3;
+
+AquaCore::Time::ResilientTimeService resilientTime(rtc, resilientConfig);
+resilientTime.begin(millis());
+
+// In loop():
+resilientTime.poll(millis());
+const AquaCore::Time::LocalTime now = resilientTime.now(millis());
+```
+
+**API:**
+- `begin(nowMs)` / `poll(nowMs)` — Initialize and probe RTC
+- `now(nowMs)` — Current cached time advanced monotonically
+- `isValid()` / `isRtcHealthy()` — Cache and RTC health
+- `syncUtc(utc, nowMs)` — Update cache after an external synchronization
+
 ---
 
 ## 🔧 Integration Guide
@@ -442,8 +495,11 @@ AquaCore::Network::NetworkService network(netBackend);
 AquaCore::Web::Esp32WebBackend webBackend;
 AquaCore::Web::WebService web(webBackend);
 
+AquaCore::DeviceIdentity identity(
+    "device", "name", "1.0.0", "hardware"
+);
+
 void setup() {
-    AquaCore::DeviceIdentity identity("device", "name", "1.0.0", "hardware");
     system.begin(identity);
     
     AquaCore::Network::NetworkConfig netConfig;
@@ -451,6 +507,8 @@ void setup() {
     network.begin(netConfig);
     
     AquaCore::Web::WebConfig webConfig;
+    webConfig.enabled = true;
+    // Register product routes/providers before begin().
     web.begin(webConfig);
 }
 
@@ -472,7 +530,8 @@ Przejrzyj [aquaOneLuma/src/main.cpp](../aquaOneLuma/src/main.cpp) — Przykład 
 [env:esp32-s3]
 platform = espressif32
 framework = arduino
-lib_extra_dirs = ../aquaOneCore
+lib_deps =
+    symlink://../aquaOneCore
 ```
 
 Core jest dostępny w tym samym workspace, na poziomie katalogów projektów.
@@ -489,9 +548,12 @@ Brak zewnętrznych bibliotek — Core pozostaje lekki.
 ## 🚀 Przyszłe rozszerzenia (PLANNED, no versions assigned)
 
 - **MQTT Module** — Message broker integration
-- **OTA Updates** — Firmware update orchestration
+- **Core OTA** — Shared firmware update orchestration, signing and rollback
 - **Home Assistant Integration** — Discovery and entity mapping
-- **RTC Health Monitoring** — Optional recovery & cache (backlog)
+- **Alarm/Safety** — Shared contracts are documented, but no Core module exists yet
+
+Doser W1.5 ma lokalne OTA jako **CURRENT**. Nie jest to implementacja wspólnego Core OTA,
+które pozostaje **TARGET/FUTURE**.
 
 ---
 
@@ -499,10 +561,10 @@ Brak zewnętrznych bibliotek — Core pozostaje lekki.
 
 **Nie zaimplementowane:**
 - MQTT module
-- OTA updates
+- shared Core OTA
 - Home Assistant integration
+- Alarm/Safety Core modules
 - Generic TimezoneProvider (Europe/Warsaw is hardcoded dla teraz)
-- RTC health monitoring (candidate, optional module)
 
 **Znane ograniczenia:**
 - Network module: Nie obsługuje WPA3 (ESP32 limitation)

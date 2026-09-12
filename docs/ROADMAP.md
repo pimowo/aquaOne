@@ -211,8 +211,18 @@ Składowe:
 - Minimalny read-only adapter Dosera: 5 encji na pompę + `automatic_dosing`
 
 **Wymagania:**
-- Doser migracja (Faza 4) — reference implementation
-- Core stable (Fazy 1-7)
+- dokumentacja source of truth zaakceptowana;
+- W2 Dosera zakończone i zwalidowane;
+- regresja i HIL Dosera zakończone;
+- stabilny baseline używanych modułów Core.
+
+Gas, Hydro, Clima i Fauna nie są bramą dla T0 ani Core MQTT.
+
+**Kolejność:**
+1. T0 ESP-MQTT;
+2. decyzja transportu na podstawie T0;
+3. implementacja Core MQTT;
+4. minimalistyczny read-only adapter Dosera.
 
 **Dostarczenia:**
 - Raport T0 z QoS 1/PUBACK, reconnect, LWT, RAM i Flash

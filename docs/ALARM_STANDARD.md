@@ -291,13 +291,17 @@ ACK ALL:
 ## 24. Fizyczny przycisk ACK
 
 Jeżeli projekt definiuje taki przycisk zgodnie z własnym kontraktem domenowym, krótki klik
-MOŻE działać jak `ACK ALL` i ustawiać:
+MOŻE działać jak `ACK ALL`.
 
-```text
-mode = NORMAL
-```
+ACK i mode są osobnymi pojęciami. ACK ani ACK ALL nie musi zmieniać mode, wychodzić z SERVICE
+ani ustawiać NORMAL. Projekt może przypisać jednemu fizycznemu gestowi dwie osobne komendy,
+`ACK ALL` oraz przejście `SERVICE -> NORMAL`, wyłącznie jako jawną decyzję domenową.
 
 Core używa jednej wspólnej implementacji ACK niezależnie od źródła.
+
+ACK jest idempotentne dla jednego wystąpienia alarmu. Powtórzone żądanie nie powoduje
+dodatkowej zmiany mode, aktuatora ani latch. Alarm, który po skasowaniu wystąpi ponownie,
+rozpoczyna nowe wystąpienie jako niepotwierdzony.
 
 ## 25. ACK pojedynczego alarmu
 
@@ -955,7 +959,8 @@ Alarmy respektują wszystkie zasady `MQTT_STANDARD.md`, w szczególności:
 System alarmowy współpracuje z [ARCHITECTURE.md](ARCHITECTURE.md),
 [SAFETY_STANDARD.md](SAFETY_STANDARD.md) i kontraktem domenowym urządzenia:
 - restart urządzenia -> `mode = NORMAL`,
-- fizyczny krótki klik -> ACK ALL + NORMAL,
+- ACK/ACK ALL potwierdza alarm i nie zmienia automatycznie mode,
+- wspólny gest `ACK ALL + NORMAL` jest dozwolony wyłącznie jako jawna decyzja domenowa,
 - SERVICE może tłumić tylko jawnie wskazane alarmy,
 - safety logic jest lokalna,
 - działanie nie zależy od HA.

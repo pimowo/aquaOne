@@ -592,16 +592,19 @@ Backup nie zawiera:
 
 # 30. Sekrety w backupie
 
-Domyślnie backup konfiguracji może zawierać sekrety tylko wtedy, gdy jest to jawnie potrzebne.
+Zwykły backup lub eksport dostępny przez WWW NIE MOŻE zawierać sekretów w plaintext.
 
-Preferencja:
+Może zawierać wyłącznie informację:
 
-- możliwość eksportu pełnego backupu,
-- wyraźne oznaczenie, że zawiera dane poufne.
+```text
+configured = true
+```
 
-Alternatywnie można wspierać backup bez sekretów.
+Po restore użytkownik może być zobowiązany do ponownego wpisania credentials.
 
-Szczegóły bezpieczeństwa mogą zostać doprecyzowane w osobnym security standard.
+Ewentualny pełny backup zawierający sekrety jest **FUTURE**, pozostaje poza zwykłym Web API
+i poza zakresem v1. Wymaga osobnej, świadomie zatwierdzonej polityki bezpieczeństwa. Ten
+standard nie definiuje obecnie jego formatu, szyfrowania ani mechanizmu kluczy.
 
 ---
 
@@ -1147,17 +1150,24 @@ Projekt domenowy nie powinien ignorować błędu zapisu.
 
 # 69. API błędów
 
-Backend WWW powinien mapować wyniki zapisu na jasne błędy API.
+Backend WWW powinien mapować wyniki zapisu na canonical error envelope z
+[WEB_STANDARD.md](WEB_STANDARD.md).
 
 Przykład:
 
 ```json
 {
   "ok": false,
-  "error": "validation_error",
-  "field": "max_temperature"
+  "error": {
+    "code": "validation_error",
+    "message": "Validation failed",
+    "field": "max_temperature"
+  }
 }
 ```
+
+`code` jest obowiązkowy, stabilny i machine-readable. `message` oraz `field` są opcjonalne.
+CONFIG_STORAGE_STANDARD nie definiuje osobnego formatu błędów Web API.
 
 ---
 

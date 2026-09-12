@@ -179,7 +179,12 @@ tabeli tras Dosera.
 
 # 2. Zasada nadrzędna
 
-Każde urządzenie aquaOne ma lokalny interfejs WWW jako podstawowy interfejs:
+Web jest opcjonalnym modułem technicznej kompozycji Core. Projekt urządzenia może go nie
+używać, jeśli nie ma takiego wymagania produktowego. Brak Web nie może naruszać autonomii
+logiki domenowej.
+
+Jeśli projekt deklaruje lokalne WWW, MUSI stosować WEB_STANDARD. Dla takiego projektu WWW
+jest preferowanym lokalnym interfejsem:
 
 - konfiguracji technicznej,
 - diagnostyki,
@@ -1323,36 +1328,37 @@ Należy testować co najmniej:
 
 # 74. Granica Core / domena
 
-Core dostarcza:
-- WebService,
-- HTML shell,
-- router,
-- API helpers,
-- wspólne strony systemowe,
-- wspólny theme,
-- walidację bazową,
-- odpowiedzi błędów.
+Core dostarcza techniczną infrastrukturę:
+- jeden fizyczny HTTP server przez backend,
+- `WebService` i routing primitives,
+- request/response oraz auth primitives,
+- upload lifecycle START/CHUNK/END/ABORT,
+- wspólne strony i zasoby, które są faktycznie zaimplementowane.
 
 Domena dostarcza:
 - własne strony,
 - własne pola,
 - własne endpointy,
 - własne command callbacks,
-- własne dane.
+- własne dane,
+- politykę operacji i ich efekty.
+
+W Doserze lokalny `WebManager` jest poprawnym koordynatorem polityki domenowej: posiada
+politykę restartu i OTA, zatrzymanie pomp, maintenance, cleanup oraz restart sequencing.
+Korzysta z jednego `WebService`/`Esp32WebBackend` i nie posiada drugiego serwera HTTP.
 
 ---
 
 # 75. Nie duplikujemy infrastruktury
 
-Docelowo projekty nie powinny mieć niezależnych, całkowicie osobnych implementacji:
-- WebManager,
-- HTTP server,
-- HTML shell,
-- system pages,
-- network page,
-- diagnostics page.
+Projekt NIE MOŻE tworzyć:
+- drugiego fizycznego `WebServer`,
+- drugiego transportu HTTP,
+- konkurencyjnego routera technicznego.
 
-Te elementy mają być wspólne w `aquaOneCore`.
+Projekt MOŻE i często powinien zachować lokalny koordynator polityki domenowej typu
+`WebManager`. Sama nazwa klasy nie jest powodem do jej usunięcia. Wspólna infrastruktura
+techniczna pozostaje własnością `aquaOneCore`, a polityka produktu pozostaje w domenie.
 
 ---
 
