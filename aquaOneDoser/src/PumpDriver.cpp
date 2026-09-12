@@ -6,7 +6,6 @@ constexpr uint8_t PumpDriver::PINS[PUMP_COUNT];
 
 bool PumpDriver::begin() {
     for (size_t i = 0; i < PUMP_COUNT; ++i) {
-        digitalWrite(PINS[i], LOW);
         pinMode(PINS[i], OUTPUT);
         digitalWrite(PINS[i], LOW);
         running[i] = false;
