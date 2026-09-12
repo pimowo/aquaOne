@@ -1,5 +1,16 @@
 # MQTT_STANDARD.md
 
+**Status:** ACTIVE
+**Scope:** aquaOne ecosystem
+**Version:** 1.0
+**Last reviewed:** 2026-09-12
+
+## Terminologia normatywna
+
+- **MUSI** — wymaganie obowiązkowe.
+- **POWINNO** — zalecenie, od którego można odstąpić wyłącznie z udokumentowanym uzasadnieniem.
+- **MOŻE** — opcja.
+
 ## 1. Cel
 
 Ten dokument definiuje wspólny standard MQTT dla całego ekosystemu **aquaOne**.
@@ -39,6 +50,16 @@ Nie definiuje szczegółowo:
 - bezpieczeństwa domenowego.
 
 Te elementy mają własne standardy.
+
+Dokumenty powiązane:
+
+- alarmy: [ALARM_STANDARD.md](ALARM_STANDARD.md);
+- diagnostyka: [DIAGNOSTICS_STANDARD.md](DIAGNOSTICS_STANDARD.md);
+- nazwy, identity i wersje: [NAMING_VERSIONING_STANDARD.md](NAMING_VERSIONING_STANDARD.md);
+- bezpieczeństwo komend i autonomii: [SAFETY_STANDARD.md](SAFETY_STANDARD.md).
+
+Akcje alarmowe HA/MQTT opisane w ALARM_STANDARD są **TARGET/FUTURE**. Nie należą do
+pierwszego read-only kontraktu MQTT Dosera.
 
 ## 1.1. Status i zakres pierwszego wdrożenia
 
@@ -1579,7 +1600,9 @@ Bez poprawnych danych konfiguracja jest niekompletna.
 Hasło MQTT:
 
 - jest zamaskowane domyślnie,
-- może zostać chwilowo ujawnione po świadomej akcji użytkownika,
+- nigdy nie jest zwracane przez Web API ani UI, także po uwierzytelnieniu,
+- może używać pustego inputu w znaczeniu „bez zmiany”, jeśli endpoint jawnie definiuje tę
+   semantykę,
 - nie jest publikowane przez MQTT,
 - nie jest pokazywane w logach/diagnostyce jawnie.
 
@@ -2250,7 +2273,7 @@ event/<key>
 
 pod warunkiem zachowania tego standardu.
 
-Core zapewnia mechanizmy.
+Docelowo Core zapewnia mechanizmy opisane w tym standardzie.
 
 Projekt dostarcza znaczenie.
 
@@ -2323,6 +2346,8 @@ pump_X_next_dose
 pump_X_low_liquid
 ```
 
+Daje to dokładnie `5 × 8 = 40` encji per-pump.
+
 Gdzie `X` jest numerem pompy:
 
 - `pump_X_enabled` — encja read-only informująca, czy pompa jest aktywna w konfiguracji
@@ -2340,6 +2365,9 @@ automatic_dosing
 
 `automatic_dosing` jest encją read-only informującą, czy automatyczne dozowanie aktualnie
 działa.
+
+Minimalny kontrakt Dosera zawiera zatem dokładnie **41 encji domenowych: 40 per-pump + 1
+globalną**. Wspólne encje Core i availability są liczone osobno.
 
 Do tego dochodzą wspólne encje Core z rozdziału 54 i wspólne availability. Nazwa pompy,
 edycja czasu, dni tygodnia, kalibracja, ustawianie poziomu zbiornika, ręczne dozowanie,

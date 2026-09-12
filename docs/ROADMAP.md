@@ -1,8 +1,44 @@
 # Roadmap — Plan prac ekosystemu aquaOne
 
-Roadmap opisuje logiczną sekwencję prac. Terminy są elastyczne; kolejność jest stała.
+Roadmap opisuje wyłącznie stan przyszłych prac. Aktualny stan implementacji znajduje się w
+[PROJECT_MATRIX.md](PROJECT_MATRIX.md), a kontrakty w odpowiednich `*_STANDARD.md`.
 
-## Faza 1: Dokumentacja i kontrakt (OBECNA)
+## Kolejka wykonawcza
+
+### DONE
+
+- AquaCore System, Config/Storage, Logging, Diagnostics, Network, Web i Time;
+- Doser: migracje Network, Storage/Config i Time przez adaptery;
+- Web W1: neutralny transport i jeden fizyczny backend HTTP;
+- Web W1.5: restart i OTA Dosera. Hardware validation: **PASSED** 2026-09-12.
+	Evidence: not yet persisted in repository.
+
+### NEXT
+
+1. Zatwierdzenie dokumentacji jako source of truth.
+2. Utrwalenie w repozytorium raportu hardware validation W1.5 zgodnego z
+	[TEST_STANDARD.md](TEST_STANDARD.md), bez rekonstruowania nieistniejących danych.
+3. Wykonanie focused Web test jako runtime test i rozwiązanie rozbieżności: fixture wywołuje
+	`WebService::begin()`, a test oczekuje braku trasy `/`, mimo że Core ją rejestruje.
+4. W2 Web Dosera zgodnie z [WEB_STANDARD.md](WEB_STANDARD.md).
+5. Testy regresyjne i sprzętowe po każdym kroku W2.
+
+### LATER
+
+- spike T0 natywnego ESP-MQTT przed implementacją wspólnego Core MQTT;
+- minimalny read-only adapter HA Dosera po pozytywnym T0;
+- wspólny mechanizm alarmów, OTA/rollback i onboarding dopiero po zatwierdzeniu standardów.
+
+### BACKLOG
+
+- opcjonalne integracje Core w Hydro i Gas;
+- rozwój domen Clima i Fauna;
+- elementy MQTT `text` i `time`.
+
+Poniższe fazy zachowują kontekst zakresu. Status tekstowy `DONE`, `NEXT`, `LATER` lub
+`BACKLOG` jest rozstrzygający.
+
+## Faza 1: Dokumentacja i kontrakt (NEXT)
 
 **Cel:** Utrwalić architekturę, kontrakt API, standard projektów.
 
@@ -19,11 +55,11 @@ Roadmap opisuje logiczną sekwencję prac. Terminy są elastyczne; kolejność j
 - `aquaOneCore/README.md` — Core API documentation
 
 **Ryzyko:** Brak
-**Status:** In Progress
+**Status:** NEXT — aktualizacja i akceptacja pełnego zestawu standardów.
 
 ---
 
-## Faza 2: Gas — Czysty klient Core (próba integracji)
+## Faza 2: Gas — Czysty klient Core (BACKLOG)
 
 **Cel:** Pierwszy projekt (po Luma) który w pełni integruje Core.
 
@@ -41,10 +77,11 @@ Roadmap opisuje logiczną sekwencję prac. Terminy są elastyczne; kolejność j
 - Test report
 
 **Ryzyko:** Niskie
+**Status:** BACKLOG
 
 ---
 
-## Faza 3: Hydro — Opcjonalne dodatki
+## Faza 3: Hydro — Opcjonalne dodatki (BACKLOG)
 
 **Cel:** Wzbogacić Hydro o Logger (opcjonalnie).
 
@@ -59,45 +96,44 @@ Roadmap opisuje logiczną sekwencję prac. Terminy są elastyczne; kolejność j
 - aquaOneHydro v2.1 (Logger integration) — opcjonalnie
 
 **Ryzyko:** Bardzo niskie (additive)
+**Status:** BACKLOG
 
 ---
 
-## Faza 4: Doser — Migracja do Core (wieloetapowo)
+## Faza 4: Doser — Migracja do Core (NEXT)
 
 **Cel:** Doser przechodzi na Core bez zepsucia działania.
 
-### Etap 4a: Network migration
-1. Dodać AquaCore do platformio.ini (lib_extra_dirs)
-2. Parallel: WiFiManager + NetworkService
-3. Switch na NetworkService, usunąć WiFiManager
-4. Test na hardware
+### Etap 4a: Network migration — DONE
+Lokalny `WiFiManager` działa jako adapter nad `NetworkService` i `Esp32NetworkBackend`.
 
-### Etap 4b: Storage/Config migration
-1. Adapter StorageManager → StorageService
-2. Backward compatibility: load v1 format
-3. Switch, test
+### Etap 4b: Storage/Config migration — DONE
+`StorageManager` używa Core `StorageService` i zachowuje migrację danych legacy.
 
-### Etap 4c: Time migration
-1. RtcService (plain read)
-2. NtpService (periodic sync)
-3. TimeManager → adapter (keep for now)
-4. Test conversions
+### Etap 4c: Time migration — DONE
+`TimeManager` pozostaje adapterem domenowym nad usługami czasu Core.
 
 ### Etap 4d: Web migration
-1. ✅ W1: WebService + Esp32WebBackend jako jedyny fizyczny serwer HTTP
-2. W1.5: trasy restart/OTA Dosera na wspólnym transporcie; polityka i efekty pozostają w Doserze
-3. Testy sprzętowe auth, OTA success/failure/abort i opóźnionego restartu
-4. W2: pozostałe strony i API produktu po zamknięciu bramy W1.5
+1. **W1 — DONE:** `WebService` + `Esp32WebBackend` jako jedyny fizyczny serwer HTTP.
+2. **W1.5 — DONE:** restart/OTA, auth, success/failure/abort, cleanup i reconnect.
+	Hardware validation: **PASSED** 2026-09-12. Evidence: not yet persisted in repository.
+3. **W2 — NEXT:** pozostałe strony i API produktu zgodnie z WEB_STANDARD.
 
-### Etap 4e: Cleanup
-1. Usunąć reimplementacje (WiFiManager, StorageManager, TimeManager, WebManager)
-2. Verify MQTT, diagnostics, scheduler nadal działają
-3. Doser v2.0 (Core integration)
+### Etap 4e: Cleanup — LATER
+1. Potwierdzić po W2, że nie powstał duplikat transportu ani legacy ownership fizycznego
+	`WebServer`; usunąć wyłącznie konkretny znaleziony duplikat. W1 już zapewnia jednego
+	właściciela serwera, więc nie jest to ponowne planowanie W1.
+2. Zachować w Doserze właściciela polityki restartu/OTA, maintenance, pump stop, domain
+	effects i restart sequencing. Ewentualna zmiana nazwy `WebManager` jest osobnym refactorem.
+3. Zweryfikować, że MQTT, diagnostics i scheduler nadal działają.
+4. Doser v2.0 (Core integration).
 
-**Wymagania:**
-- Core stable (Fazy 1-2)
-- Gas successful (Faza 2)
-- Reverse-commit strategy (test points)
+**Wymagania dla końcowego Doser v2.0:**
+- zakończone i zaakceptowane etapy migracji Dosera;
+- stabilne używane moduły Core;
+- reverse-commit strategy i test points.
+
+Faza 2 Gas nie jest bramą W2.
 
 **Dostarczenia:**
 - aquaOneDoser v2.0 (Core migration)
@@ -105,10 +141,11 @@ Roadmap opisuje logiczną sekwencję prac. Terminy są elastyczne; kolejność j
 
 **Ryzyko:** Wysokie (duża zmiana)
 **Strategy:** Reverse-commit na każdym etapie; hardware tests
+**Status:** NEXT
 
 ---
 
-## Faza 5: Luma — Bez zmian (utrzymanie)
+## Faza 5: Luma — Bez zmian (BACKLOG)
 
 **Cel:** Luma pozostaje referencją bez dużych zmian.
 
@@ -118,10 +155,11 @@ Opcjonalnie:
 - Nowe funkcje domeny (nie zmiany Core)
 
 **Ryzyko:** Brak (no changes)
+**Status:** BACKLOG
 
 ---
 
-## Faza 6: Clima — Nowy projekt ze standardem
+## Faza 6: Clima — Nowy projekt ze standardem (BACKLOG)
 
 **Cel:** Clima buduje się od razu ze standardem.
 
@@ -138,10 +176,11 @@ Opcjonalnie:
 - aquaOneClima v0.1-alpha
 
 **Ryzyko:** Niskie (świeży projekt)
+**Status:** BACKLOG
 
 ---
 
-## Faza 7: Fauna — Nowy projekt ze standardem
+## Faza 7: Fauna — Nowy projekt ze standardem (BACKLOG)
 
 **Cel:** Fauna buduje się od razu ze standardem.
 
@@ -155,10 +194,11 @@ Podobnie jak Clima.
 - aquaOneFauna v0.1-alpha
 
 **Ryzyko:** Niskie (świeży projekt)
+**Status:** BACKLOG
 
 ---
 
-## Faza 8: MQTT i Home Assistant (FUTURE)
+## Faza 8: MQTT i Home Assistant (LATER)
 
 **Cel:** Dodać integrację MQTT/HA do Core.
 
@@ -180,11 +220,12 @@ Składowe:
 - MQTT integration guide
 
 **Ryzyko:** Medium
-**Status:** FUTURE; T0 przed implementacją Core MQTT. `text` i `time`: CAN WAIT.
+**Status:** LATER; T0 jest pierwszym krokiem i MUSI poprzedzać implementację Core MQTT.
+`text` i `time`: BACKLOG. MQTT_STANDARD zachowuje dla nich kontraktowe oznaczenie `CAN WAIT`.
 
 ---
 
-## Faza 9: OTA i Watchdog (FUTURE)
+## Faza 9: Wspólne OTA i Watchdog (LATER)
 
 **Cel:** Dodać OTA firmware updates i watchdog recovery.
 
@@ -201,49 +242,24 @@ Składowe:
 - AquaCore with OTA support
 
 **Ryzyko:** Medium (critical function)
-**Status:** FUTURE (brak konkretnej wersji)
-
----
-
-## Candidates & Backlog
-
-### RTC Health Monitoring (OPTIONAL)
-
-**Cel:** Opcjonalny mechanizm recovery dla RTC (z Dosera do Core).
-
-Jeśli decyzja będzie dodać:
-1. Zdefiniować RtcHealthMonitor interface
-2. Implementacja: failure/success thresholds (recovery logic)
-3. Cache + interpolacja czasu
-4. Integracja do projektów które to potrzebują
-
-Jeśli decyzja będzie pominąć:
-- Doser używa swój TimeManager
-- Luma i inne nie potrzebują
-
-**Status:** BACKLOG (do podjęcia decyzji)
+**Status:** LATER. Doser W1.5 ma lokalne OTA; wspólny Core OTA, signing i rollback nie są
+zaimplementowane.
 
 ---
 
 ## Timeline — Orientacyjne (ELASTYCZNE, BEZ TERMINÓW)
 
 ```
-Faza 1 (Dokumentacja)   ███████ ← TERAZ
-Faza 2 (Gas)            ░░░░ (parallel z Faza 1 end)
-Faza 3 (Hydro)          ░░░░░░ (after Faza 2, optional)
-Faza 4 (Doser)          ░░░░░░░░░░░ (long, many stages)
-Faza 5 (Luma)           ─────── (maintenance only)
-Faza 6 (Clima)          ░░░░░░░░░░░ (when ready)
-Faza 7 (Fauna)          ░░░░░░░░░░░ (when ready)
-Faza 8 (MQTT)           ░░░░░░░░░░░░░░░ (future)
-Faza 9 (OTA)            ░░░░░░░░░░░░░░░░░ (future)
+Faza 1 (Dokumentacja)   NEXT
+Faza 2 (Gas)            BACKLOG
+Faza 3 (Hydro)          BACKLOG
+Faza 4 (Doser)          NEXT
+Faza 5 (Luma)           BACKLOG
+Faza 6 (Clima)          BACKLOG
+Faza 7 (Fauna)          BACKLOG
+Faza 8 (MQTT)           LATER
+Faza 9 (OTA)            LATER
 ```
-
-**Oznaczenia:**
-- `███` — Active work
-- `░░░` — Planned, waiting
-- `───` — Maintenance only
-- ← TERAZ — Current phase
 
 ---
 

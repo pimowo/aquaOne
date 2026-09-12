@@ -1,14 +1,20 @@
 # Project Matrix — Status i Integracja Core
 
+**Snapshot date:** 2026-09-12
+**Snapshot commit:** `c644201`
+
+Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla wskazanego
+commita. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
+
 ## Legenda
 
-- 🟢 **Gotowy** — Zaimplementowany, testowany
-- 🟡 **W budowie** — Funkcjonalny, wymaga integracji
-- 🔴 **Planowany** — Szkielet, brak implementacji
-- ✅ **READY** — Core module confirmed stable
-- ⚠️ **PARTIAL** — Core module partial integration
-- ❌ **NOT USED** — Device doesn't use this module
-- 〰️ **NOT NEEDED** — Device doesn't require this module
+- **CORE DIRECT** — projekt bezpośrednio komponuje publiczne API AquaCore;
+- **CORE VIA ADAPTER** — lokalna klasa deleguje mechanizm techniczny do AquaCore;
+- **LOCAL** — implementacja pozostaje w projekcie domenowym;
+- **NOT USED** — moduł nie jest używany przez projekt;
+- **PLANNED** — istnieje plan, ale brak implementacji w snapshotcie.
+
+Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 
 ## aquaOneLuma — 🟢 Lighting Controller (Stabilny)
 
@@ -43,30 +49,26 @@
 | Aspekt | Status | Notatki |
 |--------|--------|---------|
 | **Platforma** | ESP32-S3 Super Mini (4MB) | |
-| **Status** | 🟡 Funkcjonalny | Działający, ale zaisolowany od Core |
-| **Architektura** | Flat (11 managerów na 1 poziomie) | Wymaga refaktoringu |
+| **Status** | 🟡 Funkcjonalny, integracja hybrydowa | W1/W1.5 Web DONE; hardware validation PASSED 2026-09-12; evidence not yet persisted in repository |
+| **Architektura** | Composition root + lokalne managery/adapters | Migracja Core jest częściowa |
 | | | |
 | **Używane moduły Core** | | |
-| System | ❌ NOT USED | Brak integracji |
-| Config | ❌ NOT USED | Własny StorageManager (raw Preferences) |
-| Logging | ❌ NOT USED | Serial.println() |
-| Diagnostics | ❌ NOT USED | Własny DiagnosticsManager |
-| Network | ❌ NOT USED | Własny WiFiManager (event loop) |
-| Web | ❌ NOT USED | Własny WebManager (WebServer) |
-| Time | ❌ NOT USED | Własny TimeManager (RTClib + esp_sntp) |
+| System | CORE DIRECT | `SystemService`, `DeviceIdentity` |
+| Config | CORE VIA ADAPTER | `StorageManager` używa dwóch `StorageService`; obsługuje też migrację legacy Preferences |
+| Logging | CORE DIRECT | `Logger` + `SerialLogSink`; lokalne logi `Serial` nadal istnieją |
+| Diagnostics | LOCAL | Lokalny `DiagnosticsManager` |
+| Network | CORE VIA ADAPTER | Lokalny `WiFiManager` deleguje do `NetworkService` i `Esp32NetworkBackend` |
+| Web | CORE DIRECT | Jeden `Esp32WebBackend` i `WebService`; lokalny `WebManager` posiada politykę restart/OTA |
+| Time | CORE VIA ADAPTER | Lokalny `TimeManager` komponuje usługi RTC/NTP/resilient time Core |
 | | | |
 | **Elementy lokalne** | | |
 | Logika | PumpManager, SchedulerManager, MqttManager, HaDiscovery | |
-| Konfiguracja | PumpConfig (array[4]) | |
+| Konfiguracja | `PumpConfig`, dokładnie 8 pomp | |
 | Hardware | Relay drivers, PWM pump control | |
-| | | |
-| **Różnice vs Core** | | |
-| WiFi | WiFiManager (custom SM) vs NetworkService (formal SM) | |
-| Storage | Manual Preferences vs StorageService (CRC+versioning) | |
-| Time | TimeManager (recovery logic) vs RtcService (plain read) | |
-| | | |
-| **Migracja do Core** | 🟡 PLANNED | Wieloetapowa migracja |
-| **Skalowanie ryzyka** | Wysoki | Duża zmiana, wiele zależności |
+| MQTT/HA | LOCAL | Istniejący PubSubClient + 205 encji nie jest kontraktem przyszłego Core MQTT |
+| **Web W1/W1.5** | DONE | Jeden serwer, auth, restart, OTA success/abort/cleanup/reconnect |
+| **Następny etap Web** | PLANNED | W2: pozostałe strony/API zgodnie z WEB_STANDARD |
+| **Ryzyko dalszej migracji** | Średnie/wysokie | Lokalna domena działa i nie może zostać naruszona |
 
 ---
 
@@ -112,7 +114,7 @@
 | **Używane moduły Core** | | |
 | System | ❌ NOT USED | TODO |
 | Config | ❌ NOT USED | TODO |
-| Logging | ⚠️ PARTIAL | Imports tylko, nie faktycznie używa |
+| Logging | CORE DIRECT | `Logger` i `SerialLogSink` są tworzone i używane w `main.cpp` |
 | Diagnostics | ❌ NOT USED | TODO |
 | Network | ❌ NOT USED | TODO |
 | Web | ❌ NOT USED | TODO (GasSenseWeb interface exists) |
@@ -190,7 +192,7 @@
 | **Typ** | PlatformIO library (library.json) | |
 | **Wersja** | 0.6.2 | |
 | **Status** | 🟢 Stabilna | Używana (Luma), integrowana (Hydro) |
-| **Struktura** | include/AquaCore + src/AquaCore | |
+| **Struktura** | `include/AquaCore/<Module>/` + `src/<Module>/` | Implementacje znajdują się bezpośrednio pod `aquaOneCore/src/` |
 | | | |
 | **Moduły główne** | | |
 | System | ✅ READY | SystemService, DeviceIdentity, RestartReason |
@@ -205,7 +207,7 @@
 | MQTT | ❌ | Planned (no version assigned) |
 | OTA | ❌ | Planned (no version assigned) |
 | Home Assistant integration | ❌ | Planned (no version assigned) |
-| RTC health monitoring | ⚠️ CANDIDATE | Optional module, backlog |
+| RTC/NTP recovery | ✅ IMPLEMENTED | `ResilientTimeService` z progami failure/recovery i cache czasu |
 | | | |
 | **Design** | | |
 | Backend pattern | ✅ Stosowany | Gdzie potrzebna separacja od platformy |
@@ -216,8 +218,9 @@
 | **Zużycie** | | |
 | Zweryfikowany | Luma (full) | 7/7 modułów |
 | Integracja | Hydro (partial) | 4/7 modułów (bez Time) |
-| Budowa | Gas (prep) | Imports tylko, TBD |
-| Planowanie | Doser, Clima, Fauna | Migracja / green projects |
+| Budowa | Gas | Core Logging używany; pozostałe moduły zależnie od potrzeb |
+| Integracja hybrydowa | Doser | Direct: System/Logging/Web; adapters: Config/Network/Time |
+| Planowanie | Clima, Fauna | Projekty startowe bez logiki domenowej |
 | | | |
 | **Rozwój** | — | Core rozwija się niezależnie; projekty integrują wybrane moduły Core |
 
@@ -228,8 +231,8 @@
 ```
 aquaOneLuma    ████████████ ✅ READY    (7/7 Core modules)
 aquaOneHydro   ████░░░░░░░░ ✅ READY    (4/7 Core modules, nie potrzebuje Time)
-aquaOneGas     ██░░░░░░░░░░ 🟡 PREP     (architektura OK, integracja TBD)
-aquaOneDoser   ██░░░░░░░░░░ 🟡 TODO     (dużo reimpl, migracja planned)
+aquaOneGas     ██░░░░░░░░░░ 🟡 BUILD    (Core Logging działa; pozostałe elementy częściowo TODO)
+aquaOneDoser   ███████░░░░░ 🟡 HYBRID   (Core direct + adapters; lokalna domena/MQTT/diagnostyka)
 aquaOneClima   ░░░░░░░░░░░░ 🔴 PLAN     (świeży projekt)
 aquaOneFauna   ░░░░░░░░░░░░ 🔴 PLAN     (świeży projekt)
 aquaOneCore    ███████░░░░░ 🟢 STABLE   (7/7 modułów, 3 planned)
@@ -253,9 +256,10 @@ aquaOneCore    ███████░░░░░ 🟢 STABLE   (7/7 modułów
 - Ryzyko: Medium
 
 ### Doser
-- Status: 🔴 Pełna migracja potrzebna
-- Strategy: Etapowo, reverse-commit gotowe
-- Ryzyko: High
+- Status: 🟡 Integracja hybrydowa; W1/W1.5 Web DONE; hardware validation PASSED 2026-09-12;
+	evidence not yet persisted in repository
+- Następny krok: W2 Web, bez równoległego przepisywania domeny lub MQTT
+- Ryzyko: Średnie/wysokie; wymagane punkty regresji i testy sprzętowe
 
 ### Clima
 - Status: 🔴 Nowy projekt

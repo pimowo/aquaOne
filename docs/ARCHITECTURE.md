@@ -1,5 +1,22 @@
 # Architektura ekosystemu aquaOne
 
+## Hierarchia dokumentacji
+
+Ten dokument definiuje nadrzędne granice i kierunek zależności. Szczegółowe kontrakty są
+własnością odpowiednich standardów:
+
+- [Web](WEB_STANDARD.md), [MQTT](MQTT_STANDARD.md),
+  [Config i storage](CONFIG_STORAGE_STANDARD.md), [diagnostyka](DIAGNOSTICS_STANDARD.md);
+- [alarmy](ALARM_STANDARD.md), [bezpieczeństwo](SAFETY_STANDARD.md),
+  [OTA](OTA_STANDARD.md), [testy](TEST_STANDARD.md);
+- [nazewnictwo i wersjonowanie](NAMING_VERSIONING_STANDARD.md),
+  [factory reset i onboarding](FACTORY_RESET_ONBOARDING_STANDARD.md).
+
+[PROJECT_MATRIX.md](PROJECT_MATRIX.md) jest snapshotem aktualnej implementacji,
+[ROADMAP.md](ROADMAP.md) opisuje przyszłe prace, a [IDEAS.md](IDEAS.md) zawiera wyłącznie
+niezatwierdzone pomysły. Standard opisuje wymagany kontrakt; nie jest sam w sobie dowodem,
+że funkcja została wdrożona. Stan wdrożenia wynika z PROJECT_MATRIX i kodu.
+
 ## Założenie fundamentalne
 
 > Każde urządzenie aquaOne jest autonomiczne i wykonuje swoją funkcję niezależnie. Awaria sieci, innego urządzenia czy centralnego serwera nie powinna zatrzymać podstawowej pracy urządzenia.
@@ -58,12 +75,15 @@ class NetworkService {
 
 ### 2. Warstwa aplikacyjna — Urządzenia
 
-Każde urządzenie (Luma, Doser, Hydro, Gas, ...) ma strukturę:
+Poniższy układ jest **RECOMMENDED STRUCTURE** dla nowych projektów. Istniejące projekty
+mogą zachować inną strukturę, jeśli utrzymują kierunek zależności i separację domeny,
+sprzętu oraz infrastruktury:
 
 ```
 aquaOneXxx/
 ├── platformio.ini
-│   └── lib_extra_dirs = ../aquaOneCore  ← lokalna zależność od Core
+│   └── lib_deps =
+│       └── symlink://../aquaOneCore  ← lokalna zależność od Core
 ├── include/
 │   ├── BuildConfig.h        # Piny GPIO (sprzętowe)
 │   ├── NetworkSecrets.h     # WiFi secrets
@@ -88,15 +108,15 @@ aquaOneXxx/
 - **domain/** — Logika biznesowa, niezależna od hardware
   - Przykład: `TopupController` (kiedy startować pompę)
   - Nie zna GPIO, I2C, SPI
-  
+
 - **drivers/** — Adaptacja hardware
   - Przykład: `Pump` class (control GPIO relay)
   - Znają piny, interfejsy komunikacji
-  
+
 - **services/** — Algorytmy, helpery
   - Przykład: `GasCalculator` (kg CO2 z sensorów)
   - Stateless, pure functions
-  
+
 - **interfaces/** — Pluggable integracje
   - Przykład: `HydroSenseWeb` (HTTP routes)
   - Opcjonalne, można wyłączyć
@@ -191,9 +211,12 @@ i opóźniony restart są efektami produktu wykonywanymi przez `WebManagerRuntim
 
 Etapy integracji Web:
 
-- **W1 (zakończony):** neutralny transport AquaCore Web i pojedynczy backend ESP32;
-- **W1.5 (bieżący):** most Dosera dla autoryzowanego restartu i OTA na wspólnym serwerze;
-- **W2 (później):** dalsza migracja stron/API produktu, dopiero po testach sprzętowych W1.5.
+- **W1 — DONE:** neutralny transport AquaCore Web i pojedynczy backend ESP32;
+- **W1.5 — DONE:** autoryzowany restart i OTA Dosera na wspólnym serwerze, w tym success,
+    abort, cleanup i reconnect. Hardware validation: **PASSED** 2026-09-12. Evidence: not yet
+    persisted in repository;
+- **W2 — NEXT:** migracja pozostałych stron i API produktu zgodnie z
+    [WEB_STANDARD.md](WEB_STANDARD.md).
 
 W1.5 nie obejmuje MQTT ani zmiany kontraktu Home Assistant.
 
@@ -238,10 +261,11 @@ Moduły wymagające obsługi stanów, retry i recovery mogą używać state mach
 // NetworkService
 enum class NetworkState {
     Disabled,
-    Initializing,
-    Ready,
+    Idle,
+    Connecting,
     Connected,
-    Disconnected
+    Disconnected,
+    Error
 };
 ```
 
@@ -268,30 +292,29 @@ Zawsze można sprawdzić `status()` bez side effects.
 
 ## Wersjonowanie i kompatybilność
 
-Każdy projekt ma swoją wersję:
-```ini
-; aquaOneLuma/platformio.ini
-version = X.Y.Z
+Projekty mają własne wersje firmware, ale bieżące implementacje nie muszą przechowywać ich
+w tym samym typie pliku. Przykładowo Luma definiuje wersję firmware w `include/Version.h`,
+a Core ma wersję biblioteki w `aquaOneCore/library.json`.
+
+Zasady nazw, niezależnych wersji firmware/Core/schema/protocol oraz kompatybilności definiuje
+[NAMING_VERSIONING_STANDARD.md](NAMING_VERSIONING_STANDARD.md).
+
+Projekty w bieżącym monorepo używają lokalnej zależności:
+
+```text
+lib_deps =
+    symlink://../aquaOneCore
 ```
 
-Core ma wersję:
-```
-aquaOneCore/library.json
-version = 0.6.2
-```
-
-Projekty mogą przypiąć konkretny commit Core w celu zapewnienia reproducible builds:
-```bash
-git -C ../aquaOneCore checkout <commit-sha>
-```
-
-Core rozwija się niezależnie; projekty integrują wybrane moduły Core.
+Wszystkie korzystają z tego samego checkoutu Core. Repozytorium nie ma obecnie mechanizmu
+niezależnego przypinania wersji Core per projekt; reproducible per-project pinning pozostaje
+osobnym przyszłym problemem i nie jest deklarowane jako dostępna funkcja.
 
 ## Design decisions (i ich uzasadnienie)
 
 | Decision | Uzasadnienie |
 |----------|-------------|
-| Autonomia > sieć | System powinien działać bez zależności | 
+| Autonomia > sieć | System powinien działać bez zależności |
 | Backend pattern dla sieciowych/sprzętowych modułów | Portability, testability, niezależność Core od ESP32 |
 | Optional modules | Lekkie urządzenia (np. Hydro) nie muszą mieć RTC |
 | Dual-slot storage | Atomic updates, safety |
