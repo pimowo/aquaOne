@@ -1,7 +1,7 @@
 # Project Matrix — Status i Integracja Core
 
 **Snapshot date:** 2026-09-12
-**Snapshot commit:** `c644201`
+**Snapshot commit:** `bc03c89`
 
 Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla wskazanego
 commita. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
@@ -21,7 +21,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Aspekt | Status | Notatki |
 |--------|--------|---------|
 | **Platforma** | ESP32 (AQMA, LOLIN32 testowa) | |
-| **Status** | 🟢 Zweryfikowany | Pierwszy projekt, referencyjny |
+| **Status** | 🟢 Zweryfikowany | Istniejący klient CURRENT; nie jest wzorcem Architecture vNext |
 | **Architektura** | app/core/hardware/web/time/storage | Wzorzec do naśladowania |
 | | | |
 | **Używane moduły Core** | | |
@@ -49,7 +49,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Aspekt | Status | Notatki |
 |--------|--------|---------|
 | **Platforma** | ESP32-S3 Super Mini (4MB) | |
-| **Status** | 🟡 Funkcjonalny, integracja hybrydowa | W1/W1.5 Web DONE; hardware validation PASSED 2026-09-12; evidence not yet persisted in repository |
+| **Status** | 🟡 Funkcjonalny, integracja hybrydowa | W1/W1.5 Web CURRENT; hardware validation is documented as passed, evidence not yet persisted; Doser is not an architecture reference |
 | **Architektura** | Composition root + lokalne managery/adapters | Migracja Core jest częściowa |
 | | | |
 | **Używane moduły Core** | | |
@@ -191,7 +191,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 |--------|--------|---------|
 | **Typ** | PlatformIO library (library.json) | |
 | **Wersja** | 0.6.2 | |
-| **Status** | 🟢 Stabilna | Używana (Luma), integrowana (Hydro) |
+| **Status** | 🟢 CURRENT legacy foundation | Używana (Luma), integrowana (Hydro); nie jest jeszcze pełną platformą vNext |
 | **Struktura** | `include/AquaCore/<Module>/` + `src/<Module>/` | Implementacje znajdują się bezpośrednio pod `aquaOneCore/src/` |
 | | | |
 | **Moduły główne** | | |
@@ -270,3 +270,14 @@ aquaOneCore    ███████░░░░░ 🟢 STABLE   (7/7 modułów
 - Status: 🔴 Nowy projekt
 - Integracja: Od razu ze standardem
 - Ryzyko: Niskie
+
+## Architecture vNext perspective
+
+Macierz jest snapshotem CURRENT, a nie rankingiem architektury. Wszystkie domeny — Luma,
+Doser, Hydro, Clima, Gas i Fauna — są równorzędnymi klientami przyszłej platformy.
+Doser, Luma i Hydro nie są wzorcami Core vNext. Dla każdego istniejącego elementu
+obowiązuje późniejsza ocena KEEP, ADAPT, REWRITE albo REMOVE.
+
+Docelowe, jeszcze nie CURRENT, obszary platformy to Commands, Events, Alarms, Safety,
+Maintenance, Realtime, Registry, wspólny MQTT, OTA, Backup/Restore, Factory Reset oraz
+Application lifecycle/composition.

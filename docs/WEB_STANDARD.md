@@ -1,6 +1,6 @@
 # WEB_STANDARD.md
 
-**Status:** DRAFT
+**Status:** DRAFT — CURRENT contract plus Architecture vNext TARGET boundary
 **Scope:** aquaOne ecosystem
 **Version:** 1.0
 **Last reviewed:** 2026-09-12
@@ -1382,3 +1382,21 @@ WWW ma być prostym, lokalnym i niezawodnym interfejsem serwisowo-konfiguracyjny
 Nie powinno być ciężkim frontendem ani drugim Home Assistantem.
 
 **Core zapewnia wspólny szkielet. Domena dostarcza tylko to, co specyficzne dla urządzenia.**
+
+## Architecture vNext boundary
+
+Obecny Web Core opisany w sekcji `Implementation: CURRENT` jest legacy foundation. Nie
+jest docelowym Realtime backendem i jego API nie jest gwarantowane bez breaking changes.
+Nie wolno traktować obecnego synchronicznego `WebServer` jako dowodu gotowości WebSocket.
+
+Architecture vNext zachowuje jeden fizyczny transport Web na urządzenie. HTTP pozostaje
+transportem request/response, initial/full snapshot, konfiguracji, akcji, OTA i backup/restore.
+Realtime służy do live state, eventów, alarmów, ostrzeżeń i postępu. HTTP i Realtime mają
+w przyszłości współdzielić backend i port; drugi konkurencyjny WebServer jest zabroniony.
+Po reconnect klient wykonuje pełny resync ze snapshotu. Realtime nie jest jedynym źródłem
+prawdy.
+
+Dokładny protokół, auth handshake, heartbeat, limity klientów, kolejki, backpressure,
+sequence i format snapshotu są `DECISION REQUIRED` albo `SPIKE REQUIRED`. Nie wpisujemy
+wartości liczbowych bez pomiarów. Feasibility spike musi obejmować HTTP podczas aktywnego
+Realtime, reconnect, slow client, multipart OTA, abort, auth, heap/flash i wpływ na main loop.

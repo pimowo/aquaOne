@@ -1,5 +1,7 @@
 # Architektura ekosystemu aquaOne
 
+> Architecture vNext (TARGET) opisuje docelową platformę. CURRENT jest wyłącznie inwentaryzacją istniejącego kodu. Legacy code is not architecture. Istniejące elementy będą później oceniane jako KEEP, ADAPT, REWRITE albo REMOVE.
+
 ## Hierarchia dokumentacji
 
 Ten dokument definiuje nadrzędne granice i kierunek zależności. Szczegółowe kontrakty są
@@ -11,6 +13,7 @@ własnością odpowiednich standardów:
   [OTA](OTA_STANDARD.md), [testy](TEST_STANDARD.md);
 - [nazewnictwo i wersjonowanie](NAMING_VERSIONING_STANDARD.md),
   [factory reset i onboarding](FACTORY_RESET_ONBOARDING_STANDARD.md).
+- [decyzje Architecture vNext](ARCHITECTURE_VNEXT_DECISIONS.md).
 
 [PROJECT_MATRIX.md](PROJECT_MATRIX.md) jest snapshotem aktualnej implementacji,
 [ROADMAP.md](ROADMAP.md) opisuje przyszłe prace, a [IDEAS.md](IDEAS.md) zawiera wyłącznie
@@ -323,3 +326,83 @@ osobnym przyszłym problemem i nie jest deklarowane jako dostępna funkcja.
 | No config inheritance | Każde urządzenie ma swoją konfigurację |
 | Brak centralnego "orchestrator" | Każde urządzenie orchestruje siebie |
 | Jeden fizyczny serwer HTTP | Core posiada transport; urządzenie posiada trasy i politykę efektów |
+
+## Architecture vNext — TARGET
+
+Poniższe zasady są docelowym kontraktem platformy. Nie opisują stanu bieżącej implementacji.
+
+### Autonomia i granice
+
+Każde urządzenie aquaOne MUSI działać autonomicznie. Podstawowa funkcja domenowa nie może zależeć od Home Assistant, MQTT, WWW/HTTP, WebSocket/realtime, aquaOne Panel, Internetu ani innego urządzenia aquaOne. Awaria komunikacji nie może zatrzymać podstawowej funkcji domenowej.
+
+Core dostarcza mechanizmy wspólne, a Domain dostarcza znaczenie funkcjonalne. Core może przechowywać `device_type` jako metadane, ale nie może zawierać logiki `if DOSER`, `if LUMA`, `if HYDRO` ani równoważnych rozgałęzień produktowych. Luma, Doser, Hydro, Clima, Gas i Fauna są równorzędnymi klientami platformy. Panel jest klientem/interfejsem, nie zależnością krytyczną domeny.
+
+### Warstwy i zależności
+
+```text
+Application / Composition Root
+    ├── aquaOneCore
+    ├── Domain
+    ├── Application adapters
+    └── Hardware adapters / drivers
+```
+
+Domain korzysta z wąskich kontraktów Core i domenowych interfejsów hardware, ale nie zna transportów. Composition Root jest jedynym miejscem znającym konkretny skład urządzenia, BoardProfile i połączenia usług. Domain nie otrzymuje całego `AquaOneCore&`; zależności są jawne, preferowana jest dependency injection. Registry jest rejestrem capability/providerów, nie service locatorem.
+
+Domain odpowiada za state, config domenowy, logic, commands, domain mode, domain status, alarms, safety policy i diagnostics domenowe. Domain nie używa bezpośrednio WiFi, WebServer, WebSocket, PubSubClient, Preferences/NVS, Update, `ESP.restart()` ani przypadkowych GPIO. Hardware jest dostępny przez jawne interfejsy domenowe, np. `IDosingPump`, `ILightOutput`, `IReservoirLevelSensor`.
+
+Docelowy Core obejmuje Identity, Lifecycle, System state, Time, Storage, Config framework, Logging, Diagnostics, Alarm framework, Safety framework, Maintenance, Network, Commands, Events, Registry, Web, Realtime, MQTT infrastructure, OTA, Restart, Factory Reset, Backup/Restore, Versioning i Auth. To jest TARGET; nie wszystkie elementy są CURRENT.
+
+### Lifecycle i model stanu
+
+```text
+POWER ON → BOOT → CORE INIT → LOAD/VALIDATE CONFIG → HARDWARE INIT →
+DOMAIN INIT → SAFETY VALIDATION → NETWORK INIT → INTERFACES INIT → RUNNING
+```
+
+Sieć i integracje nie są warunkiem działania domeny, jeśli domena ich technicznie nie wymaga.
+
+Nie powstaje jeden ogromny enum. Rozdzielone są `OperationalState` (`BOOTING`, `RUNNING`, `MAINTENANCE`, `ERROR`), `HealthState` (`OK`, `DEGRADED`, `FAULT`) i `SafetyState` (`CLEAR`, `LOCKED`), a niezależnie istnieją `DomainMode`, aktywne alarmy i Action Locks. `RUNNING + DEGRADED + CLEAR` jest prawidłową kombinacją. `ERROR` oznacza poważny stan systemowy uniemożliwiający normalną pracę.
+
+### Command Path
+
+Wszystkie źródła sterowania — WEB, MQTT, PANEL, przycisk fizyczny, scheduler, automatyka lokalna i system — korzystają z jednej ścieżki:
+
+```text
+Source → Command → Validation → Authorization/Policy → Safety/Action Locks →
+Domain execution → State update → Event/Result
+```
+
+Transport nigdy nie steruje bezpośrednio GPIO/driverem. Scheduler również korzysta z Command Path. Command i Event są osobnymi pojęciami. Długie operacje mogą używać `operation_id`; dokładne envelope, error codes i idempotency pozostają DECISION REQUIRED.
+
+### Snapshot, Events i Realtime
+
+Rozróżniamy Snapshot, State Change, Domain Event, Alarm Event, Operation Event i Telemetry. Snapshot jest autorytatywnym źródłem aktualnego stanu, Event mówi, że coś się wydarzyło. Realtime nie jest jedynym źródłem prawdy. W V1 nie ma event replay; po reconnect klient zawsze wykonuje pełny resync. `boot_id`/`runtime_id`, sekwencje, gap detection i nazwy stanów UI pozostają DECISION REQUIRED.
+
+### Config, Storage, Safety i Alarmy
+
+Rozdzielone są `CoreConfig`, `DomainConfig`, `DomainState`, `SystemState` i `RuntimeState`; RuntimeState nie jest persistent. Config lifecycle to `load → decode → version → migrate → validate → apply`. Walidacja następuje przed zapisem i zastosowaniem, a migracje są jawne (`v1 → v2 → v3`). Obecny StorageService ma wartościowe cechy i jest kandydatem do KEEP.
+
+Maintenance, Safety i Action Lock są trzema różnymi mechanizmami. Maintenance opisuje stan serwisowy, Safety chroni system, a Action Lock blokuje konkretną akcję. Jedna akcja może mieć wiele powodów blokady. STOP, EMERGENCY_STOP, status, diagnostics i ACK nie są automatycznie blokowane globalną blokadą. Warning, alarm, fault i safety lock są odrębne; alarm nie oznacza automatycznie Safety Lock, a ACK nie oznacza CLEAR.
+
+### Hardware, Web i Security
+
+Core nie jest katalogiem konkretnych driverów. Rozróżniamy generic technical abstractions, concrete hardware drivers i domain hardware interfaces. BoardProfile należy do projektu, a testy domenowe używają fake domain capability, nie fake GPIO.
+
+Na urządzeniu pozostaje dokładnie jeden fizyczny transport Web. HTTP i Realtime mają docelowo korzystać ze wspólnego backendu i portu; nie wolno tworzyć konkurencyjnego WebServera. Obecny synchroniczny Web Core jest CURRENT/legacy foundation. Provider pattern jest wartościowy, ale jego obecne API nie jest gwarantowanym kontraktem bez breaking changes. HTTP obsługuje request/response, initial/full snapshot, konfigurację, akcje, OTA i backup/restore; Realtime obsługuje live state, events, alarms, warnings i progress.
+
+Auth odpowiada „kto może wykonać akcję”, Safety „czy akcja może być teraz wykonana”. Auth należy do Core; Domain nie zna haseł, sesji, nagłówków HTTP ani WebSocket handshake auth. Sekrety nie trafiają do status, diagnostics, logs, realtime ani MQTT state. Logging opisuje, co się wydarzyło, diagnostics opisuje stan obecny. `CoreDiagnostics` i `DomainDiagnostics` są semantycznie oddzielone.
+
+### CURRENT → vNext gap
+
+| Obszar | Ocena vNext |
+|---|---|
+| StorageService | KEEP jako mechanizm bazowy |
+| Config jako pełny subsystem | ADAPT / SPLIT |
+| Logging, System/Identity, Time, Network | ADAPT |
+| Diagnostics | REWRITE architektoniczne na provider/capability |
+| Web | REWRITE architektoniczne; najpierw feasibility spike |
+| Commands, Events, Alarms, Safety, Maintenance, Realtime | BUILD NEW |
+| MQTT, OTA, Backup/Restore, Factory Reset, Registry, lifecycle | BUILD NEW |
+
+Istniejące projekty nie są wzorcem platformy. Każdy projekt może później zostać oceniony jako KEEP, ADAPT, REWRITE albo REMOVE.

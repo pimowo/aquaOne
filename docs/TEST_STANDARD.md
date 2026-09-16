@@ -1,6 +1,6 @@
 # TEST_STANDARD.md
 
-**Status:** DRAFT
+**Status:** DRAFT — CURRENT evidence rules plus Architecture vNext TARGET validation
 **Scope:** aquaOne ecosystem
 **Version:** 1.0
 **Last reviewed:** 2026-09-12
@@ -1334,3 +1334,19 @@ restart/power-cycle PASS
 Testy mają umożliwić rozwój wspólnego Core bez strachu, że poprawka w jednym urządzeniu zepsuje pozostałe.
 
 **Najpierw chronimy wspólne kontrakty i safety, potem szczegóły. Testy PC dają szybkość, a HIL potwierdza rzeczywistość.**
+
+# 103. Architecture vNext evidence
+
+Architecture vNext jest TARGET i nie może być oznaczana jako CURRENT na podstawie samego
+builda ani istniejącego projektu. Każda faza platformy musi rozróżniać BUILD,
+COMPILE/LINK CHECK, HOST UNIT TEST, INTEGRATION, ACCEPTANCE, REGRESSION i HIL.
+
+Feasibility spike dla HTTP + Realtime jest osobnym poziomem dowodu. Musi sprawdzić jeden
+backend/port, HTTP podczas aktywnego Realtime, reconnect i pełny resync, auth handshake,
+multipart OTA i abort, slow client, backpressure, wpływ na main loop oraz heap/flash na
+reprezentatywnym ESP32 i ESP32-S3. Konkretne limity i timeouty mogą wejść do kontraktu
+wyłącznie po pomiarach.
+
+Testy domenowe nie mogą uzależniać się od konkretnego transportu. Command Path, Safety,
+Action Locks i Snapshot/Event należy testować przez wąskie kontrakty i fake domain
+capabilities.

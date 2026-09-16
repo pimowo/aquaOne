@@ -4,11 +4,26 @@ Wspólna biblioteka technicznych usług dla ekosystemu aquaOne.
 
 Core dostarcza abstrakcje dla funkcji wspólnych do wszystkich urządzeń — boot, persistent storage, czas (RTC + NTP), sieć (WiFi), web server, logging, diagnostyka. Nie zawiera logiki domenowej (oświetlenie, pompy, czujniki, algorytmy).
 
-## 🟢 Status: STABLE & IN USE
+## Status: CURRENT foundation (v0.6.2)
 
 - 7 modułów zaimplementowanych i weryfikowanych
 - Używana przez Luma i Hydro; Doser ma integrację hybrydową; Gas używa Core Logging
-- API wdrażane; brak zmian breaking w bliskiej przyszłości
+- Publiczne API opisuje bieżący baseline; Architecture vNext może wymagać breaking changes
+
+## CURRENT i TARGET
+
+Ten README opisuje CURRENT aquaOneCore v0.6.2: używaną bibliotekę technicznych usług
+System, Config/Storage, Logging, Diagnostics, Network, Web i Time. CURRENT nie jest jeszcze
+pełną platformą Architecture vNext.
+
+Architecture vNext jest TARGET. Docelowo Core obejmie również lifecycle/composition,
+Commands, Events, Alarms, Safety, Maintenance, Registry, Realtime, wspólny MQTT, OTA,
+Backup/Restore, Factory Reset, Auth i wersjonowanie. Te elementy nie są automatycznie
+zaimplementowane tylko dlatego, że występują w architekturze docelowej.
+
+Istniejący kod i API mogą zostać ocenione jako KEEP, ADAPT, REWRITE albo REMOVE. Ten README
+zachowuje dokumentację CURRENT API, ale nie obiecuje braku breaking changes ani zgodności
+z przyszłym Core vNext.
 
 ## 📦 Moduły (v0.6.2)
 
