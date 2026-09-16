@@ -349,6 +349,11 @@ Application / Composition Root
 
 Domain korzysta z wąskich kontraktów Core i domenowych interfejsów hardware, ale nie zna transportów. Composition Root jest jedynym miejscem znającym konkretny skład urządzenia, BoardProfile i połączenia usług. Domain nie otrzymuje całego `AquaOneCore&`; zależności są jawne, preferowana jest dependency injection. Registry jest rejestrem capability/providerów, nie service locatorem.
 
+Composition Root współpracuje z `ApplicationRuntime`, który koordynuje startup i runtime
+wyłącznie przez wąskie kontrakty. ApplicationRuntime nie posiada konkretnych usług, nie zna
+konkretnych klas Domain, Network, Web ani MQTT, nie jest service locatorem ani Registry i nie
+zawiera semantyki domenowej. Dokładny ApplicationPlan i hooks pozostają DECISION REQUIRED.
+
 Domain odpowiada za state, config domenowy, logic, commands, domain mode, domain status, alarms, safety policy i diagnostics domenowe. Domain nie używa bezpośrednio WiFi, WebServer, WebSocket, PubSubClient, Preferences/NVS, Update, `ESP.restart()` ani przypadkowych GPIO. Hardware jest dostępny przez jawne interfejsy domenowe, np. `IDosingPump`, `ILightOutput`, `IReservoirLevelSensor`.
 
 Docelowy Core obejmuje Identity, Lifecycle, System state, Time, Storage, Config framework, Logging, Diagnostics, Alarm framework, Safety framework, Maintenance, Network, Commands, Events, Registry, Web, Realtime, MQTT infrastructure, OTA, Restart, Factory Reset, Backup/Restore, Versioning i Auth. To jest TARGET; nie wszystkie elementy są CURRENT.
@@ -360,9 +365,36 @@ POWER ON → BOOT → CORE INIT → LOAD/VALIDATE CONFIG → HARDWARE INIT →
 DOMAIN INIT → SAFETY VALIDATION → NETWORK INIT → INTERFACES INIT → RUNNING
 ```
 
-Sieć i integracje nie są warunkiem działania domeny, jeśli domena ich technicznie nie wymaga.
+Publiczny `StartupPhase` obejmuje `BOOT`, `CORE_INIT`, `LOAD_VALIDATE_CONFIG`,
+`HARDWARE_INIT`, `DOMAIN_INIT`, `SAFETY_VALIDATION`, `NETWORK_INIT`, `INTERFACES_INIT` i
+`RUNNING`. Nie opisuje Maintenance, Recovery ani Restart. `EarlySafeOutputInitializer`
+wykonuje idempotentne ustawienie konserwatywnego stanu fizycznych wyjść na początku `BOOT`,
+przed configiem i pełnym hardware init; jest mechanizmem technicznym, nie częścią Safety
+framework.
+
+Sieć i integracje są opcjonalne i nie są warunkiem gotowości ani działania domeny.
+
+Startup rozdziela `StartupRequirement` (`REQUIRED`, `OPTIONAL`) od `StartupOutcome`
+(`SUCCEEDED`, `DISABLED`, `FAILED`). Optional disabled nie degraduje health, optional failed
+może dać `DEGRADED`, a required failed zatrzymuje normalny startup jako
+`ERROR + FAULT + LOCKED`. `REQUIRED + DISABLED` jest nieprawidłowe. Każdy startup failure
+posiada stabilny, krótki error code; dokładny katalog i reprezentacja pozostają DECISION
+REQUIRED.
 
 Nie powstaje jeden ogromny enum. Rozdzielone są `OperationalState` (`BOOTING`, `RUNNING`, `MAINTENANCE`, `ERROR`), `HealthState` (`OK`, `DEGRADED`, `FAULT`) i `SafetyState` (`CLEAR`, `LOCKED`), a niezależnie istnieją `DomainMode`, aktywne alarmy i Action Locks. `RUNNING + DEGRADED + CLEAR` jest prawidłową kombinacją. `ERROR` oznacza poważny stan systemowy uniemożliwiający normalną pracę.
+
+W Fazie 1 ApplicationRuntime jest authoritative writer dla OperationalState, HealthState
+wynika z minimalnej koordynacji startup/runtime, a SafetyState startuje jako `LOCKED` i może
+zostać ustawiony na `CLEAR` przez startup safety gate. Nie powstaje ogólne
+`setSafetyState()`. Workflow `MAINTENANCE`, SafetyManager i Action Locks należą do
+późniejszych faz.
+
+Identity jest rozdzielone na `DeviceIdentity`, `BuildIdentity`, `HardwareIdentity` i
+`RuntimeIdentity`; friendly name nie należy do technical identity. `RestartReason`,
+`RestartRequestReason` i `RestartExecutor` są osobnymi pojęciami. Domain i transport mogą
+otrzymać tylko `RestartRequester`, a minimalny restart Fazy 1 przechodzi przez pending request
+i safe point runtime loop. Dokładne pola identity, runtime identity oraz rozszerzone workflow
+restartu pozostają DECISION REQUIRED.
 
 ### Command Path
 

@@ -1,6 +1,6 @@
 # Architecture vNext — decyzje
 
-**Status:** DRAFT ACCEPTED dla FAZY 0
+**Status:** DRAFT ACCEPTED dla FAZY 0 i F1.1 CONTRACT GATE
 **Scope:** cała platforma aquaOne
 **Zasada:** Architecture vNext jest TARGET. CURRENT wynika z kodu i macierzy projektu. Legacy code is not architecture.
 
@@ -21,11 +21,60 @@ Composition Root zna konkretny skład urządzenia, hardware, BoardProfile, Core 
 ### ARCH-005 — ocena legacy
 Istniejący kod może zostać oceniony jako KEEP, ADAPT, REWRITE albo REMOVE. Nie zmieniamy Architecture vNext tylko po to, aby zachować kompatybilność z istniejącym projektem.
 
+### ARCH-006 — Composition Root i ApplicationRuntime
+Composition Root zna konkretne implementacje i składa aplikację. ApplicationRuntime wyłącznie
+koordynuje startup i runtime przez wąskie kontrakty. Nie posiada konkretnych usług, nie zna
+konkretnych klas Domain, Network, Web ani MQTT, nie jest service locatorem ani Registry i nie
+zawiera semantyki domenowej. Dokładny ApplicationPlan, hooks i ownership pozostają DECISION
+REQUIRED.
+
 ### SYS-001 — lifecycle
 Docelowy lifecycle to: POWER ON, BOOT, CORE INIT, LOAD/VALIDATE CONFIG, HARDWARE INIT, DOMAIN INIT, SAFETY VALIDATION, NETWORK INIT, INTERFACES INIT, RUNNING.
 
 ### SYS-002 — niezależne osie stanu
 OperationalState, HealthState, SafetyState, DomainMode, alarms i Action Locks są rozdzielone. Nie tworzymy jednego ogromnego enum.
+
+### SYS-003 — StartupPhase
+Publiczny `StartupPhase` opisuje wyłącznie startup: `BOOT`, `CORE_INIT`,
+`LOAD_VALIDATE_CONFIG`, `HARDWARE_INIT`, `DOMAIN_INIT`, `SAFETY_VALIDATION`,
+`NETWORK_INIT`, `INTERFACES_INIT`, `RUNNING`. Nie obejmuje Maintenance, Recovery ani
+Restart i nie konkuruje z OperationalState. Early safe outputs są technicznym krokiem na
+początku `BOOT`, a nie osobną publiczną fazą.
+
+### SYS-004 — wynik startupu
+`StartupRequirement` rozróżnia `REQUIRED` i `OPTIONAL`, a `StartupOutcome` rozróżnia
+`SUCCEEDED`, `DISABLED` i `FAILED`. Requirement należy do composition/deklaracji
+participanta, nie do wyniku operacji. `REQUIRED + FAILED` zatrzymuje normalny startup i
+prowadzi do `ERROR + FAULT + LOCKED`. `OPTIONAL + FAILED` nie blokuje startupu i może
+prowadzić do `DEGRADED`. `OPTIONAL + DISABLED` nie degraduje health. `REQUIRED + DISABLED`
+jest kombinacją nieprawidłową.
+
+### SYS-005 — stabilny startup error code
+Każdy startup failure posiada krótki, stabilny error code. Długi dynamiczny tekst nie jest
+podstawowym kontraktem błędu. Dokładna reprezentacja, szerokość i katalog kodów pozostają
+DECISION REQUIRED.
+
+### SYS-006 — stan systemu w Fazie 1
+`OperationalState` ma wartości `BOOTING`, `RUNNING`, `MAINTENANCE`, `ERROR`;
+`HealthState`: `OK`, `DEGRADED`, `FAULT`; `SafetyState`: `CLEAR`, `LOCKED`.
+ApplicationRuntime jest authoritative writer dla OperationalState. HealthState wynika w
+Fazie 1 z minimalnej koordynacji startup/runtime. SafetyState startuje jako `LOCKED`, a
+startup safety gate może przejść do `CLEAR`. Nie powstaje ogólne `setSafetyState()`,
+SafetyManager ani Action Locks. `MAINTENANCE` istnieje w typie, ale jego workflow należy do
+późniejszej fazy.
+
+### SYS-007 — granice restartu
+`RestartReason` opisuje, dlaczego urządzenie wystartowało, `RestartRequestReason` — dlaczego
+bieżący runtime żąda restartu, a `RestartExecutor` wykonuje efekt platformowy. Domain i
+transport otrzymują wyłącznie `RestartRequester`. Zakres Fazy 1 to: request, pending request,
+safe point w runtime loop, RestartExecutor. RestartPreparation, Maintenance transition,
+MQTT offline, timeouty i OTA workflow pozostają poza Fazą 1.
+
+### IDN-001 — rozdzielenie identity
+`DeviceIdentity`, `BuildIdentity`, `HardwareIdentity` i `RuntimeIdentity` są osobnymi
+pojęciami. Friendly/user-visible name nie jest częścią technical identity. Dokładne pola,
+format `device_id`, użycie MAC/MAC6, capacities oraz kontrakt RuntimeIdentity pozostają
+DECISION REQUIRED.
 
 ### CMD-001 — wspólna ścieżka komendy
 Każde źródło sterowania korzysta z Source → Command → Validation → Authorization/Policy → Safety/Action Locks → Domain execution → State update → Event/Result.
@@ -51,6 +100,13 @@ Warning, alarm, fault i safety lock są różne. ACK nie oznacza CLEAR, a alarm 
 ### HW-001 — trzy poziomy hardware
 Rozdzielamy generic technical abstractions, concrete hardware drivers i domain hardware interfaces. BoardProfile należy do projektu.
 
+### HW-002 — EarlySafeOutputInitializer
+`EarlySafeOutputInitializer` wykonuje przed odczytem configu i pełnym hardware init
+idempotentną techniczną operację ustawienia konserwatywnego stanu fizycznych wyjść. Nie
+interpretuje alarmów ani Safety policy i nie należy do przyszłego Safety framework. Raportuje
+jawny sukces albo błąd. Urządzenie bez ryzykownych wyjść może użyć neutralnej implementacji
+no-op, bez rozgałęzień po `device_type`.
+
 ### WEB-001 — jeden transport
 Jedno urządzenie ma jeden fizyczny transport Web. HTTP i Realtime docelowo współdzielą backend i port.
 
@@ -68,8 +124,13 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 ## DECISION REQUIRED
 
 - ARCH-101 — dokładny API Core ↔ Domain;
-- SYS-101 — nazwy i kontrakt boot_id/runtime_id;
-- SYS-102 — dokładny model Application lifecycle;
+- SYS-101 — nazwa, algorytm, encoding, generator, RNG source i collision policy RuntimeIdentity;
+- SYS-102 — dokładny ApplicationPlan, hooks, liczba participantów oraz ownership pointer/reference;
+- SYS-104 — dokładny wrapper wyniku startupu, StartupReport oraz reprezentacja i katalog startup error codes;
+- SYS-105 — recovery po krytycznym błędzie startupu;
+- SYS-106 — dokładny przyszły writer ownership dla HealthState i SafetyState;
+- SYS-107 — dokładny katalog RestartRequestReason i zachowanie wielu pending requestów;
+- IDN-101 — pola identity, format device_id, MAC/MAC6, capacities i zasady walidacji;
 - CFG-101 — dokładny model pending config i recovery po korupcji;
 - CFG-102 — zakres DomainState w backupie;
 - CMD-101 — command envelope, CommandResult, error_code, request/correlation ID;
@@ -91,7 +152,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 - PANEL-101 — protokół i zakres klienta aquaOne Panel;
 - SYS-103 — onboarding/recovery mode.
 
-Nie ustalamy tych wartości w FAZIE 0 na podstawie istniejącego Dosera.
+Nie ustalamy tych wartości na podstawie istniejącego Dosera ani innego kodu legacy.
 
 ## SPIKE REQUIRED
 
