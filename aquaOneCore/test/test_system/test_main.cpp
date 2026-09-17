@@ -188,6 +188,8 @@ void test_services_keep_independent_device_identities() {
 
 void runIdentityTests();
 void runSystemStateTests();
+void runStartupResultTests();
+void runApplicationRuntimeTests();
 
 void runTests() {
     RUN_TEST(test_device_identity_is_stored_correctly);
@@ -200,6 +202,8 @@ void runTests() {
     RUN_TEST(test_services_keep_independent_device_identities);
     runIdentityTests();
     runSystemStateTests();
+    runStartupResultTests();
+    runApplicationRuntimeTests();
 }
 
 #if defined(ARDUINO)

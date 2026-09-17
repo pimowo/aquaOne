@@ -40,13 +40,18 @@ limitu czyści cały obiekt i ustawia invalid. Brak truncation i dynamic allocat
 Limity implementacji, łącznie z NUL: deviceType/firmwareVersion 24, coreVersion 16,
 hardwareVariant 32 bajty. Nie są to finalne decyzje Architecture vNext.
 Format device_id, MAC/MAC6, finalne pola, capacities i walidacja pozostają IDN-101
-DECISION REQUIRED; RuntimeIdentity (SYS-101), jego generator i ApplicationRuntime nie są
-zaimplementowane. Nowe typy są testowane w `platformio test -e native -f test_system`.
+DECISION REQUIRED; RuntimeIdentity (SYS-101) i jego generator nie są zaimplementowane.
+Nowe typy są testowane w `platformio test -e native -f test_system`.
 
 **CURRENT F1.4:** `AquaCore/System/SystemState.h` defines independent neutral
 `AquaCore::System::OperationalState`, `HealthState`, `SafetyState` and
 `StartupPhase` contracts with deterministic name helpers. It does not implement lifecycle
 or state transitions. Legacy `AquaCore::SystemState` and `SystemStatus` remain unchanged.
+
+**CURRENT F1.7:** neutralny `AquaCore::System::ApplicationRuntime` implementuje host-tested
+startup foundation, plan participantów, state transitions oraz immutable startup report bez
+heap. Foundation nie jest jeszcze używana przez domeny i nie obejmuje recovery ani runtime
+loop. Legacy `SystemService` pozostaje bez zmian.
 
 ```cpp
 #include <AquaCore/System/SystemService.h>
