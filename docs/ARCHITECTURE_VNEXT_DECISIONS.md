@@ -1,6 +1,6 @@
 # Architecture vNext — decyzje
 
-**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE i F1.5 SYS-102 DESIGN GATE
+**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE i F1.6 SYS-104 DESIGN GATE
 **Scope:** cała platforma aquaOne
 **Zasada:** Architecture vNext jest TARGET. CURRENT wynika z kodu i macierzy projektu. Legacy code is not architecture.
 
@@ -51,8 +51,7 @@ jest kombinacją nieprawidłową.
 
 ### SYS-005 — stabilny startup error code
 Każdy startup failure posiada krótki, stabilny error code. Długi dynamiczny tekst nie jest
-podstawowym kontraktem błędu. Dokładna reprezentacja, szerokość i katalog kodów pozostają
-DECISION REQUIRED.
+podstawowym kontraktem błędu. Reprezentację i zasady katalogów definiuje SYS-104.
 
 ### SYS-006 — stan systemu w Fazie 1
 `OperationalState` ma wartości `BOOTING`, `RUNNING`, `MAINTENANCE`, `ERROR`;
@@ -77,10 +76,10 @@ Każdy descriptor zawiera stabilny identyfikator participanta, fazę, `StartupRe
 oraz callback i opcjonalny opaque context. Requirement i phase należą do composition, więc
 callback nie zna fazy i nie może sam ogłosić się jako `REQUIRED`. Callback nie otrzymuje
 runtime, registry ani zestawu usług. Zwraca minimalny wynik zawierający `StartupOutcome` i
-stabilny error code. `FAILED` wymaga niepustego kodu, a `SUCCEEDED` i `DISABLED` nie niosą
-błędu; dokładny typ wyniku, reprezentacja kodu i raport należą do SYS-104.
+stabilny error code. `FAILED` wymaga poprawnego kodu, a `SUCCEEDED` i `DISABLED` nie niosą
+błędu; dokładny typ wyniku, reprezentację kodu i raport definiuje SYS-104.
 
-Konceptualny kontrakt, bez przesądzania nazw implementacyjnych SYS-104:
+Konceptualny kontrakt planu; typy wyniku definiuje SYS-104:
 
 ```cpp
 using StartupCallback = StartupStepResult (*)(void* context);
@@ -137,9 +136,9 @@ special `safetyGate`, a `RUNNING` jest wyłącznie terminalnym markerem i nie pr
 zwykłych participantów. Network i Interfaces mogą zawierać wyłącznie participanty
 `OPTIONAL`.
 
-Obie special actions są wymagane przez kształt planu, nie mają `StartupRequirement`,
-wykonują się dokładnie raz, a ich jedynym legalnym wynikiem jest `SUCCEEDED`; `DISABLED`
-jest contract failure i fatal failure. Zwykłe wyniki podlegają macierzy
+Obie special actions są wymagane przez kształt planu, nie mają `StartupRequirement`
+i wykonują się dokładnie raz. `SUCCEEDED` kontynuuje startup, `FAILED` jest fatal failure,
+a `DISABLED` jest contract failure i fatal failure. Zwykłe wyniki podlegają macierzy
 `REQUIRED + SUCCEEDED` → continue, `REQUIRED + FAILED/DISABLED` → fatal,
 `OPTIONAL + SUCCEEDED/DISABLED` → continue bez degradacji oraz
 `OPTIONAL + FAILED` → continue z `DEGRADED`. Nieznany `StartupOutcome`, `FAILED` bez
@@ -159,6 +158,365 @@ heap; Composition Root posiada participant array, contexty, concrete services i 
 Plan może mieć wiele participantów w jednej zwykłej fazie albo nie mieć żadnego. Przyszłe kroki
 runtime są osobnym `RuntimePlan`, a restart safe point przypada na koniec kompletnego `tick()`;
 runtime scheduling oraz RestartRequester/Executor nie są częścią SYS-102.
+
+### SYS-104 — wynik kroku i raport startupu
+
+Rozważone reprezentacje stable error code:
+
+- jeden globalny `enum class : uint16_t` jest mały i prosty w testach, ale wymaga centralnego
+  katalogu wszystkich błędów Core i Domain, sprzęga wydania oraz sprzyja rozgałęzieniom
+  produktowym w Core;
+- numeric value type z namespace/category usuwa kolizje globalnego enum i jest mały, ale
+  wartości są słabo czytelne w diagnostyce, wymagają osobnego mapowania oraz trwałej polityki
+  numerów; arbitralne zakresy zarezerwowane nie rozwiązują ownership katalogów;
+- tekst kopiowany do bufora o stałej pojemności jest czytelny i łatwy w serializacji, ale
+  pojemność byłaby arbitralnym limitem publicznego kontraktu, a każdy rekord powiela storage;
+- wybrany model to mały value type z dwiema referencjami do niemodyfikowalnych tokenów:
+  namespace właściciela i lokalnego kodu. Nie alokuje heap, kopiuje tylko wskaźniki, pozostaje
+  czytelny i nie wymaga jednego globalnego enum ani zakresów liczbowych.
+
+Oba tokeny muszą być non-null i niepuste. Local code zawiera wyłącznie wielkie litery ASCII,
+cyfry i `_`, a jego pierwszy znak musi być literą. Namespace dopuszcza te same znaki oraz `.`
+wyłącznie jako separator niepustych segmentów; każdy segment zaczyna się literą. `:`, whitespace
+i małe litery są niedozwolone. Runtime waliduje oba tokeny i nie normalizuje tekstu.
+
+Tokeny mają static storage duration i stabilne znaczenie przez kompatybilne wersje firmware.
+Nie wolno używać stack-local ani temporary buffers, mutable config storage ani dynamic storage
+o lifetime krótszym niż `ApplicationRuntime` i jego `StartupReport`. Namespace używa
+hierarchicznego, kontrolowanego przez właściciela klucza, na przykład `AQUA.CORE` albo
+`AQUA.DOSER`; local code używa nazwy takiej jak `PLAN_INVALID` albo `CONFIG_INVALID`. Core
+rezerwuje `AQUA.CORE`. Każdy Domain/provider posiada własny, globalnie unikalny namespace
+i własny katalog local codes. Core nie zna listy domen, nie prowadzi registry namespace,
+sprawdza wyłącznie format i nie interpretuje katalogu Domain. Namespace i kodu nie wolno
+zmieniać ani ponownie użyć dla innego znaczenia.
+
+Równość `StartupErrorCode` jest semantic i case-sensitive: wymaga byte-for-byte equality tekstu
+namespace oraz byte-for-byte equality tekstu local code. Nie zależy od adresów wskaźników;
+dwa różne wskaźniki do identycznych tekstów oznaczają ten sam kod. Postać maszynowa to
+jednoznaczne `namespace:local`, na przykład `AQUA.CORE:PLAN_INVALID`; `:` nie może wystąpić
+w żadnym tokenie. Human-readable text może być dodany później i nie jest kontraktem.
+Długość tokenów nie jest częścią kontraktu, a implementacja ich nie kopiuje.
+
+Konceptualny publiczny kontrakt wyniku jest następujący; nazwy metod są normatywne na poziomie
+designu, a reprezentacja pól pozostaje prywatna:
+
+```cpp
+class StartupErrorCode {
+public:
+    StartupErrorCode() = delete;
+    static StartupErrorCode fromStatic(
+        const char* ownerNamespace,
+        const char* localCode
+    );
+
+    bool isValid() const;
+    const char* ownerNamespace() const;
+    const char* localCode() const;
+    bool equals(const StartupErrorCode& other) const;
+
+private:
+    // Prywatny absent sentinel jest dostępny tylko StartupStepResult.
+    StartupErrorCode(const char* ownerNamespace, const char* localCode);
+    const char* ownerNamespace_;
+    const char* localCode_;
+    friend class StartupStepResult;
+};
+
+enum class StartupOutcome : uint8_t {
+    SUCCEEDED,
+    DISABLED,
+    FAILED
+};
+
+class StartupStepResult {
+public:
+    StartupStepResult() = delete;
+    static StartupStepResult succeeded();
+    static StartupStepResult disabled();
+    static StartupStepResult failed(StartupErrorCode code);
+
+    StartupOutcome outcome() const;
+    bool isValid() const;
+    bool hasErrorCode() const;
+    const StartupErrorCode* errorCode() const;
+
+private:
+    StartupStepResult(StartupOutcome outcome, StartupErrorCode code);
+    StartupOutcome outcome_;
+    StartupErrorCode code_; // prywatny absent sentinel dla SUCCEEDED/DISABLED
+};
+```
+
+`succeeded()` i `disabled()` tworzą wynik bez kodu. `failed(code)` tworzy poprawny wynik tylko
+dla poprawnego kodu. Nie ma publicznego konstruktora ani setterów, więc zwykły kod nie może
+zbudować sprzecznej kombinacji. `isValid()` jest obowiązkową defensywną granicą callbacka:
+akceptuje dokładnie `FAILED` z poprawnym kodem albo `SUCCEEDED`/`DISABLED` bez kodu.
+`errorCode()` zwraca `nullptr`, gdy `hasErrorCode()` jest false. Błędny kod przekazany do
+`failed()` daje wykrywalny invalid result, a nie zastępczy błąd Domain. Typy nie używają heap,
+są tanio kopiowalne, a wymóg trivial copy nie jest kontraktem ABI.
+
+Core posiada własny stabilny katalog w namespace `AQUA.CORE`. Minimalny katalog implementacji
+ma następujące local codes:
+
+- `PARTICIPANT_STORAGE_INVALID` — niepoprawna relacja pointer/count participant array;
+- `REPORT_STORAGE_INVALID` — niepoprawna relacja pointer/capacity report storage;
+- `CALLBACK_MISSING` — action nie ma callbacka;
+- `PARTICIPANT_ID_MISSING` — action ma null albo pusty participant ID;
+- `PARTICIPANT_ID_DUPLICATE` — participant ID nie jest unikalny w planie;
+- `PHASE_INVALID` — wartość `StartupPhase` leży poza legalnym enum domain;
+- `PHASE_NOT_ALLOWED` — poprawna wartość enum jest zakazana dla danego descriptora, na przykład
+  ordinary participant używa `SAFETY_VALIDATION` albo `RUNNING`;
+- `PHASE_ORDER_INVALID` — participant array nie ma niemalejącej kolejności phase;
+- `REQUIREMENT_INVALID` — wartość `StartupRequirement` leży poza legalnym enum domain;
+- `OUTCOME_INVALID` — wartość `StartupOutcome` leży poza legalnym enum domain;
+- `ERROR_CODE_MISSING` — outcome `FAILED` nie zawiera wymaganego kodu;
+- `ERROR_CODE_INVALID` — kod jest obecny, ale jego tokeny lub format są niepoprawne;
+- `ERROR_CODE_UNEXPECTED` — kod występuje przy `SUCCEEDED` albo `DISABLED`;
+- `REQUIRED_DISABLED`, `SPECIAL_DISABLED`.
+
+`REQUIRED_DISABLED` oznacza `DISABLED` zwrócone przez ordinary participant `REQUIRED`,
+a `SPECIAL_DISABLED` — `DISABLED` zwrócone przez jedną z special actions. Każdy Core code ma
+dokładnie jedno powyższe znaczenie. Symbole i znaczenia są stałe, nie mogą być ponownie użyte
+i podlegają testom stabilności; nie tworzą globalnego katalogu błędów urządzenia. Awaria
+special action zwracająca poprawne
+`FAILED` jest identyfikowana przez `PARTICIPANT_FAILURE` i source tej action, a jej error code
+pozostaje kodem callbacka. Nie dodajemy drugiego ogólnego kodu Core, który ukrywałby przyczynę.
+Domain/provider definiuje we własnym namespace kody dla config, hardware, sensor, actuator
+i domain init; Core ich nie zna, nie mapuje i nie zastępuje.
+
+Każdy startup failure tworzy rekord z poprawnym stable error code.
+Rozróżnione są trzy przyczyny:
+
+- `PARTICIPANT_FAILURE` — callback legalnie zwrócił `FAILED`; zachowany zostaje jego kod;
+- `PLAN_CONTRACT_FAILURE` — struktura planu narusza SYS-102; runtime używa kodu Core;
+- `RESULT_CONTRACT_FAILURE` — callback zwrócił nielegalny wynik lub kombinację; runtime używa
+  kodu Core i nie próbuje naprawiać wyniku.
+
+Contract failure zawsze jest fatal, również gdy wadliwy descriptor ma requirement `OPTIONAL`.
+Nie rzuca wyjątku, nie uruchamia recovery i kończy startup stanem `ERROR + FAULT + LOCKED`.
+Zwykły `REQUIRED + FAILED` i `FAILED` special action są fatal participant failures.
+`OPTIONAL + FAILED` jest niefatalnym participant failure i ustawia finalne health na
+`DEGRADED`. `REQUIRED + DISABLED` oraz `DISABLED` special action są result contract failures.
+
+Raport lokalizuje błąd niezależnie od poprawności ID. `StartupFailureSource` rozróżnia
+`PLAN`, `EARLY_SAFE_OUTPUTS`, `PARTICIPANT` i `SAFETY_GATE`. Dla zwykłego participanta rekord
+zachowuje jego indeks w tablicy; dla pozostałych źródeł indeks nie występuje. `participantId`
+jest pożyczonym wskaźnikiem z SYS-102 i może być `nullptr` tylko wtedy, gdy naruszenie planu
+uniemożliwia wskazanie poprawnego ID. `phase` oznacza publiczną fazę w chwili błędu:
+`BOOT` dla pełnej walidacji strukturalnej, bieżącą fazę dla callbacka, `SAFETY_VALIDATION`
+dla safety gate. Source jest potrzebny, aby jednoznacznie odróżnić special actions i plan
+failure bez wymyślania zarezerwowanego participant ID. Requirement i observed outcome nie są
+kopiowane: źródło, kind, miejsce rekordu i error code wystarczają do interpretacji.
+`PLAN` wskazuje błąd plan-wide, na przykład relację pointer/count; błąd konkretnego descriptora
+używa source `PARTICIPANT`, jego indeksu i phase `BOOT`, ponieważ wykryła go walidacja przed
+wykonaniem zwykłych faz.
+
+Normatywna macierz legalnych kombinacji kind/source jest następująca:
+
+| Failure kind | Legalne source |
+|---|---|
+| `PARTICIPANT_FAILURE` | `EARLY_SAFE_OUTPUTS`, `PARTICIPANT`, `SAFETY_GATE`; nigdy `PLAN` |
+| `RESULT_CONTRACT_FAILURE` | `EARLY_SAFE_OUTPUTS`, `PARTICIPANT`, `SAFETY_GATE`; nigdy `PLAN` |
+| `PLAN_CONTRACT_FAILURE` | `PLAN` albo konkretne `EARLY_SAFE_OUTPUTS`, `PARTICIPANT`, `SAFETY_GATE`, jeżeli błąd można przypisać do action/descriptora |
+
+Pozostałe kombinacje są niepoprawne. `participantId` jest wymagany dla
+`PARTICIPANT_FAILURE`. Jest również wymagany dla callback `RESULT_CONTRACT_FAILURE`, jeżeli
+action ma poprawny ID. Może być `nullptr` wyłącznie przy contract failure, gdy nie istnieje
+poprawny participant/action ID do wskazania. `participantIndex` ma znaczenie tylko dla ordinary
+source `PARTICIPANT`; special actions i plan-wide failure nie mają indeksu. Każdy present
+record ma poprawny `StartupPhase`, odpowiadający fazie zatrzymania według SYS-102, oraz poprawny
+`StartupErrorCode`. Requirement i raw outcome nie są przechowywane, ponieważ kind, source
+i error code jednoznacznie opisują problem.
+
+Konceptualny rekord ma read-only API:
+
+```cpp
+enum class StartupFailureKind : uint8_t {
+    PARTICIPANT_FAILURE,
+    PLAN_CONTRACT_FAILURE,
+    RESULT_CONTRACT_FAILURE
+};
+
+enum class StartupFailureSource : uint8_t {
+    PLAN,
+    EARLY_SAFE_OUTPUTS,
+    PARTICIPANT,
+    SAFETY_GATE
+};
+
+class StartupFailureRecord {
+public:
+    StartupFailureRecord(); // pusty slot storage, nie publiczny failure
+    bool isPresent() const;
+    StartupFailureKind kind() const;       // precondition: isPresent()
+    StartupFailureSource source() const;   // precondition: isPresent()
+    StartupPhase phase() const;            // precondition: isPresent()
+    const char* participantId() const;     // może być nullptr jak opisano wyżej
+    bool hasParticipantIndex() const;
+    size_t participantIndex() const;       // precondition: hasParticipantIndex()
+    const StartupErrorCode& errorCode() const; // precondition: isPresent()
+
+private:
+    // Tylko ApplicationRuntime zapisuje rekord i nie tworzy present bez valid code.
+    // Dokładne prywatne pola nie są publicznym ABI.
+    friend class ApplicationRuntime;
+};
+
+struct StartupFailureStorage {
+    StartupFailureRecord* records;
+    size_t capacity;
+};
+```
+
+Pusty slot służy wyłącznie do statycznej lub stosowej deklaracji bufora. `StartupReport` nigdy
+nie udostępnia go jako failure. Dla `capacity == 0` wymagane jest `records == nullptr`; dla
+`capacity > 0` wymagany jest non-null writable buffer o lifetime co najmniej runtime. Zła
+relacja pointer/capacity jest plan contract failure wykrywanym podczas pełnej walidacji po
+early safe outputs. Zapisu i lifetime pamięci nie da się sprawdzić w runtime i pozostają
+precondition Composition Root. Storage należy do Composition Root i żyje przez cały
+`ApplicationRuntime` oraz jego `StartupReport`; runtime nie posiada go ani nie zwalnia.
+`StartupReport` przechowuje tylko view/pointer i stored count, bez kopiowania całej tablicy.
+Po zakończeniu startupu wykorzystany prefix jest częścią immutable reportu: Composition Root
+nie może go modyfikować, a runtime nie może go ponownie nadpisać.
+
+Rozważone modele raportu:
+
+- pełna kopia całego przyszłego `RuntimeState` miesza startup z danymi runtime i tworzy
+  niepotrzebne ownership;
+- raport zawierający wyłącznie błędy startupu jest mały, lecz po późniejszej zmianie statusu
+  nie zachowuje jednoznacznie finalnego stanu osiągniętego przez startup;
+- wybrany model przechowuje failure data oraz mały snapshot czterech istniejących osi
+  `RuntimeStatus` po zakończeniu startupu. Nie kopiuje service state ani przyszłego dużego
+  `RuntimeState`. To świadoma, mała kopia potrzebna do niezmiennego wyniku historycznego.
+
+`RuntimeStatus` jest bieżącym snapshotem `OperationalState`, `HealthState`, `SafetyState`
+i `StartupPhase`, zwracanym przez wartość. Może zmienić się po starcie zgodnie z przyszłymi
+decyzjami. `StartupReport` opisuje wyłącznie ostatnią i w Fazie 1 jedyną próbę startupu.
+Istnieje od konstrukcji runtime i przed pierwszym `start()` może być bezpiecznie pobrany przez
+`startupReport()`. Ma wtedy `isComplete() == false`, `hasFatalFailure() == false`,
+`fatalFailure() == nullptr`, `optionalFailureCount() == 0`,
+`storedOptionalFailureCount() == 0`, `optionalFailuresTruncated() == false` oraz
+`totalFailureCount() == 0`.
+`finalStatus()` jest dostępny dopiero dla complete report, a wcześniejsze wywołanie narusza
+precondition.
+
+Pierwszy `start()` wykonuje startup i finalizuje report. Po jego powrocie report jest complete
+i niezmienny: `finalStatus` jest kopią stanu końcowego, fatal record, optional failure counts
+oraz stored records nie zmieniają się. Późniejsze przejście bieżącego `RuntimeStatus` do
+`MAINTENANCE`, runtime fault ani innego stanu nie zmienia `StartupReport::finalStatus()`.
+
+Każde kolejne `start()` nie wywołuje callbacków, nie czyści reportu, nie resetuje bieżącego
+statusu, nie zmienia fatal failure ani liczników i nie modyfikuje caller-provided buffer;
+zwraca istniejący report. Jego complete state wystarcza runtime do rozpoznania zakończonego
+startu, bez nowej publicznej osi lifecycle. `ApplicationRuntime::start()` jest non-reentrant;
+wywołanie go w trakcie trwającego `start()` narusza precondition. Mutex, thread safety
+i recursive handling nie są częścią tego kontraktu. SYS-102 nie udostępnia runtime callbackom
+w normalnej ścieżce. Retry/recovery pozostają SYS-105.
+
+Konceptualny kontrakt raportu i dostępu:
+
+```cpp
+struct RuntimeStatus {
+    OperationalState operational;
+    HealthState health;
+    SafetyState safety;
+    StartupPhase startupPhase;
+};
+
+class StartupReport {
+public:
+    bool isComplete() const;
+    RuntimeStatus finalStatus() const; // precondition: isComplete()
+
+    bool hasFatalFailure() const;
+    const StartupFailureRecord* fatalFailure() const;
+
+    size_t optionalFailureCount() const;       // wszystkie zaobserwowane
+    size_t storedOptionalFailureCount() const; // prefix obecny w buforze
+    bool optionalFailuresTruncated() const;
+    const StartupFailureRecord* optionalFailure(size_t index) const;
+    size_t totalFailureCount() const;
+
+private:
+    // Mutowany wyłącznie przez ApplicationRuntime do zakończenia start().
+    friend class ApplicationRuntime;
+};
+
+class ApplicationRuntime {
+public:
+    ApplicationRuntime(
+        ApplicationPlan plan,
+        StartupFailureStorage optionalFailureStorage
+    );
+
+    const StartupReport& start();
+    RuntimeStatus status() const;
+    const StartupReport& startupReport() const;
+};
+```
+
+`StartupReport` zawiera najwyżej jeden fatal record, przechowywany inline przez runtime, więc
+nie konkuruje on o caller buffer. `fatalFailure()` zwraca `nullptr`, gdy fatal failure nie
+wystąpił. Po fatal failure normalny startup natychmiast się zatrzymuje, a final status wynosi
+`ERROR + FAULT + LOCKED` z fazą zatrzymania. Optional failures zaobserwowane wcześniej
+pozostają w raporcie wraz z niezmienionymi total/stored/truncated; fatal failure nie czyści
+wcześniejszej diagnostyki.
+
+`optionalFailure(index)` zwraca wskaźnik tylko dla
+`index < storedOptionalFailureCount()`, w przeciwnym razie `nullptr`.
+`totalFailureCount()` to suma optional failure count oraz zera albo jedynki dla fatal failure.
+Pełny sukces ma complete report, final status
+`RUNNING + OK + CLEAR + RUNNING` oraz zero failures. Sukces z błędami opcjonalnymi ma
+`RUNNING + DEGRADED + CLEAR + RUNNING`. Fatal startup zachowuje fazę błędu i ma
+`ERROR + FAULT + LOCKED`.
+
+Strategie przechowywania optional failures oceniono następująco: tylko pierwszy lub tylko
+ostatni błąd traci informację o pozostałych; wewnętrzna tablica o stałej pojemności narzuca
+całej platformie arbitralny limit; callback/sink wiąże raport z obserwatorem i jego lifetime;
+sam count plus first/last utrudnia diagnostykę wielu niezależnych awarii. Wybrany jest
+caller-provided fixed buffer: Composition Root dobiera pojemność do konkretnego planu, także
+zero, a runtime nie używa heap i zachowuje pierwsze N błędów opcjonalnych w kolejności
+wykonania.
+
+`optionalFailureCount()` jest total count wszystkich optional failures wykrytych podczas
+startupu, a `storedOptionalFailureCount()` jest stored count rekordów zapisanych w caller
+buffer. Zawsze obowiązuje `stored <= capacity`, `stored <= total` oraz
+`optionalFailuresTruncated() == (total > stored)`.
+
+Każdy optional failure zwiększa total count. Dopóki jest miejsce, jego rekord jest dopisywany
+do kolejnego slotu. Po zapełnieniu bufora kolejne rekordy nie są zapisywane ani nie nadpisują
+wcześniejszych, ale total nadal rośnie. Przechowywane są dokładnie pierwsze N optional failures
+w deterministycznej kolejności wykonania participantów, bez sortowania. Dla capacity zero
+i co najmniej jednego optional failure zachodzi `total > 0`, `stored == 0` i truncated jest
+true; finalny stan wynosi `RUNNING + DEGRADED`, jeżeli później nie wystąpi fatal failure.
+Overflow raportowania nie jest fatal failure i nie zmienia Operational ani Safety. Pojemność
+nie jest globalnym limitem API.
+
+Publiczne API nie daje mutowalnego dostępu do stanu raportu ani użytego prefixu bufora.
+Referencje do reportu i failure records pozostają ważne przez lifetime runtime, lecz wyłącznie
+przy braku równoczesnego `start()`; wielowątkowa synchronizacja nie jest częścią Fazy 1.
+Composition Root posiada pamięć caller buffer, ale po przekazaniu jej do runtime nie może
+modyfikować użytego prefixu przez cały lifetime runtime.
+Pożyczone participant IDs i tokeny error code zachowują preconditions static/runtime lifetime
+opisane wyżej. Serializacja porównuje i emituje tokeny, outcome oraz nazwy enum bez budowania
+dynamicznego tekstu; dokładny JSON schema nie jest częścią SYS-104.
+
+Host tests implementacji SYS-104 muszą objąć:
+
+- fabryki `succeeded()`, `disabled()`, `failed(validCode)`, usunięty default constructor oraz
+  invalid code/result na granicy callbacka;
+- stabilne Core codes i porównanie namespace/local bez porównywania adresów wskaźników;
+- required failure, special failure, required/special disabled i każdy rodzaj contract failure;
+- wiele optional failures, wariant z buforem zero, prefix przechowany przy overflow, dokładne
+  total/stored counts i brak zmiany na fatal;
+- zachowanie participant ID i indeksu, source oraz phase dla zwykłego kroku, special action
+  i plan contract failure;
+- pełny sukces, degraded success i fatal final status w raporcie oraz niezależność późniejszego
+  bieżącego `RuntimeStatus` od niezmiennego final status w raporcie;
+- one-shot `start()` i niezmienność raportu po jego zakończeniu.
+
+SYS-104 nie definiuje recovery/retry, persistence, loggera, alarmów, command errors, błędów po
+startupie ani JSON schema. Nie zmienia SYS-105, SYS-106, SYS-107, ARCH-101 ani RuntimeIdentity.
 
 ### IDN-001 — rozdzielenie identity
 `DeviceIdentity`, `BuildIdentity`, `HardwareIdentity` i `RuntimeIdentity` są osobnymi
@@ -215,7 +573,6 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 
 - ARCH-101 — dokładny API Core ↔ Domain;
 - SYS-101 — nazwa, algorytm, encoding, generator, RNG source i collision policy RuntimeIdentity;
-- SYS-104 — dokładny wrapper wyniku startupu, StartupReport oraz reprezentacja i katalog startup error codes;
 - SYS-105 — recovery po krytycznym błędzie startupu;
 - SYS-106 — dokładny przyszły writer ownership dla HealthState i SafetyState;
 - SYS-107 — dokładny katalog RestartRequestReason i zachowanie wielu pending requestów;

@@ -391,8 +391,7 @@ Startup rozdziela `StartupRequirement` (`REQUIRED`, `OPTIONAL`) od `StartupOutco
 (`SUCCEEDED`, `DISABLED`, `FAILED`). Optional disabled nie degraduje health, optional failed
 może dać `DEGRADED`, a required failed zatrzymuje normalny startup jako
 `ERROR + FAULT + LOCKED`. `REQUIRED + DISABLED` jest nieprawidłowe. Każdy startup failure
-posiada stabilny, krótki error code; dokładny katalog i reprezentacja pozostają DECISION
-REQUIRED.
+posiada stabilny, krótki error code zgodny z kontraktem SYS-104.
 
 Brak participantów Network lub Interfaces oznacza celowo wyłączoną opcjonalną infrastrukturę.
 Jeżeli taki participant istnieje, musi być `OPTIONAL`: `DISABLED` nie degraduje, a `FAILED`
