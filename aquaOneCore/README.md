@@ -43,6 +43,11 @@ Format device_id, MAC/MAC6, finalne pola, capacities i walidacja pozostają IDN-
 DECISION REQUIRED; RuntimeIdentity (SYS-101), jego generator i ApplicationRuntime nie są
 zaimplementowane. Nowe typy są testowane w `platformio test -e native -f test_system`.
 
+**CURRENT F1.4:** `AquaCore/System/SystemState.h` defines independent neutral
+`AquaCore::System::OperationalState`, `HealthState`, `SafetyState` and
+`StartupPhase` contracts with deterministic name helpers. It does not implement lifecycle
+or state transitions. Legacy `AquaCore::SystemState` and `SystemStatus` remain unchanged.
+
 ```cpp
 #include <AquaCore/System/SystemService.h>
 

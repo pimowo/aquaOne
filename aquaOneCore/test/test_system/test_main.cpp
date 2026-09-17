@@ -187,6 +187,7 @@ void test_services_keep_independent_device_identities() {
 } // namespace
 
 void runIdentityTests();
+void runSystemStateTests();
 
 void runTests() {
     RUN_TEST(test_device_identity_is_stored_correctly);
@@ -198,6 +199,7 @@ void runTests() {
     RUN_TEST(test_begin_does_not_modify_input_identity);
     RUN_TEST(test_services_keep_independent_device_identities);
     runIdentityTests();
+    runSystemStateTests();
 }
 
 #if defined(ARDUINO)
