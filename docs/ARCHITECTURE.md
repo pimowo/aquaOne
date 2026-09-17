@@ -352,7 +352,9 @@ Domain korzysta z wąskich kontraktów Core i domenowych interfejsów hardware, 
 Composition Root współpracuje z `ApplicationRuntime`, który koordynuje startup i runtime
 wyłącznie przez wąskie kontrakty. ApplicationRuntime nie posiada konkretnych usług, nie zna
 konkretnych klas Domain, Network, Web ani MQTT, nie jest service locatorem ani Registry i nie
-zawiera semantyki domenowej. Dokładny ApplicationPlan i hooks pozostają DECISION REQUIRED.
+zawiera semantyki domenowej. `ApplicationPlan` jest niemodyfikowalnym widokiem na płaską,
+statyczną tablicę participantów przypisanych do stałych faz. Dokładny kontrakt planu,
+ownership i kolejność definiuje decyzja SYS-102 w `ARCHITECTURE_VNEXT_DECISIONS.md`.
 
 Domain odpowiada za state, config domenowy, logic, commands, domain mode, domain status, alarms, safety policy i diagnostics domenowe. Domain nie używa bezpośrednio WiFi, WebServer, WebSocket, PubSubClient, Preferences/NVS, Update, `ESP.restart()` ani przypadkowych GPIO. Hardware jest dostępny przez jawne interfejsy domenowe, np. `IDosingPump`, `ILightOutput`, `IReservoirLevelSensor`.
 
@@ -372,6 +374,17 @@ wykonuje idempotentne ustawienie konserwatywnego stanu fizycznych wyjść na poc
 przed configiem i pełnym hardware init; jest mechanizmem technicznym, nie częścią Safety
 framework.
 
+Plan startupu ma dwa specjalne wymagane kroki: early safe outputs wykonywane przed zwykłymi
+participantami `BOOT` oraz startup safety gate wykonywany w `SAFETY_VALIDATION`. Pozostałe
+kroki tworzą płaską tablicę callbacków z phase i requirement. Composition Root posiada
+concrete services, contexts i tablicę, a ApplicationRuntime kopiuje tylko pointer/count oraz
+oba specjalne actions. Liczba participantów wynika z composition/build, bez globalnej
+capacity i bez dynamic allocation. Kolejność faz jest stała, a kolejność deklaracji w danej
+fazie jest kolejnością wykonania; nie ma priority ani dependency graph.
+
+Przed uruchomieniem early safe outputs runtime wykonuje wyłącznie minimalną walidację tego
+action; pełna walidacja pozostałego planu następuje dopiero po jego legalnym `SUCCEEDED`.
+
 Sieć i integracje są opcjonalne i nie są warunkiem gotowości ani działania domeny.
 
 Startup rozdziela `StartupRequirement` (`REQUIRED`, `OPTIONAL`) od `StartupOutcome`
@@ -380,6 +393,14 @@ może dać `DEGRADED`, a required failed zatrzymuje normalny startup jako
 `ERROR + FAULT + LOCKED`. `REQUIRED + DISABLED` jest nieprawidłowe. Każdy startup failure
 posiada stabilny, krótki error code; dokładny katalog i reprezentacja pozostają DECISION
 REQUIRED.
+
+Brak participantów Network lub Interfaces oznacza celowo wyłączoną opcjonalną infrastrukturę.
+Jeżeli taki participant istnieje, musi być `OPTIONAL`: `DISABLED` nie degraduje, a `FAILED`
+pozwala wejść do `RUNNING` ze stanem `DEGRADED`. Safety zaczyna jako `LOCKED` i przechodzi do
+`CLEAR` wyłącznie po sukcesie dedykowanego startup safety gate. ApplicationRuntime posiada
+minimalny read-only snapshot: OperationalState, HealthState, SafetyState i bieżącą
+StartupPhase. Startup participant nie zawiera runtime `loop()`; przyszły RuntimePlan i
+scheduling pozostają osobnym zakresem.
 
 Nie powstaje jeden ogromny enum. Rozdzielone są `OperationalState` (`BOOTING`, `RUNNING`, `MAINTENANCE`, `ERROR`), `HealthState` (`OK`, `DEGRADED`, `FAULT`) i `SafetyState` (`CLEAR`, `LOCKED`), a niezależnie istnieją `DomainMode`, aktywne alarmy i Action Locks. `RUNNING + DEGRADED + CLEAR` jest prawidłową kombinacją. `ERROR` oznacza poważny stan systemowy uniemożliwiający normalną pracę.
 

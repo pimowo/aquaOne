@@ -1,6 +1,6 @@
 # Architecture vNext — decyzje
 
-**Status:** DRAFT ACCEPTED dla FAZY 0 i F1.1 CONTRACT GATE
+**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE i F1.5 SYS-102 DESIGN GATE
 **Scope:** cała platforma aquaOne
 **Zasada:** Architecture vNext jest TARGET. CURRENT wynika z kodu i macierzy projektu. Legacy code is not architecture.
 
@@ -25,8 +25,8 @@ Istniejący kod może zostać oceniony jako KEEP, ADAPT, REWRITE albo REMOVE. Ni
 Composition Root zna konkretne implementacje i składa aplikację. ApplicationRuntime wyłącznie
 koordynuje startup i runtime przez wąskie kontrakty. Nie posiada konkretnych usług, nie zna
 konkretnych klas Domain, Network, Web ani MQTT, nie jest service locatorem ani Registry i nie
-zawiera semantyki domenowej. Dokładny ApplicationPlan, hooks i ownership pozostają DECISION
-REQUIRED.
+zawiera semantyki domenowej. Dokładny ApplicationPlan, hooks i ownership definiuje decyzja
+SYS-102 poniżej.
 
 ### SYS-001 — lifecycle
 Docelowy lifecycle to: POWER ON, BOOT, CORE INIT, LOAD/VALIDATE CONFIG, HARDWARE INIT, DOMAIN INIT, SAFETY VALIDATION, NETWORK INIT, INTERFACES INIT, RUNNING.
@@ -69,6 +69,96 @@ bieżący runtime żąda restartu, a `RestartExecutor` wykonuje efekt platformow
 transport otrzymują wyłącznie `RestartRequester`. Zakres Fazy 1 to: request, pending request,
 safe point w runtime loop, RestartExecutor. RestartPreparation, Maintenance transition,
 MQTT offline, timeouty i OTA workflow pozostają poza Fazą 1.
+
+### SYS-102 — ApplicationPlan i participanty startupu
+`ApplicationRuntime` używa hybrydowego planu: publiczna kolejność `StartupPhase` jest stała,
+a zwykłe kroki startupu są płaską, niemodyfikowalną tablicą descriptorów przypisanych do faz.
+Każdy descriptor zawiera stabilny identyfikator participanta, fazę, `StartupRequirement`
+oraz callback i opcjonalny opaque context. Requirement i phase należą do composition, więc
+callback nie zna fazy i nie może sam ogłosić się jako `REQUIRED`. Callback nie otrzymuje
+runtime, registry ani zestawu usług. Zwraca minimalny wynik zawierający `StartupOutcome` i
+stabilny error code. `FAILED` wymaga niepustego kodu, a `SUCCEEDED` i `DISABLED` nie niosą
+błędu; dokładny typ wyniku, reprezentacja kodu i raport należą do SYS-104.
+
+Konceptualny kontrakt, bez przesądzania nazw implementacyjnych SYS-104:
+
+```cpp
+using StartupCallback = StartupStepResult (*)(void* context);
+
+struct StartupAction {
+    const char* participantId;   // non-null, static lifetime
+    StartupCallback callback;    // non-null
+    void* context;               // nullable tylko dla funkcji bez instancji
+};
+
+struct StartupParticipant {
+    StartupAction action;
+    StartupPhase phase;
+    StartupRequirement requirement;
+};
+
+struct ApplicationPlan {
+    StartupAction earlySafeOutputs; // zawsze wymagany; no-op jest jawną implementacją
+    StartupAction safetyGate;       // zawsze wymagany
+    const StartupParticipant* participants;
+    size_t participantCount;
+};
+```
+
+Normatywna kolejność uruchomienia jest następująca: runtime ustawia `BOOTING`, `OK`,
+`LOCKED` i bieżącą fazę `BOOT`; wykonuje minimalną strukturalną walidację wyłącznie
+`earlySafeOutputs`; uruchamia ten krok dokładnie raz; dopiero po jego legalnym
+`SUCCEEDED` wykonuje pełną strukturalną walidację pozostałego planu i rozpoczyna zwykły
+startup. Minimalna walidacja early action wymaga non-null callbacka, non-null i niepustego
+`participantId`; lifetime wskazywanego storage jest kontraktem Composition Root i nie jest
+runtime-checkable. Walidacja strukturalna nie jest participantem, nie używa configu ani
+hardware i nie zmienia publicznej `StartupPhase`. Jeśli early action jest nielegalny,
+zwraca nielegalny wynik albo wynik inny niż `SUCCEEDED`, startup kończy się jako
+`ERROR + FAULT + LOCKED`; ten stan logiczny nie jest dowodem osiągnięcia bezpiecznego stanu
+fizycznych wyjść. Recovery pozostaje SYS-105.
+
+Inwarianty `ApplicationPlan` są częścią SYS-102. `earlySafeOutputs.callback` i
+`safetyGate.callback` oraz callback każdego zwykłego participanta muszą być non-null.
+`context` może być `nullptr`; jeśli jest non-null, jego lifetime musi obejmować co najmniej
+życie `ApplicationRuntime`. Każdy action, włącznie z obiema special actions, wymaga
+non-null, niepustego i stabilnego przez runtime `participantId`; ID muszą być unikalne w
+całym planie. Runtime przechowuje wyłącznie `const char*`, a storage ID należy do
+Composition Root albo static storage. Dla pustej tablicy obowiązuje `participantCount == 0`
+i `participants == nullptr`; dla niepustej `participantCount > 0` i `participants != nullptr`.
+Tablica participantów żyje co najmniej tak długo jak runtime. Każdy descriptor musi mieć
+poprawny `StartupPhase` i `StartupRequirement`, a tablica musi być uporządkowana
+niemalejąco według phase. Kolejność deklaracji w tej samej fazie jest kolejnością wykonania;
+nie ma priority, sortowania w runtime ani grafu zależności.
+
+Zwykły participant może mieć wyłącznie fazę `BOOT`, `CORE_INIT`, `LOAD_VALIDATE_CONFIG`,
+`HARDWARE_INIT`, `DOMAIN_INIT`, `NETWORK_INIT` albo `INTERFACES_INIT`. `BOOT` jest legalny
+i oznacza wykonanie po early safe outputs. `SAFETY_VALIDATION` jest zarezerwowane dla
+special `safetyGate`, a `RUNNING` jest wyłącznie terminalnym markerem i nie przyjmuje
+zwykłych participantów. Network i Interfaces mogą zawierać wyłącznie participanty
+`OPTIONAL`.
+
+Obie special actions są wymagane przez kształt planu, nie mają `StartupRequirement`,
+wykonują się dokładnie raz, a ich jedynym legalnym wynikiem jest `SUCCEEDED`; `DISABLED`
+jest contract failure i fatal failure. Zwykłe wyniki podlegają macierzy
+`REQUIRED + SUCCEEDED` → continue, `REQUIRED + FAILED/DISABLED` → fatal,
+`OPTIONAL + SUCCEEDED/DISABLED` → continue bez degradacji oraz
+`OPTIONAL + FAILED` → continue z `DEGRADED`. Nieznany `StartupOutcome`, `FAILED` bez
+stable error code oraz error code przy `SUCCEEDED` lub `DISABLED` są contract failure.
+
+Brak descriptorów Network lub Interfaces oznacza intentional disabled przez Composition
+Root. Obecny descriptor z `DISABLED` oznacza config-driven disabled, a obecny descriptor
+z `FAILED` oznacza `DEGRADED`; osobny marker expected feature nie jest potrzebny. `void*`
+context służy wyłącznie participant-specific context i nie może wskazywać service locatora,
+Registry ani całego `AquaOneCore`; `nullptr` jest legalny dla callbacka bez instancji.
+
+Podczas startupu `StartupPhase` wskazuje aktualnie wykonywaną fazę. Po błędzie pozostaje
+fazą, w której startup został zatrzymany; structural failure przed zwykłymi fazami pozostaje
+w `BOOT`. Po pełnym sukcesie phase wynosi `RUNNING`. `ApplicationRuntime` nie posiada
+concrete services, kopiuje tylko mały plan view, nie kopiuje descriptorów i nie alokuje
+heap; Composition Root posiada participant array, contexty, concrete services i storage ID.
+Plan może mieć wiele participantów w jednej zwykłej fazie albo nie mieć żadnego. Przyszłe kroki
+runtime są osobnym `RuntimePlan`, a restart safe point przypada na koniec kompletnego `tick()`;
+runtime scheduling oraz RestartRequester/Executor nie są częścią SYS-102.
 
 ### IDN-001 — rozdzielenie identity
 `DeviceIdentity`, `BuildIdentity`, `HardwareIdentity` i `RuntimeIdentity` są osobnymi
@@ -125,7 +215,6 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 
 - ARCH-101 — dokładny API Core ↔ Domain;
 - SYS-101 — nazwa, algorytm, encoding, generator, RNG source i collision policy RuntimeIdentity;
-- SYS-102 — dokładny ApplicationPlan, hooks, liczba participantów oraz ownership pointer/reference;
 - SYS-104 — dokładny wrapper wyniku startupu, StartupReport oraz reprezentacja i katalog startup error codes;
 - SYS-105 — recovery po krytycznym błędzie startupu;
 - SYS-106 — dokładny przyszły writer ownership dla HealthState i SafetyState;
