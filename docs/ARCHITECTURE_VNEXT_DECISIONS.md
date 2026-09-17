@@ -1,6 +1,6 @@
 # Architecture vNext — decyzje
 
-**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE i F1.6 SYS-104 DESIGN GATE
+**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE, F1.6 SYS-104 DESIGN GATE i F1.8 SYS-105 RECOVERY DESIGN GATE
 **Scope:** cała platforma aquaOne
 **Zasada:** Architecture vNext jest TARGET. CURRENT wynika z kodu i macierzy projektu. Legacy code is not architecture.
 
@@ -518,6 +518,121 @@ Host tests implementacji SYS-104 muszą objąć:
 SYS-104 nie definiuje recovery/retry, persistence, loggera, alarmów, command errors, błędów po
 startupie ani JSON schema. Nie zmienia SYS-105, SYS-106, SYS-107, ARCH-101 ani RuntimeIdentity.
 
+### SYS-105 — recovery po krytycznym błędzie startupu
+
+Rozważone modele recovery:
+
+- permanentny `ERROR` do fizycznego resetu albo power cycle jest najprostszy, nie tworzy boot
+  loop ani flash wear, ale ogranicza diagnostykę, autonomię urządzenia headless i możliwość
+  naprawy konfiguracji;
+- ERROR recovery shell zachowuje bezpieczną blokadę domeny i umożliwia diagnostykę oraz naprawę,
+  lecz wymaga małej, testowalnej granicy wykonywania usług systemowych;
+- automatyczny restart po każdym fatal failure może pomóc przy błędzie przejściowym lub reakcji
+  watchdoga, ale utrudnia diagnostykę i grozi boot loop, powtarzaniem niebezpiecznej inicjalizacji
+  oraz flash wear;
+- model hybrydowy używa ERROR recovery shell jako zachowania domyślnego, a jawny restart lub
+  przyszłą policy traktuje jako opcję. Zapewnia diagnostykę, config repair i autonomię urządzenia
+  headless bez domyślnego ryzyka restart loop, pozostając prostym do testowania.
+
+Wybrany jest model hybrydowy. Fatal startup failure nie uruchamia automatycznego restartu;
+domyślnym zachowaniem jest pozostanie w ERROR recovery shell.
+
+Po fatal startup failure normalny startup kończy się ostatecznie w
+`ERROR + FAULT + LOCKED`, a `StartupReport` jest complete i niezmienny. `StartupPhase`
+pozostaje fazą zatrzymania. Runtime pozostaje aktywny wyłącznie jako ograniczony ERROR recovery
+shell. Normalny runtime domeny nie startuje, domain loop i domain commands nie są wykonywane,
+a actuators nie mogą zostać normalnie aktywowane. Częściowa inicjalizacja hardware lub domeny
+nie daje permission do normalnej pracy.
+
+ERROR recovery shell służy diagnostyce, bezpiecznemu pozostaniu w `ERROR`, naprawie konfiguracji
+i kontrolowanemu restartowi. Nie jest `MAINTENANCE`: maintenance jest świadomym, planowanym
+workflow operacyjnym, a recovery shell jest reakcją na fatal startup failure. Nie ma
+automatycznego przejścia `ERROR → MAINTENANCE`. Istniejący `OperationalState::ERROR`
+wystarcza; SYS-105 nie dodaje stanów `RECOVERY`, `SAFE_MODE` ani `FAILED_STARTUP`.
+
+Recovery services są explicit opt-in w Composition Root. Mogą działać wyłącznie usługi
+systemowe jawnie uznane za bezpieczne w `ERROR` i tylko wtedy, gdy ich zależności są dostępne.
+Logging i lokalna diagnostyka mogą być dostępne niezależnie od sieci. Status, diagnostics,
+Config read/write, factory reset, restore, OTA, restart, Network, Web, Realtime i MQTT nie są
+automatycznie dostępne: każda capability wymaga osobnego bezpiecznego kontraktu i poprawnie
+uruchomionej infrastruktury. Failure przed `NETWORK_INIT` nie pozwala zakładać Network ani Web.
+Brak Network, Web lub MQTT nie jest kolejnym startup failure. Recovery pozostaje autonomiczne
+i nie może wymagać sieci. Lokalna diagnostyka może działać bez Network, jeżeli konkretne
+urządzenie jawnie ją udostępnia.
+
+Rozważone warianty recovery bootstrapu:
+
+- brak specjalnego bootstrapu jest prosty, ale uzależnia recovery od przypadkowo ukończonych faz
+  normalnego startupu i nie zapewnia drogi naprawy urządzenia headless;
+- pełny `RecoveryPlan` daje jawny lifecycle, lecz w Fazie 1 tworzyłby drugi framework bez
+  potwierdzonej potrzeby;
+- minimalna granica recovery services umożliwia uruchomienie tylko jawnie bezpiecznych usług
+  systemowych i system/recovery processing bez wiązania ich z domeną;
+- reuse zwykłego `ApplicationPlan` grozi ponownym uruchomieniem participantów bez kontraktu
+  reentrancy, idempotency, dependencies i legalności działania w `ERROR`.
+
+Faza 1 wybiera wyłącznie konceptualną, minimalną granicę recovery services. Nie definiuje jej
+publicznej reprezentacji jako `RecoveryPlan`, `RecoveryServicesPlan`, handlera ani publicznego
+`RecoveryCapability`. Dokładna reprezentacja bootstrapu pozostaje osobną przyszłą decyzją.
+Composition Root jawnie udostępnia każdą usługę, która musi być bezpieczna w `ERROR`, mieć
+dostępne zależności i nie może zależeć od normalnego domain runtime. Zwykli participanty
+`ApplicationPlan` nie są ponawiani ani używani jako recovery bootstrap.
+
+Participant, który zakończył inicjalizację przed późniejszym failure, pozostaje initialized,
+lecz nieużywany przez normalny runtime. Faza 1 nie wprowadza reverse rollback stack,
+obowiązkowych shutdown/deinit hooks ani ogólnego cleanup frameworka. Takie mechanizmy mogą zostać
+dodane później dla konkretnych zasobów, gdy ich bezpieczne i idempotentne zwolnienie będzie
+wymagane.
+
+Fatal failure zawsze ponownie ustanawia logiczne `SafetyState::LOCKED`, także gdy safety gate
+wcześniej zwrócił sukces. `EarlySafeOutputInitializer` jest idempotentną techniczną operacją,
+ale idempotency nie jest kontraktem emergency shutdown ani safe stop i nie daje permission do
+automatycznego ponownego wywołania po fatal failure. Runtime nie wywołuje ponownie
+`earlySafeOutputs`. `LOCKED` nie jest dowodem fizycznego bezpiecznego stanu wyjść. Ewentualne
+fizyczne safe shutdown actions należą do przyszłego jawnego kontraktu Safety/recovery i wymagają
+testów sprzętowych; nie wolno ich zastępować Action Locks ani ponownym wywołaniem startup action.
+
+Fatal startup failure domyślnie nie tworzy restart request. Jawny restart może zostać zażądany
+przez dozwoloną usługę recovery albo przyszłą osobną politykę systemową i przechodzi przez
+granicę `RestartRequester` → safe point → `RestartExecutor` z SYS-007. Restart rozpoczyna pełny
+BOOT. Ponieważ normalny domain loop nie działa, ERROR recovery shell posiada minimalną granicę
+system/recovery processing. Jej safe point przypada na koniec kompletnej iteracji, gdy nie trwa
+krytyczny zapis, OTA, restore ani factory reset, a bieżąca operacja recovery osiągnęła bezpieczny
+punkt. Jest to system/recovery safe point, nie domain-loop safe point.
+
+Automatyczny restart jest dozwolony dopiero po przyjęciu osobnej jawnej polityki dla wybranych
+kategorii błędów wraz z ochroną przed boot loop, backoff/safe mode i uwzględnieniem flash wear
+oraz watchdoga. Persistent boot-attempt counter, persistence i dokładna polityka pozostają poza
+SYS-105. SYS-107 pozostaje otwarte.
+
+W `ERROR` policy może dopuścić wyłącznie komendy system/recovery, na przykład status,
+diagnostics, config repair, restart, factory reset, restore lub OTA, jeśli wspierająca
+infrastruktura jest dostępna i dana operacja ma bezpieczny kontrakt. Normalne domain commands
+i uruchamianie actuators są zabronione, w tym dosing, lighting control, CO2 control, pumps
+i feeding. Dokładny Command API i authorization policy pozostają poza SYS-105.
+
+Jeżeli przyczyną failure jest konfiguracja, dostępna recovery capability może umożliwić jej
+odczyt, zapis poprawki, restore albo factory reset. Zmiana konfiguracji nie powoduje przejścia
+`ERROR → RUNNING`. Ponowna próba normalnego startupu wymaga restartu urządzenia i pełnego BOOT
+z nową instancją runtime. `ApplicationRuntime::start()` pozostaje one-shot; drugie wywołanie
+nadal jest no-op i zwraca ten sam report.
+
+Recovery activity nie modyfikuje `StartupReport`, jego final status ani failure records.
+Bieżąca diagnostyka i logi recovery są osobnym strumieniem informacji. Host tests przyszłej
+implementacji muszą potwierdzić: fatal → ERROR shell, brak wejścia do domain runtime,
+`ERROR + FAULT + LOCKED`, blokowanie normalnych domain commands, brak automatycznego restart
+request, obsługę jawnego restart request przy dostępnej capability przez system/recovery safe
+point, opcjonalność usług recovery, brak usług bez ich infrastruktury, możliwość pozostania
+w `ERROR` bez Network, brak `ERROR → RUNNING` po config repair, niezmienność reportu oraz
+one-shot/no-op drugiego `start()`. HIL pozostaje wymagany dla fizycznego zachowania wyjść,
+watchdog/reset, rzeczywistego `RestartExecutor`, network recovery, brownout, utraty zasilania
+i zachowania hardware po częściowej inicjalizacji. Host tests nie dowodzą fizycznego safety.
+
+SYS-105 nie rozstrzyga SYS-101, SYS-106, SYS-107, ARCH-101, Maintenance workflow, SafetyManager,
+Action Locks, physical emergency shutdown, publicznego RecoveryPlan API, OTA, Backup/Restore,
+Command API/policy ani RuntimePlan scheduling. Określa tylko ich granicę względem ERROR recovery
+shell.
+
 ### IDN-001 — rozdzielenie identity
 `DeviceIdentity`, `BuildIdentity`, `HardwareIdentity` i `RuntimeIdentity` są osobnymi
 pojęciami. Friendly/user-visible name nie jest częścią technical identity. Dokładne pola,
@@ -573,7 +688,6 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 
 - ARCH-101 — dokładny API Core ↔ Domain;
 - SYS-101 — nazwa, algorytm, encoding, generator, RNG source i collision policy RuntimeIdentity;
-- SYS-105 — recovery po krytycznym błędzie startupu;
 - SYS-106 — dokładny przyszły writer ownership dla HealthState i SafetyState;
 - SYS-107 — dokładny katalog RestartRequestReason i zachowanie wielu pending requestów;
 - IDN-101 — pola identity, format device_id, MAC/MAC6, capacities i zasady walidacji;
