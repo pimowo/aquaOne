@@ -31,6 +31,18 @@ z przyszłym Core vNext.
 
 Boot status, device identity, restart reasons.
 
+**CURRENT F1.3:** `AquaCore/System/Identity.h` udostępnia neutralne value types
+`AquaCore::Identity::DeviceIdentity` (deviceType), `BuildIdentity` (firmwareVersion,
+coreVersion) i `HardwareIdentity` (hardwareVariant). Są to minimalne dane oparte na
+CURRENT; legacy `AquaCore::DeviceIdentity`, SystemService i konsumenci pozostają bez migracji.
+`assign()` zwraca jawny ValidationResult (error + field); null, pusty tekst lub przekroczenie
+limitu czyści cały obiekt i ustawia invalid. Brak truncation i dynamic allocation.
+Limity implementacji, łącznie z NUL: deviceType/firmwareVersion 24, coreVersion 16,
+hardwareVariant 32 bajty. Nie są to finalne decyzje Architecture vNext.
+Format device_id, MAC/MAC6, finalne pola, capacities i walidacja pozostają IDN-101
+DECISION REQUIRED; RuntimeIdentity (SYS-101), jego generator i ApplicationRuntime nie są
+zaimplementowane. Nowe typy są testowane w `platformio test -e native -f test_system`.
+
 ```cpp
 #include <AquaCore/System/SystemService.h>
 
