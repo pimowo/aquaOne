@@ -1,15 +1,28 @@
+#if defined(ARDUINO)
 #include <Arduino.h>
+#endif
 #include <unity.h>
 
 #include <stdint.h>
 #include <string.h>
-
-#include <esp_system.h>
+#include <type_traits>
 
 #include "AquaCore/System/SystemService.h"
 #include "AquaCore/Version.h"
 
 using namespace AquaCore;
+
+#if defined(ARDUINO_ARCH_ESP32)
+static_assert(
+    std::is_default_constructible<SystemService>::value,
+    "SystemService must remain default-constructible on ESP32"
+);
+#else
+static_assert(
+    !std::is_default_constructible<SystemService>::value,
+    "SystemService must require an injected backend off ESP32"
+);
+#endif
 
 void setUp() {
 }
@@ -173,10 +186,7 @@ void test_services_keep_independent_device_identities() {
 
 } // namespace
 
-void setup() {
-    delay(2000);
-    UNITY_BEGIN();
-
+void runTests() {
     RUN_TEST(test_device_identity_is_stored_correctly);
     RUN_TEST(test_aqua_core_version_is_0_6_2);
     RUN_TEST(test_uptime_increases);
@@ -185,9 +195,26 @@ void setup() {
     RUN_TEST(test_restart_reason_names);
     RUN_TEST(test_begin_does_not_modify_input_identity);
     RUN_TEST(test_services_keep_independent_device_identities);
+}
 
+#if defined(ARDUINO)
+
+void setup() {
+    delay(2000);
+    UNITY_BEGIN();
+    runTests();
     UNITY_END();
 }
 
 void loop() {
 }
+
+#else
+
+int main() {
+    UNITY_BEGIN();
+    runTests();
+    return UNITY_END();
+}
+
+#endif

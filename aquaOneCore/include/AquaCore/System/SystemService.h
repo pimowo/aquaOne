@@ -22,7 +22,11 @@ struct SystemStatus {
 
 class SystemService {
 public:
+#if defined(ARDUINO_ARCH_ESP32)
     SystemService();
+#else
+    SystemService() = delete;
+#endif
     explicit SystemService(SystemBackend& backend);
 
     bool begin(const DeviceIdentity& identity);
