@@ -1,6 +1,6 @@
 # Architecture vNext — decyzje
 
-**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE, F1.6 SYS-104 DESIGN GATE i F1.8 SYS-105 RECOVERY DESIGN GATE
+**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE, F1.6 SYS-104 DESIGN GATE, F1.8 SYS-105 RECOVERY DESIGN GATE i F1.9 SYS-106 WRITER OWNERSHIP DESIGN GATE
 **Scope:** cała platforma aquaOne
 **Zasada:** Architecture vNext jest TARGET. CURRENT wynika z kodu i macierzy projektu. Legacy code is not architecture.
 
@@ -633,6 +633,212 @@ Action Locks, physical emergency shutdown, publicznego RecoveryPlan API, OTA, Ba
 Command API/policy ani RuntimePlan scheduling. Określa tylko ich granicę względem ERROR recovery
 shell.
 
+### SYS-106 — writer ownership i agregacja Health/Safety po startupie
+
+**Status:** ACCEPTED — TARGET contract; F1.9 nie implementuje coordinatora ani writerów.
+
+Rozważone modele ownership:
+
+- ApplicationRuntime jako jedyny writer wszystkich osi jest najprostszy strukturalnie, ale
+  łączy lifecycle z agregacją wielu niezależnych faultów i policy Health/Safety;
+- osobny HealthManager i SafetyManager zachowują single writer dla każdej osi, ale zwiększają
+  liczbę lifecycle/handoff boundaries i utrudniają spójny snapshot obu agregatów;
+- jeden SystemStateCoordinator agregujący facts oddziela źródła od wyniku i wspiera wiele
+  alarmów oraz domain policy, ale bez jawnego handoff nie rozstrzyga ownership w startupie;
+- hybryda oddziela startup od runtime: ApplicationRuntime jest writerem podczas startupu,
+  potem jeden RuntimeStateCoordinator przejmuje wyłącznie Health/Safety. Zapewnia single-writer
+  property, testowalność, separację Core/Domain i prostą statyczną kompozycję bez service locatora.
+
+Wybrany jest model hybrydowy z jednym RuntimeStateCoordinator i provider aggregation.
+OperationalState i StartupPhase pozostają własnością ApplicationRuntime/lifecycle owner;
+SYS-106 nie przenosi ich do coordinatora. Maintenance transition ani event publication nie
+są częścią tej decyzji. Coordinator zna wąskie kontrakty, nie konkretne usługi, klasy domen,
+transporty ani device_type.
+
+#### Single source of truth i writer authority
+
+Rozważone miejsca przechowywania stanu:
+
+- nowy SystemStateStore/SystemStateModel może neutralnie posiadać cztery osie, ale wymaga
+  zmiany F1.7 i dodatkowej granicy dostępu bez obecnej potrzeby;
+- coordinator posiadający Health/Safety po handoff wymagałby delegowanego read model i dwóch
+  wariantów storage zależnych od lifecycle;
+- shared state owner pozwala uniknąć kopii, ale ogólnie dostępne write interface byłoby
+  niebezpieczne;
+- zachowanie prywatnego RuntimeStatus storage w ApplicationRuntime umożliwia najmniejszą
+  zmianę F1.7: zmienia się prawo zapisu dwóch osi, a nie miejsce przechowywania stanu.
+
+Wybrane jest zachowanie jednego authoritative storage odpowiadającego obecnemu status_.
+ApplicationRuntime jest właścicielem jego lifetime; fizyczne posiadanie pól nie oznacza prawa
+do zapisu Health/Safety po handoff. Coordinator otrzyma prywatną, ograniczoną do tych osi
+write authority, aktywną tylko po successful handoff. Nie istnieje publiczne setHealthState(),
+setSafetyState() ani ogólne write interface dla Domain, Alarm, Diagnostics, Commands,
+transportów lub driverów. Single source of truth pozostaje jednym prywatnym state storage odpowiadającym obecnemu ApplicationRuntime::status_. Przyszła implementacja może zachować ten storage i przekazać coordinatorowi wąską prywatną/internal write authority do Health/Safety; nie wymaga to publicznego SystemStateStore, publicznych setterów ani drugiej kopii Health/Safety. RuntimeStatus::status() musi czytać ten sam live authoritative storage, a StartupReport::finalStatus() pozostaje osobnym immutable snapshotem historycznym. Dokładny mechanizm egzekwowania dostępu należy do implementacji.
+
+Coordinator nie przechowuje niezależnego authoritative health_/safety_ snapshotu. Lokalne
+wartości robocze podczas agregacji nie są drugim źródłem prawdy. ApplicationRuntime::status()
+nadal zwraca przez wartość cztery osie z tego samego storage, bez side effects i bez query
+providerów podczas odczytu. StartupReport::finalStatus() pozostaje niezmiennym historycznym
+snapshotem, nie drugim bieżącym stanem.
+
+#### Contributions, providerzy i agregacja
+
+Konceptualne kontrakty, bez ustalania finalnego C++ API:
+
+- HealthContribution: bieżący, poprawny poziom OK, DEGRADED albo FAULT;
+- SafetyContribution: informacja, czy provider posiada co najmniej jeden aktywny systemowy
+  powód blokady; brak powodu jest neutralny;
+- HealthProvider i SafetyProvider: wąskie read-only query bieżących contributions;
+- RuntimeStateCoordinator: jawny successful-startup handoff i deterministyczny refresh obu
+  agregatów, bez prawa zmiany OperationalState/StartupPhase.
+
+Composition Root posiada i statycznie składa providerów Core oraz application/domain adapters.
+Domain może implementować wąskie DomainHealthProvider/DomainSafetyProvider; Core nie zna
+konkretnych klas Domain ani ich katalogów reasonów. Diagnostics może obserwować aggregate lub
+dostarczać własny niezależny fact, ale nie może zwrotnie traktować odczytanego aggregate jako
+nowego źródła tego samego stanu. Registry nie służy do wyszukiwania providerów przez coordinatora.
+
+Health = najpoważniejszy aktywny contribution: FAULT > DEGRADED > OK. Brak contributions daje
+OK. Provider może wewnętrznie agregować wiele swoich conditions. Powstanie/usunięcie condition
+zmienia jego query result; refresh zawsze przelicza cały zestaw, więc nie ma last-writer-wins.
+Ustąpienie FAULT odsłania nadal aktywne DEGRADED, a OK jest możliwe dopiero po ustąpieniu
+wszystkich contributions poważniejszych od OK.
+
+Safety = LOCKED, gdy co najmniej jeden provider lub unresolved startup restriction wskazuje
+aktywny systemowy powód blokady; inaczej CLEAR. Usunięcie jednego z wielu reasonów nie daje
+CLEAR. Nie istnieje globalne unlock ani zerowanie wszystkich providerów przez coordinatora.
+LOCKED jest agregatem logicznym, nie physical emergency shutdown ani dowodem stanu wyjść.
+
+Rozważone reprezentacje conditions:
+
+- setters setDegraded()/setFault()/setLocked() nie zachowują ownership i przyczyny;
+- reference-counted flags zależą od poprawnego parowania zmian i mogą pozostawić stale locks;
+- token/handle contributions dają osobne ownership, ale wymagają bookkeeping oraz release
+  protocol; nie są potrzebne przy statycznej kompozycji;
+- statyczni providerzy z query mają przewidywalny lifetime, zero heap i jawnych właścicieli;
+- snapshots dostarczane do coordinatora ograniczają query, ale wymagają cache, freshness
+  i reguł aktualizacji.
+
+Wybrani są statyczni providerzy z query. Conditions i ich latches należą do źródła/provider
+policy, nie do centralnego rejestru. Lista providerów jest immutable pointer/count; zero
+providerów jest legalne, ale nie usuwa unresolved startup conditions. Nie ma dynamic registration,
+global capacity, event bus ani wyszukiwania przez service locator. Composition Root posiada provider objects, provider contexts, tablice pointer/count oraz state storage, do którego ograniczoną write authority otrzymuje coordinator. Providerzy i ich contexts
+żyją co najmniej tak długo jak coordinator i runtime. Każdy provider, context i każda tablica provider pointers żyją co najmniej tak długo jak coordinator, a pointer/count view pozostaje stabilny przez cały okres używania. W baseline SYS-106 providerzy nie są dynamicznie usuwani, podmieniani ani rejestrowani w trakcie życia coordinatora. Authoritative state storage żyje co najmniej tak długo jak ApplicationRuntime i RuntimeStateCoordinator, które z niego korzystają. Coordinator nie posiada ani nie zwalnia provider objects, provider arrays ani drugiej authoritative kopii Health/Safety.
+
+#### Push/pull i execution boundary
+
+PUSH wymaga protokołu dostarczania zmian, lifetime i synchronizacji; utrata update może
+pozostawić nieaktualny aggregate. PULL jest prostszy w embedded loop i testach. HYBRID
+dirty notification + deterministic refresh może później ograniczyć pracę, ale wymaga dodatkowego
+kontraktu i nie jest potrzebny jako baseline.
+
+Wybrany baseline to jawny PULL refresh w serializowanej system/runtime execution boundary.
+Providerzy są pytani w kolejności statycznej deklaracji, bez side effects, blocking hardware I/O
+i zmiany lifecycle. Oba wyniki są liczone przed publikacją spójnego snapshotu. Nie udostępnia
+się częściowo przeliczonej pary Health/Safety. Query musi obejmować nadal istotne conditions;
+krótki sygnał wymagający reakcji źródło musi zachować zgodnie ze swoją policy, zamiast polegać
+na trafieniu w chwilowy event. Brak poprawnego, aktualnego query nie jest dowodem recovery
+i nie może zwolnić istniejącej blokady.
+
+Źródła z innych tasks/ISR muszą dostarczać spójny snapshot przez własną jawną synchronizację.
+SYS-106 nie projektuje threading, częstotliwości refresh, scheduler ani RuntimePlan. Odczyt
+statusu i egzekwowanie command policy używają ostatniego kompletnego snapshotu; wykonanie
+physical safety actions nie może zależeć wyłącznie od tego pollingu. Publikacja eventów jest
+osobną przyszłą granicą po zatwierdzeniu snapshotu, nigdy warunkiem lokalnej agregacji.
+
+#### Successful startup handoff i startup DEGRADED
+
+Podczas startupu ApplicationRuntime jest jedynym writerem HealthState i SafetyState według SYS-102/104. Przed handoffem nie ma innego writera.
+Handoff jest jawny, one-shot, dopiero po complete successful StartupReport, przed pierwszym
+normalnym domain runtime processing lub command execution. Do tego momentu coordinator nie
+ma write authority, a bieżący startup status pozostaje widoczny. Bez zainstalowanego coordinatora
+nie ma handoff; foundation F1.7 zachowuje swój startup status. W punkcie handoff authority jest przekazywana atomowo/logicznie jako jedna serializowana operacja: nie może istnieć chwila z dwoma writerami ani chwila bez authoritative writera live Health/Safety. Po successful handoff RuntimeStateCoordinator jest jedynym writerem HealthState i SafetyState, a ApplicationRuntime traci write authority dla tych osi i nie może zapisywać ich ponownie w tej samej instancji runtime. Authority nie wraca bez pełnego rebootu albo nowej instancji runtime; handoff jest nieodwracalny w ramach życia instancji. OperationalState i StartupPhase pozostają poza tym handoffem.
+
+Przed przekazaniem authority muszą być gotowe listy providerów (także puste) i startup health
+conditions. Każdy OPTIONAL + FAILED pozostawia osobny unresolved DEGRADED condition związany
+ze swoim właścicielem/participantem. DISABLED jest neutralne. Conditions są zachowywane
+niezależnie od caller-provided failure-report buffer: capacity zero albo truncated report
+nie może zgubić powodu degradacji. Nie odtwarza się ich z przechowanych failure records ani
+nie interpretuje Domain error codes jako runtime policy. Przyszła implementacja musi zapewnić
+pełne przekazanie tych facts przez statyczną kompozycję/startup bridge; jego storage/API nie
+jest tutaj definiowane i nie zmienia immutable StartupReport. StartupReport nie jest authoritative store aktywnych runtime facts. Nawet przy capacity zero albo overflow aktywny condition powodujący DEGRADED musi istnieć niezależnie w odpowiednim provider/service state. Handoff nie może wyczyścić DEGRADED tylko dlatego, że raport diagnostyczny nie przechował rekordu. Recovery do OK następuje dopiero po potwierdzeniu recovery przez ownera condition, gdy contribution przestaje być aktywne.
+
+Handoff przygotowuje kompletne provider snapshots i startup conditions, następnie w jednej
+serializowanej boundary przekazuje authority bez zerowania statusu. Brak nowych facts zachowuje
+startup OK/CLEAR lub DEGRADED/CLEAR. Pierwszy aggregate może natychmiast wzmocnić Health lub
+ustanowić LOCKED, gdy istnieje uzasadniający fact; nie publikuje się default OK ani przejściowego
+LOCKED wynikającego tylko z konstrukcji coordinatora.
+
+Unresolved startup condition może być zastąpiony bieżącym provider contribution wyłącznie po
+jawnym przejęciu odpowiedzialności za tę samą przyczynę. Jego usunięcie wymaga pozytywnego
+potwierdzenia recovery przez właściciela, nie samego istnienia providera. Zastąpienie jest
+spójne, bez luki i bez podwójnego niezależnego latcha. Gdy brak takiego providera/potwierdzenia,
+condition pozostaje aktywny; brak providerów nie zamienia startup DEGRADED w OK.
+
+Przykład: optional Network init FAILED daje RUNNING + DEGRADED + CLEAR. Późniejsze potwierdzone
+recovery tego samego condition usuwa jego DEGRADED contribution. Health wraca do OK tylko gdy
+nie istnieją inne aktywne contributions. StartupReport nadal opisuje DEGRADED startup.
+Startup DEGRADED nie jest globalnym immutable latchem.
+
+#### Fatal startup, latching i granice policy
+
+Fatal startup nie wykonuje normalnego handoff. ApplicationRuntime zachowuje authority i
+ERROR + FAULT + LOCKED z fazą zatrzymania przez cały ERROR recovery shell z SYS-105.
+Recovery system facts mogą służyć osobnej diagnostyce, ale nie zastępują tego fatal condition,
+nie zdejmują LOCKED i nie obniżają FAULT. Config repair nie aktywuje coordinatora ani nie daje
+ERROR → RUNNING. Ponowny startup wymaga restartu/nowej instancji runtime; start() nadal jest
+one-shot, a StartupReport immutable. RuntimeStateCoordinator nie otrzymuje normalnej write authority, a recovery shell nie uruchamia normalnej runtime aggregation, która mogłaby obniżyć FAULT albo zdjąć LOCKED.
+
+Health FAULT i Safety LOCKED nie mają jednego globalnego latch behavior. Latching, wymagany
+ACK, safe-resume conditions i reset należą do konkretnego fact/alarm/domain policy.
+Coordinator agreguje nadal aktywne reasons, nie obsługuje ACK i nie kasuje latchy. ACK != CLEAR;
+potwierdzenie nie usuwa trwającej przyczyny ani innych powodów blokady. Fatal startup jest
+szczególnym condition utrzymanym do nowego pełnego startupu. Sam Health FAULT nie wymusza
+OperationalState ERROR, a LOCKED nie wymusza MAINTENANCE; te transition policies są poza SYS-106.
+
+Alarm framework nie jest Health ani Safety coordinatorem. Alarm może dostarczać contributions
+przez Core/Domain mapping policy; nie każdy alarm degraduje Health lub blokuje Safety.
+Istniejące wymagania dla CRITICAL i latched alarms pozostają obowiązujące. Action Locks
+blokują konkretne akcje; tylko safety-critical lock wskazany przez policy może stanowić
+systemowy SafetyContribution. SafetyState nie jest drugim Action Locks frameworkiem.
+Maintenance może przez lifecycle owner wpływać na OperationalState, blokować wybrane akcje
+i dostarczać SafetyContribution, lecz Maintenance != Safety.
+
+Command pipeline czyta OperationalState, HealthState, SafetyState i Action Locks, ale nie
+pisze bezpośrednio globalnych osi. Komenda może zmienić condition przez jego dozwolony workflow;
+dopiero coordinator aktualizuje aggregate. HTTP, Realtime, MQTT i Panel czytają/publikują stan,
+nie otrzymują write authority. Diagnostics również nie jest alternatywnym writerem.
+
+#### Migration, testability i scope
+
+F1.9 jest docs-only. Nie zmienia F1.7 ani ApplicationPlan, start() i StartupReport API.
+Przyszła implementacja doda ograniczoną write authority, handoff, startup facts boundary
+i coordinator bez drugiej kopii stanu. Oddzielny SystemStateStore nie jest wymagany.
+
+Przyszłe host tests muszą objąć:
+
+- Health: brak contributions → OK, DEGRADED, FAULT, dominację FAULT oraz powrót do niższego
+  poziomu po recovery tylko odpowiedniej przyczyny;
+- Safety: brak reasons → CLEAR, jeden/wiele reasons → LOCKED, usunięcie jednego z wielu
+  nie daje CLEAR, usunięcie wszystkich daje CLEAR;
+- handoff: startup OK/CLEAR bez glitcha, startup DEGRADED bez false OK, recovery jednej
+  z wielu startup przyczyn, unresolved condition bez providera, report capacity zero/truncation,
+  nowe uzasadnione facts podczas handoff, fatal startup bez handoff i trwałe FAULT/LOCKED;
+- ownership: brak publicznych setterów dla Domain/transportów, jeden runtime writer,
+  jeden bieżący storage, spójny snapshot, deterministic refresh bez last-writer-wins, dokładnie jeden writer przed i po handoff, brak zapisu ApplicationRuntime po handoff, one-shot i brak powrotu authority bez reboot/new runtime;
+- kompozycja: statyczny provider array/lifetime contract oraz capacity zero/overflow bez utraty aktywnych runtime facts;
+- granice: latched condition po ustąpieniu przyczyny, ACK bez clear aktywnej przyczyny,
+  one-shot start() i immutable StartupReport mimo późniejszego recovery.
+
+Agregacja i ownership są host-testable. HIL jest potrzebny później dla real hardware facts,
+recovery sensorów/actuatorów, timing/races urządzenia i rzeczywistego physical safety.
+Host tests agregatu nie dowodzą fizycznego stanu wyjść.
+
+SYS-106 nie rozstrzyga SYS-107, ARCH-101, pełnego Alarm API, Action Locks API, Maintenance
+workflow, Command implementation, RuntimePlan scheduling, SafetyManager implementation,
+Diagnostics providers ani event publication. Ustala tylko writer ownership, lifecycle handoff,
+single source of truth i aggregation boundary.
+
 ### IDN-001 — rozdzielenie identity
 `DeviceIdentity`, `BuildIdentity`, `HardwareIdentity` i `RuntimeIdentity` są osobnymi
 pojęciami. Friendly/user-visible name nie jest częścią technical identity. Dokładne pola,
@@ -688,7 +894,6 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 
 - ARCH-101 — dokładny API Core ↔ Domain;
 - SYS-101 — nazwa, algorytm, encoding, generator, RNG source i collision policy RuntimeIdentity;
-- SYS-106 — dokładny przyszły writer ownership dla HealthState i SafetyState;
 - SYS-107 — dokładny katalog RestartRequestReason i zachowanie wielu pending requestów;
 - IDN-101 — pola identity, format device_id, MAC/MAC6, capacities i zasady walidacji;
 - CFG-101 — dokładny model pending config i recovery po korupcji;
