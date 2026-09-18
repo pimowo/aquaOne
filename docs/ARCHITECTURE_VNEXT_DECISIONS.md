@@ -1,6 +1,6 @@
 # Architecture vNext — decyzje
 
-**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE, F1.6 SYS-104 DESIGN GATE, F1.8 SYS-105 RECOVERY DESIGN GATE i F1.9 SYS-106 WRITER OWNERSHIP DESIGN GATE
+**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE, F1.6 SYS-104 DESIGN GATE, F1.8 SYS-105 RECOVERY DESIGN GATE, F1.9 SYS-106 WRITER OWNERSHIP DESIGN GATE i F1.10 SYS-107 RESTART REQUEST POLICY DESIGN GATE
 **Scope:** cała platforma aquaOne
 **Zasada:** Architecture vNext jest TARGET. CURRENT wynika z kodu i macierzy projektu. Legacy code is not architecture.
 
@@ -603,7 +603,7 @@ punkt. Jest to system/recovery safe point, nie domain-loop safe point.
 Automatyczny restart jest dozwolony dopiero po przyjęciu osobnej jawnej polityki dla wybranych
 kategorii błędów wraz z ochroną przed boot loop, backoff/safe mode i uwzględnieniem flash wear
 oraz watchdoga. Persistent boot-attempt counter, persistence i dokładna polityka pozostają poza
-SYS-105. SYS-107 pozostaje otwarte.
+SYS-105.
 
 W `ERROR` policy może dopuścić wyłącznie komendy system/recovery, na przykład status,
 diagnostics, config repair, restart, factory reset, restore lub OTA, jeśli wspierająca
@@ -839,6 +839,188 @@ workflow, Command implementation, RuntimePlan scheduling, SafetyManager implemen
 Diagnostics providers ani event publication. Ustala tylko writer ownership, lifecycle handoff,
 single source of truth i aggregation boundary.
 
+### SYS-107 — restart request policy
+
+**Status:** ACCEPTED — TARGET contract; F1.10 nie implementuje requestera ani executora.
+
+RestartReason opisuje przyczynę BIEŻĄCEGO bootu. RestartRequestReason opisuje intencję
+BIEŻĄCEGO runtime wykonania PRZYSZŁEGO restartu. Są osobnymi kontraktami; accepted request
+nie zmienia current-boot RestartReason ani immutable StartupReport.
+
+#### Katalog RestartRequestReason v1
+
+Wybrany jest mały, stabilny machine-readable enum z poniższymi tokenami i znaczeniami.
+Tokenów nie zmienia się ani nie używa ponownie dla innego znaczenia. Binary enum encoding
+i prywatny bit layout nie są publicznym wire formatem. Każdy legalny reason ma stabilną bit identity wynikającą z jawnie zdefiniowanego mapowania reason → bit; nie wolno polegać na przypadkowej kolejności deklaracji enum, chyba że wartości enum są jawnie przypisane jako te stabilne identity. Reason musi być zwalidowany przed użyciem w shift, index albo bit lookup; invalid value nie może spowodować out-of-range shift/index. Accepted-reasons mask musi mieć szerokość obejmującą cały legalny katalog v1. Rozszerzenie katalogu wymaga sprawdzenia zgodności reprezentacji maski. Ten kontrakt nie wybiera konkretnego typu integer ani finalnego układu enum.
+
+| Reason | Stabilne znaczenie |
+|---|---|
+| USER_REQUEST | Jawne żądanie restartu użytkownika, zaakceptowane przez właściwy workflow/policy, również w ERROR shell. |
+| CONFIG_APPLY | Owner pomyślnie przygotował/zapisał zaakceptowaną konfigurację wymagającą pełnego startupu; nie dotyczy live apply bez restartu. |
+| FACTORY_RESET | Pomyślnie zakończony factory reset wymaga nowego bootu. Nie oznacza rozpoczęcia kasowania danych. |
+| RESTORE_COMPLETE | Pomyślnie zakończony restore wymaga nowego bootu. Nie oznacza rozpoczęcia restore ani jego błędu. |
+| OTA_COMPLETE | Pomyślnie zakończony OTA workflow przygotował firmware do aktywacji przez restart; sam upload nie wystarcza. |
+| RECOVERY_ACTION | Jawna, pomyślnie zakończona recovery action wymaga pełnego startupu i nie jest objęta bardziej konkretnym reason. |
+| SYSTEM_POLICY | Osobna, jawnie przyjęta polityka systemowa żąda restartu, gdy żaden konkretny reason katalogu nie opisuje tej intencji. Nie jest catch-all dla błędów. |
+
+CONFIG_APPLY, FACTORY_RESET, RESTORE_COMPLETE i OTA_COMPLETE zachowują swoje znaczenie także
+w ERROR shell. Sama lokalizacja w recovery nie zamienia ich na RECOVERY_ACTION. Bezpośredni
+restart użytkownika w ERROR nadal ma USER_REQUEST. SYSTEM_POLICY nie zastępuje żadnego z tych
+reasonów; może powstać wyłącznie z jawnie zaakceptowanej policy z określonym triggerem, authority i workflow/boundary. Nie jest catch-all typu „wystąpił błąd → restart”, nie omija safe point, Safety ani przyszłych policy boundaries.
+SYS-107 nie ustanawia takiej polityki, automatycznego restartu ani boot-loop protection.
+
+MAINTENANCE nie jest reasonem: opisuje workflow, który może użyć właściwego reason.
+WATCHDOG jest obserwowaną przyczyną resetu bieżącego bootu, nie zwykłym requestem.
+FATAL_ERROR i NETWORK nie są reasonami: failure sam nie żąda restartu. UNKNOWN nie istnieje
+dla poprawnego requestu. Request bez legalnego reason jest contract error, odrzucany bez
+modyfikacji pending state i bez wywołania executora; nie mapuje się go na SYSTEM_POLICY.
+
+Arbitrary text nie jest reasonem ani częścią wymaganej reprezentacji pending requestu.
+Opcjonalne source/detail może służyć osobnej diagnostyce przy jawnym bounded storage/lifetime
+contract i bez sekretów. Nie jest warunkiem przyjęcia, agregacji lub wykonania requestu.
+
+#### Wiele requestów, primary reason i idempotency
+
+Rozważone modele:
+
+- first request wins jest prosty i deterministyczny, ale traci późniejsze causes;
+- last request wins nadpisuje historię i uzależnia diagnostykę od ostatniego callera;
+- priority wins wymaga rankingu, który miesza diagnostic importance z urgency/safety;
+- merge zachowuje jeden pending restart, first primary oraz fixed bitmask różnych causes,
+  bez heap i bez utraty zaakceptowanej intencji;
+- queue wszystkich requestów wymaga storage/overflow policy, choć jeden reboot realizuje
+  wszystkie przyjęte intencje; nie tworzy się kolejki kolejnych rebootów.
+
+Wybrany jest merge: pierwszy poprawny accepted request ustanawia sticky pending i primary
+reason. Fixed bitmask zawiera wszystkie różne zaakceptowane reasons, włącznie z primary;
+additional causes to ten zbiór bez primary. Primary pozostaje first accepted reason przez
+całe życie pending requestu. Kolejny różny reason dodaje tylko swój bit; nie zastępuje primary,
+nie przyspiesza restartu i nie resetuje kolejności. Maska ma stały rozmiar wynikający z katalogu
+v1, bez arbitralnej global capacity, dynamic array lub rosnącej listy tekstów.
+
+Duplikat tego samego reason jest idempotentny: nie zmienia primary, maski, kolejności ani czasu,
+nie zwiększa occurrence counter. V1 nie wymaga timestampu, sekwencji ani licznika wystąpień.
+Nie ma severity/priority reasonów ani escalation na podstawie kolejnego requestu. Semantycznie request może być accepted-new-cause, accepted-duplicate albo invalid; nie ustanawia to finalnego C++ result type. Completion
+OTA/restore/factory reset nie ma wyższej safety severity i nie może ominąć safe point.
+
+#### Pending state, authority, cancellation i lifetime
+
+Konceptualny RestartRequestState zawiera pending yes/no, primary obecny tylko gdy pending,
+oraz accepted reason mask. Empty state ma pending=false i pustą maskę; nie ma legalnego
+UNKNOWN/default reason. Snapshot jest read-only, spójny i nie wykonuje efektów.
+Obowiązują inwarianty: przy pending=false primary nie jest ważny, accepted mask jest pusta, a additional causes są puste; przy pending=true primary jest legalnym reasonem, jego bit jest ustawiony w accepted mask, maska zawiera wyłącznie legalne reasons, a maska jest jedynym mutable zbiorem causes. Additional causes są wyliczane jako accepted mask minus primary; nie istnieje osobna mutable lista additional causes. Primary jest pierwszym accepted reason i nie zmienia się do końca życia pending requestu.
+Nie rozszerza RuntimeStatus o nowe osie ani nie zmienia Health/Safety writer ownership.
+
+Jeden lifecycle/system owner posiada mutable pending state. Composition Root składa ten
+owner oraz jawnie przekazuje wąski RestartRequester do uprawnionych system/recovery workflows,
+config ownera i przyszłych maintenance/OTA/restore/factory reset workflows. User command
+adapter może dostać requester przez właściwy workflow; reason nie zastępuje Auth/policy.
+Domain nie dostaje tej capability automatycznie. Jawnie skomponowany domain adapter może
+zgłosić intencję tylko w ramach przyjętej policy, bez dostępu do executora lub całego runtime.
+State owner żyje przez cały okres używania pożyczonych requesterów i read views.
+
+RestartRequester zapisuje intencję i nigdy nie wykonuje platformowego resetu. RestartExecutor
+jest efektem platformowym dostępnym wyłącznie lifecycle/system orchestration; Domain,
+HTTP, Realtime, MQTT, Panel i arbitrary services nie otrzymują executora ani nie wykonują
+bezpośrednio ESP.restart(). Transport może inicjować autoryzowany workflow przez requester.
+
+V1 nie ma cancellation, także przez ownera pierwotnego requestu. Sticky request nie znika
+samoczynnie przy disconnect, ustąpieniu błędu lub zakończeniu callera. Caller rozstrzyga
+potrzebę restartu przed requestem; raz zaakceptowana intencja nie wymaga token ownership.
+Usunięcie dodatkowego cause również nie jest dostępne. Pending trwa do terminalnego wykonania
+restartu albo końca bieżącego runtime przez inny reset/power loss.
+
+Acceptance i aktualizacja pending są serializowane przez system runtime. First accepted
+oznacza pierwszy w tej serializowanej kolejności, bez last-call-wins. ISR nie wywołuje
+bezpośrednio request API; cross-task/ISR delivery wymaga osobnego kontraktu. Nie projektuje
+się tu mutexów, kolejki eventów ani scheduler implementation.
+
+#### Safe point i terminalne wykonanie
+
+Obowiązuje SYS-007: request → pending → legal safe point → RestartExecutor. Sam accepted
+request nigdy nie wywołuje executora. W RUNNING safe point jest na końcu kompletnej, bezpiecznej iteracji runtime/system processing;
+w ERROR shell jest to system/recovery safe point z SYS-105, niezależny od domain loop.
+Normalny startup pozostaje one-shot; request nie przerywa go ani nie wznawia callbacków.
+Execution następuje dopiero po zakończonym startupie w legalnej system execution boundary. Pojęcie tick użyte w SYS-102 opisuje przyszłą execution boundary i nie ustanawia publicznego RuntimePlan ani tick API; exact scheduling i RuntimePlan pozostają otwarte.
+
+Pending pozostaje aktywny i może agregować kolejne causes, gdy trwa critical persistent write, OTA, restore,
+factory reset albo dowolna operacja deklarująca restart unsafe. Owner operacji musi jawnie
+udostępnić aktualny stan safe/unsafe orchestration; brak dowodu legalnego safe point nie daje
+permission do resetu. SYS-107 nie implementuje Operation Manager, physical safe shutdown ani
+RestartPreparation. Sam pending request nie wprowadza MAINTENANCE ani nie zmienia SafetyState.
+
+W legalnym safe point lifecycle owner ponownie sprawdza warunki i przechodzi do terminalnego
+dispatch jako jednej serializowanej operacji. Do momentu przekazania do RestartExecutor pending pozostaje authoritative: primary i accepted mask pozostają ważne, a rozpoczęcie próby nie może zgubić intencji. Executor jest platformowym handoffem; kontrakt nie wymaga bool/result, a prawidłowy restart może nie wrócić. Zablokowana próba sprawdzenia safe point nie konsumuje requestu.
+Jeżeli executor zgłosi failure albo wróci bez wykonanego restartu, pending MUSI pozostać aktywny, primary bez zmian, a accepted mask bez zmian; intencja nie została skonsumowana. Nie oznacza to automatycznej kolejnej próby na następnym safe point. Retry loop, counter, delay, backoff, forced restart i escalation pozostają przyszłą execution/retry policy i nie mogą prowadzić do busy-loop retry. Jeśli rzeczywisty restart nastąpi, stara instancja runtime przestaje istnieć, więc nie wymaga lokalnego clear; nowa instancja zaczyna bez volatile pending.
+Dokładny platformowy failure contract pozostaje przyszłą decyzją implementacyjną.
+
+Request zaakceptowany przed terminalnym dispatch wchodzi do tej samej maski, także tuż przed
+safe point. Po zamknięciu acceptance w terminalnym dispatch nie przyjmuje się kolejnych
+requestów do konsumowanego zbioru; próba nie może zostać pozornie zaakceptowana i zgubiona.
+Nie tworzy to drugiego pending rebootu. Jeśli safe point nigdy nie wystąpi, v1 nadal czeka
+z widocznym pending. Timeout, forced restart, watchdog escalation i backoff nie należą do
+SYS-107 i nie mogą być domyślnym obejściem safety boundary.
+
+Fatal startup sam nie tworzy requestu. Dostępna, bezpieczna recovery capability może jawnie
+requestować restart w ERROR, a system/recovery processing wykona go przy swoim safe point.
+Brak normalnego domain loop i domain command nie blokuje tej ścieżki. Restart rozpoczyna
+pełny BOOT; nie zmienia complete StartupReport, ERROR/FAULT/LOCKED ani handoff semantics.
+
+#### Workflow completion i deterministyczne scenariusze
+
+Factory reset, restore i OTA najpierw pomyślnie kończą operację i wszystkie krytyczne kroki
+wymagane przed rebootem, dopiero potem requestują swój completion reason. Nie requestują
+completion przy samym rozpoczęciu, abort lub failure. Wcześniejszy request wymaga osobnego,
+jawnego przyszłego workflow contract. Niezależnie od jego reason istniejący pending nie daje
+permission do restartu podczas nowej critical operation. Merge nie autoryzuje uruchamiania
+równoczesnych lub niekompatybilnych workflows.
+
+Config owner rozstrzyga live apply vs restart-required; SYS-107 nie wybiera rodzaju configu.
+Po pomyślnym przygotowaniu restart-required config requestuje CONFIG_APPLY. User restart
+jest jawną akcją: przyszły Auth/policy workflow akceptuje ją przed zapisaniem intencji.
+
+| Scenariusz | Wynik |
+|---|---|
+| USER_REQUEST, potem CONFIG_APPLY | Primary USER_REQUEST; maska obu reasons; jeden restart. |
+| CONFIG_APPLY, potem USER_REQUEST | Primary CONFIG_APPLY; maska obu reasons; jeden restart. |
+| OTA_COMPLETE, potem FACTORY_RESET | Primary OTA_COMPLETE; maska obu reasons, jeśli oba completion są legalnie zaakceptowane; active factory reset blokuje execution do zakończenia. |
+| FACTORY_RESET, potem USER_REQUEST | Primary FACTORY_RESET; maska obu reasons. |
+| SAME_REASON wielokrotnie | Pending snapshot bez zmian. |
+| Jawny request w ERROR shell | Pending czeka na system/recovery safe point; fatal sam niczego nie requestuje. |
+| Request podczas critical write | Intencja może być przyjęta, ale executor nie działa do legalnego safe point. |
+| Request tuż przed safe point | Jeśli przyjęty przed terminalnym dispatch, jest uwzględniony w konsumowanym zbiorze. |
+
+#### Persistence, observability, testability i scope
+
+Pending state jest volatile dla bieżącego runtime, bez heap, RTC/NTP i persistent replay.
+Nowa instancja po dowolnym reboot/power loss zaczyna bez pending requestu. Ewentualny transfer
+reason do next boot metadata jest osobnym future/platform contract: może być wiele-do-jednego,
+nie musi mapować 1:1 i nie zmienia źródła prawdy hardware reset cause. SYS-107 nie definiuje
+current-boot RestartReason catalog, storage, atomicity ani validity tego metadata.
+
+Minimum status/diagnostics to read-only snapshot pending, primary i accepted mask: przy pending=false primary nie jest publikowany jako legalna wartość, a maska jest pusta; przy pending=true snapshot zawiera pending, legalny primary i accepted mask. Additional causes są wyliczane z maski i nie są osobną authoritative kopią.
+Nie wymaga loggera, Network ani transportów; przyszłe HTTP/MQTT/Realtime mogą publikować ten
+sam snapshot. Pierwszy accepted request i dodanie nowego cause są istotnymi zmianami systemowymi,
+logowalnymi i potencjalnie publikowanymi jako event. Duplicate nie wymaga nowego eventu/logu.
+Próba wywołania executora i jego failure powinny być logowalne, jeśli możliwe. Logging/publication
+failure nie zmienia pending, nie blokuje legalnego restartu i nie uruchamia retry policy; Event API i logger są poza gate.
+
+Przyszłe host tests muszą objąć: stabilne reason→bit, odrzucenie invalid przed shift/index, mask invariants dla pending, empty state, pierwszy request, duplicate bez zmian, drugi
+różny reason i union mask, first primary dla obu kolejności, wszystkie powyższe scenariusze,
+brak immediate executor, blocked safe point zachowujący pending, execution konsumujące request
+przy executorze, executor failure niegubiący intencji, terminal acceptance boundary,
+ERROR request i brak requestu od samego fatal startup, invalid reason bez mutacji, spójny
+observability snapshot, brak cancellation oraz nową instancję bez odziedziczonego pending.
+
+HIL pozostaje wymagany później dla rzeczywistego ESP restartu, non-return executora po sukcesie, boot reason handoff, power loss
+wokół boot metadata, watchdog interactions i real OTA/factory reset/restore workflows.
+Host tests policy nie dowodzą fizycznego restartu ani safety urządzenia.
+
+SYS-107 nie zamyka ARCH-101, current-boot RestartReason catalog, boot-loop protection,
+watchdog policy, Maintenance, OTA/Restore/Factory Reset implementation, Command API, Auth,
+Event API, logging implementation, physical shutdown ani RuntimePlan scheduling.
+F1.10 jest docs-only; ApplicationRuntime i wszystkie istniejące C++ kontrakty pozostają bez zmian.
+
 ### IDN-001 — rozdzielenie identity
 `DeviceIdentity`, `BuildIdentity`, `HardwareIdentity` i `RuntimeIdentity` są osobnymi
 pojęciami. Friendly/user-visible name nie jest częścią technical identity. Dokładne pola,
@@ -894,7 +1076,6 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 
 - ARCH-101 — dokładny API Core ↔ Domain;
 - SYS-101 — nazwa, algorytm, encoding, generator, RNG source i collision policy RuntimeIdentity;
-- SYS-107 — dokładny katalog RestartRequestReason i zachowanie wielu pending requestów;
 - IDN-101 — pola identity, format device_id, MAC/MAC6, capacities i zasady walidacji;
 - CFG-101 — dokładny model pending config i recovery po korupcji;
 - CFG-102 — zakres DomainState w backupie;
