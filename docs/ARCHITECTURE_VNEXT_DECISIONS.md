@@ -1,6 +1,6 @@
 # Architecture vNext — decyzje
 
-**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE, F1.6 SYS-104 DESIGN GATE, F1.8 SYS-105 RECOVERY DESIGN GATE, F1.9 SYS-106 WRITER OWNERSHIP DESIGN GATE i F1.10 SYS-107 RESTART REQUEST POLICY DESIGN GATE
+**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE, F1.6 SYS-104 DESIGN GATE, F1.8 SYS-105 RECOVERY DESIGN GATE, F1.9 SYS-106 WRITER OWNERSHIP DESIGN GATE, F1.10 SYS-107 RESTART REQUEST POLICY DESIGN GATE i F1.11 SYS-101 RUNTIME IDENTITY DESIGN GATE
 **Scope:** cała platforma aquaOne
 **Zasada:** Architecture vNext jest TARGET. CURRENT wynika z kodu i macierzy projektu. Legacy code is not architecture.
 
@@ -68,6 +68,193 @@ bieżący runtime żąda restartu, a `RestartExecutor` wykonuje efekt platformow
 transport otrzymują wyłącznie `RestartRequester`. Zakres Fazy 1 to: request, pending request,
 safe point w runtime loop, RestartExecutor. RestartPreparation, Maintenance transition,
 MQTT offline, timeouty i OTA workflow pozostają poza Fazą 1.
+
+### SYS-101 — RuntimeIdentity
+
+**Status:** ACCEPTED — TARGET contract; F1.11 nie implementuje value type ani generatora.
+
+#### Nazwa, semantyka i wybór reprezentacji
+
+Wybrana nazwa to RuntimeIdentity, zgodna z kategorią IDN-001; docelowy neutralny value type
+należy do AquaCore::Identity. RuntimeInstanceId jest precyzyjny, ale wprowadza drugą nazwę
+tej samej kategorii; RuntimeId jest mniej jednoznaczny. BootIdentity/BootInstanceId wiążą
+nazwę z resetem zamiast instancją runtime, która obejmuje także startup i ERROR recovery.
+RuntimeIdentity identyfikuje jedną konkretną instancję runtime, nie urządzenie, MAC,
+wersję firmware, reset cause ani friendly name.
+
+| Reprezentacja | Ocena |
+|---|---|
+| Random 32-bit integer | Zero heap i prosty format, ale zbyt mała przestrzeń kolizji dla historii/fleet diagnostics. |
+| Random 64-bit integer | 8 bajtów, proste equality i fixed hex, bez czasu/persistence; wystarcza dla przyjętego probabilistycznego modelu. |
+| Random 128-bit / UUID | Znacznie mniejszy collision risk, ale większy storage i tekst; UUID wnosi dodatkowe format/version rules bez wymagania globalnego indeksowania. |
+| Fixed random byte array | Zero heap, ale to forma storage, nie collision model; osiem random bytes ma tę samą przestrzeń co 64-bit value. |
+| Persistent boot counter | Deterministyczny w obrębie device tylko przy poprawnym atomic storage, wrap i reset policy; wymaga persistence i zwiększa flash wear. |
+| Timestamp-based identity | Zależy od dostępności, rozdzielczości i cofania czasu; RTC/NTP nie są obowiązkowe. |
+| Device-derived + random | Wymaga dodatkowych danych/mappingu i może zmniejszyć przestrzeń losową; device identity można publikować osobno. |
+
+Wybrane jest losowe 64-bit nonzero value. 128-bit byłby właściwszy przy wymaganiu ogromnego
+globalnego zbioru z jeszcze mniejszym collision risk; takiego wymagania nie ma. Counter nie uzasadnia
+persistence dla identyfikatora diagnostycznego. Wszystkie przyszłe transports mogą serializować
+ten sam value bez zależności od sieci, czasu lub platformy w samym value type.
+
+#### Value, validity, equality i format
+
+Storage jest konceptualnie unsigned uint64-sized value, bez heap, pointer identity ani
+resource ownership. Zero oznacza invalid/not generated i jest stanem default konstrukcji.
+Legalna RuntimeIdentity zawsze jest nonzero. Jawna factory z pełnej binary value waliduje
+nonzero; nie używa implicit conversion ani zastępczej wartości przy błędzie. Typ jest tanio
+copyable; trivial copyability nie ustanawia ABI. Equality porównuje pełne 64 bity, bez adresów
+i bez porównywania tekstu, gdy binary value jest dostępne. Równość invalid sentinel nie oznacza
+równości legalnych runtime instances.
+
+Canonical machine serialization legalnej wartości to dokładnie 16 uppercase ASCII hex chars,
+most-significant digit first, bez 0x, separatorów i locale, z zachowaniem leading zeros,
+np. 0000000000000001. W implementacji formattera C-string buffer może wymagać 17 bajtów (16 chars + terminator);
+jest to konsekwencja tego formattera, nie wire/storage representation requirement. Formatter
+używa caller-provided storage, nie truncates i jawnie zgłasza zbyt mały buffer albo invalid value.
+Zero nie jest publikowane jako legalna identity. Format jest niezależny od host endianness;
+nie ustanawia się raw-memory binary wire format. Skrót w UI jest wyłącznie display,
+nie identity ani kluczem do equality. Parsing API pozostaje implementacyjne.
+
+#### Generator, RNG i collision model
+
+Wybrany wąski koncept RuntimeIdentityGenerator::generate() zwraca legalną nonzero identity
+albo jawne failure. Platform generator generuje candidates i wykonuje bounded retry zgodnie
+z backendem; caller nie otrzymuje surowych candidates. Identity startup participant/adapter
+wywołuje generator, defensywnie waliduje wartość, nie publikuje zero i przy zero/invalid zwróconym
+jako success zwraca zwykły participant failure z przyszłym identity-specific error code.
+ApplicationRuntime widzi wyłącznie StartupStepResult: nie losuje i nie interpretuje binary identity.
+Nie rozszerza się znaczenia SYS-104 RESULT_CONTRACT_FAILURE. Composition Root przekazuje generator
+jawnie; neutralny kontrakt nie importuje ESP32 API, Time, Network, NVS, Registry ani crypto frameworka.
+
+Algorytm v1 platform generatora pobiera pełne 64 random bits. Przy zero wykonuje bounded retry
+zgodnie z lokalnie zdefiniowanym limitem backendu; nie może wykonywać nieskończonej pętli. Po
+wyczerpaniu tego limitu, source failure albo braku bezpiecznie dostępnego źródła zwraca explicit
+failure bez stałego fallbacku, millis seed, countera lub zależności od loggera. Dokładna liczba
+prób nie jest kontraktem SYS-101; test backendu musi sprawdzać jego własny limit. Generator
+kończy się w bounded platform execution, nie czeka na Network ani RTC/NTP. Native tests używają
+jawnie wstrzykniętego deterministic fake. Nie trzeba projektować entropy health frameworka.
+
+Platform backend używa źródła losowości odpowiedniego dla danego SoC/frameworka, o jakości
+wystarczającej dla probabilistic collision resistance. Nie seeduje PRNG wyłącznie millis()/uptime,
+nie wymaga RTC/NTP ani nie tworzy architektonicznej zależności od Network, AP lub Internetu.
+Warunki entropy readiness, RF preparation, SDK calls i cleanup należą do backendu. ESP32 jest
+przykładem backendu, nie uniwersalną procedurą; sama obecność esp_random() nie dowodzi jakości
+przed NETWORK_INIT. Backend nie może kolidować z ADC/I2S/RF ani early safe outputs, a brak
+preconditions oznacza failure, nie przesunięcie generowania do Network. Dokładne SDK calls są
+przyszłą implementacją.
+Źródło wymagań platformowych: [Espressif ESP32 RNG documentation](https://docs.espressif.com/projects/esp-idf/en/v4.4.5/esp32/api-reference/system/random.html).
+
+Przyjęta jest praktyczna probabilistyczna unikalność, przy niezależnych, równomiernych
+losowaniach z 2^64-1 legalnych wartości; nie jest to globalna absolutna gwarancja.
+Dla n losowań birthday approximation wynosi n(n-1)/(2(2^64-1)), gdy ryzyko jest małe:
+dla miliona instancji około 2.7e-8. Ryzyko rośnie z liczbą instancji; nie deklaruje się
+bezkolizyjności nieograniczonej floty. Consumers odnoszą identity do konkretnego device,
+nie używają samej RuntimeIdentity jako gwarantowanego globalnego primary key.
+V1 nie wykrywa kolizji i nie przechowuje historii. Nowe losowanie po reboot może teoretycznie
+dać tę samą wartość; nowa instancja oznacza świeżą generację, nie matematycznie wymuszoną
+nierówność. Zmiana wartości jest sygnałem nowego runtime, równość nie jest dowodem braku rebootu.
+
+#### Generation point, ownership i failure
+
+Nie generuje się w constructor ApplicationRuntime: hardware/RNG effect nie może wyprzedzić
+early safe outputs. BOOT byłby możliwy po early action, ale CORE_INIT odpowiada inicjalizacji
+identity Core. INTERFACES_INIT jest za późno i sprzęgałby obowiązkową identity z optional interfaces.
+
+Composition Root posiada jeden runtime-scoped identity owner/storage i generator platformowy,
+a ApplicationRuntime koordynuje generowanie przez pierwszy REQUIRED participant CORE_INIT, po
+earlySafeOutputs, pełnej walidacji planu i ordinary BOOT participants. Composition Root MUSI
+deklarować identity participant przed wszystkimi zwykłymi CORE_INIT participantami, które
+wymagają RuntimeIdentity; kolejność wynika z declaration-order contract SYS-102, bez dependency
+DAG. BOOT participants nie mogą wymagać już wygenerowanej identity ani uniemożliwić bezpiecznego
+RNG window. Nie dodaje się special action, fazy, nowych pól ApplicationPlan ani callback access
+do całego runtime.
+
+Owner jest przypisany do jednej instancji ApplicationRuntime; nowa instancja dostaje świeży
+owner w invalid state, bez reuse już zainicjalizowanego storage. Jest jedynym authoritative
+storage, raz publikuje legalną wartość i nie udostępnia setterów/regenerate consumers.
+Read-only identity views i kopie nie są drugim mutable źródłem prawdy. Owner i generator/context
+żyją co najmniej przez okres używania przez runtime oraz pożyczone read views zgodnie z SYS-102.
+Nie tworzy się IdentityService frameworka ani service locatora; dokładny holder/read API
+pozostaje implementacyjne. ApplicationRuntime nie staje się właścicielem concrete generatora.
+
+Generate jest wywołane raz podczas pierwszego start(), jeśli osiągnięto identity participant;
+lokalne retry zero są częścią tego jednego wywołania. Failure generatora oznacza REQUIRED
+participant failure w CORE_INIT ze stable Core error code RUNTIME_IDENTITY_GENERATION_FAILED
+w namespace AQUA.CORE; sukces z invalid oznacza contract violation tego kroku, bez publikacji zero.
+Normalny startup zatrzymuje się jako ERROR + FAULT + LOCKED według SYS-102/104/105.
+RuntimeIdentity jest fundamentalnym invariantem normalnej instancji aquaOne runtime, nie
+wygodnym dodatkiem diagnostics/Realtime. Normalny RUNNING musi mieć legalną identity, ponieważ
+wyznacza granicę życia instancji, namespace przyszłych per-runtime event/sequence semantics,
+sygnał odróżniający stan przed i po reboot oraz część systemowego lifecycle/identity contract.
+Dlatego brak legalnej identity przed RUNNING jest REQUIRED startup failure → ERROR + FAULT + LOCKED.
+To invariant lokalnego Core lifecycle, bez zależności od Network; brak Network nie jest failure RNG.
+
+Jeżeli fatal wystąpi przed legalnym RuntimeIdentity, identity pozostaje unavailable, zero nie jest
+publikowane jako legalne ID, a ERROR recovery shell i lokalna diagnostyka mogą działać bez identity.
+Recovery nie generuje jej później, a drugi start() nie generuje jej ponownie; dopiero nowa runtime
+instance może ponownie przejść normalny generation step. Jeśli legalna identity powstała przed
+późniejszym fatal failure, ERROR shell, restart request i RestartExecutor failure jej nie zmieniają.
+StartupReport i cztery osie RuntimeStatus nie są rozszerzane; identity jest osobnym read-only
+identity snapshotem, dostępnym lokalnym status/diagnostics consumers niezależnie od transportów.
+Invalid/unavailable jest jawnie odróżnione od legalnej wartości; exact schema pozostaje otwarte.
+
+#### Lifetime, relacje i consumers
+
+Legalna wartość jest niezmienna aż do końca instancji, także przez RUNNING, MAINTENANCE,
+ERROR, reconnect i recovery activity. Kolejne start() nie generuje jej ponownie; odczyt jest
+bez side effects. Pending RestartRequest, executor failure, config repair oraz zakończenie
+factory reset/restore/OTA nie zmieniają identity. Faktyczny reboot/power cycle/brownout lub
+nowa instancja lifecycle rozpoczyna nową generację. SYS-101 nie definiuje semantyki deep sleep:
+po wake nowa identity powstaje tylko wtedy, gdy future lifecycle tworzy NOWĄ instancję runtime;
+kontynuacja tej samej instancji pozostaje nierozstrzygnięta. Polityka wielu instancji runtime nie
+jest tu implementowana.
+
+RuntimeIdentity nie jest persistent jako current identity, nie trafia do NVS, backupu ani
+restore jako wartość do ponownego użycia. Nie wymaga flash writes ani RTC/NTP.
+Ewentualny boot history i next-boot metadata są osobnymi future contracts.
+
+DeviceIdentity jest stabilną kategorią technical device identity według IDN-001; CURRENT
+Identity::DeviceIdentity przechowuje tylko deviceType i nie jest jeszcze finalnym unikalnym
+device_id. SYS-101 nie zmienia tego ani IDN-101. BuildIdentity opisuje firmware/Core versions,
+HardwareIdentity fizyczny wariant; reboot przy tych samych wartościach nadal losuje nową
+RuntimeIdentity. MAC nie jest RuntimeIdentity i nie jest wymaganym składnikiem RuntimeIdentity generatora. Nie łączy się
+identity categories w jeden canonical string; presentation może pokazać je obok siebie.
+
+Future event sequence jest scoped do runtime instance: para RuntimeIdentity + per-runtime seq
+rozróżnia ten sam numer przed/po reboot z przyjętym probabilistycznym zastrzeżeniem.
+Device context pozostaje osobny. Seq width, overflow, allocation i payload API pozostają otwarte.
+Zgodnie z EVT-002 nie tworzy to replay; reconnect/full resync może publikować identity,
+a zmiana identity unieważnia poprzedni runtime state/seq consumers. Unavailable identity nie
+udaje legalnego event stream ID. Dokładne zachowanie protokołu przy unavailable jest przyszłe.
+
+MQTT może publikować RuntimeIdentity w retained state, ale topic root pozostaje oparty na
+device identity/MAC standardzie, bez zmiany root przy każdym reboot. HTTP, Realtime, MQTT,
+logs i diagnostics używają tego samego canonical value. Nie wymaga się wpisywania ID w każdym
+logu; logger formatting pozostaje przyszłe. Identity jest publiczna i nie jest credential,
+auth token, security nonce ani anti-replay primitive; nie może stanowić podstawy autoryzacji.
+
+#### Testability, HIL i scope
+
+Przyszłe host tests obejmują default/zero invalid, nonzero factory, pełne binary equality,
+copy independence i 16 uppercase hex chars; backend generatora: legal nonzero, invalid candidates,
+bounded retry zgodnie z własnym limitem i failure po jego wyczerpaniu; participant: legal success,
+generator failure, defensive invalid jako participant failure i brak interpretacji identity przez
+ApplicationRuntime; lifecycle: jedno generate na normalną instancję, stałe odczyty, drugi start bez
+regeneracji, fatal przed identity unavailable, fatal po identity zachowuje wartość oraz nowa
+instancja wywołuje generator ponownie bez wymagania różnej wartości. Deep sleep testuje się tylko
+zgodnie z future lifecycle. Bez testów/buildów w F1.11.
+
+HIL później sprawdza real platform RNG/entropy readiness i resource cleanup, startup bez zależności
+od Network service, reboot/brownout/reset jako nową instancję i nowy generation attempt oraz
+realne SoC behavior. Deep sleep/wake tylko wtedy, gdy future lifecycle definiuje nową instancję
+runtime. Kilka różnych wartości nie dowodzi jakości rozkładu ani braku kolizji;
+value-type correctness pozostaje host-testable.
+
+SYS-101 nie zamyka IDN-101, ARCH-101, current-boot RestartReason catalog, event payload API,
+Realtime protocol, MQTT payload/topic standard, Diagnostics full API, logger formatting,
+boot history, next-boot metadata ani security/session identifiers. F1.11 nie zmienia
+ApplicationRuntime, istniejących Device/Build/Hardware identity ani kodu produkcyjnego.
 
 ### SYS-102 — ApplicationPlan i participanty startupu
 `ApplicationRuntime` używa hybrydowego planu: publiczna kolejność `StartupPhase` jest stała,
@@ -1024,8 +1211,10 @@ F1.10 jest docs-only; ApplicationRuntime i wszystkie istniejące C++ kontrakty p
 ### IDN-001 — rozdzielenie identity
 `DeviceIdentity`, `BuildIdentity`, `HardwareIdentity` i `RuntimeIdentity` są osobnymi
 pojęciami. Friendly/user-visible name nie jest częścią technical identity. Dokładne pola,
-format `device_id`, użycie MAC/MAC6, capacities oraz kontrakt RuntimeIdentity pozostają
+format `device_id`, użycie MAC/MAC6 i capacities pozostają
 DECISION REQUIRED.
+
+Kontrakt RuntimeIdentity definiuje SYS-101; pozostałe pola identity pozostają IDN-101.
 
 ### CMD-001 — wspólna ścieżka komendy
 Każde źródło sterowania korzysta z Source → Command → Validation → Authorization/Policy → Safety/Action Locks → Domain execution → State update → Event/Result.
@@ -1075,7 +1264,6 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 ## DECISION REQUIRED
 
 - ARCH-101 — dokładny API Core ↔ Domain;
-- SYS-101 — nazwa, algorytm, encoding, generator, RNG source i collision policy RuntimeIdentity;
 - IDN-101 — pola identity, format device_id, MAC/MAC6, capacities i zasady walidacji;
 - CFG-101 — dokładny model pending config i recovery po korupcji;
 - CFG-102 — zakres DomainState w backupie;

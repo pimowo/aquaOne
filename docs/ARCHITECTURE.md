@@ -413,8 +413,11 @@ Identity jest rozdzielone na `DeviceIdentity`, `BuildIdentity`, `HardwareIdentit
 `RuntimeIdentity`; friendly name nie należy do technical identity. `RestartReason`,
 `RestartRequestReason` i `RestartExecutor` są osobnymi pojęciami. Domain i transport mogą
 otrzymać tylko `RestartRequester`, a minimalny restart Fazy 1 przechodzi przez pending request
-i safe point runtime loop. Dokładne pola identity, runtime identity oraz rozszerzone workflow
-restartu pozostają DECISION REQUIRED.
+i safe point runtime loop. Dokładne pola identity oraz rozszerzone workflow
+restartu pozostają DECISION REQUIRED. RuntimeIdentity definiuje SYS-101: non-persistent 64-bit
+nonzero random value jednej instancji runtime, generowane raz w CORE_INIT, z probabilistyczną
+unikalnością i canonical 16 uppercase hex chars. Nie jest security tokenem; payload fields
+Events/Realtime pozostają osobnymi otwartymi kontraktami.
 
 ### Command Path
 
@@ -429,7 +432,7 @@ Transport nigdy nie steruje bezpośrednio GPIO/driverem. Scheduler również kor
 
 ### Snapshot, Events i Realtime
 
-Rozróżniamy Snapshot, State Change, Domain Event, Alarm Event, Operation Event i Telemetry. Snapshot jest autorytatywnym źródłem aktualnego stanu, Event mówi, że coś się wydarzyło. Realtime nie jest jedynym źródłem prawdy. W V1 nie ma event replay; po reconnect klient zawsze wykonuje pełny resync. `boot_id`/`runtime_id`, sekwencje, gap detection i nazwy stanów UI pozostają DECISION REQUIRED.
+Rozróżniamy Snapshot, State Change, Domain Event, Alarm Event, Operation Event i Telemetry. Snapshot jest autorytatywnym źródłem aktualnego stanu, Event mówi, że coś się wydarzyło. Realtime nie jest jedynym źródłem prawdy. W V1 nie ma event replay; po reconnect klient zawsze wykonuje pełny resync. SYS-101 ustala semantykę i wartość RuntimeIdentity, ale nazwa pola w payloadach pozostaje otwarta: transport może użyć `runtime_id`, `boot_id` albo innej nazwy. Dokładne Events/Realtime/MQTT representation, sekwencje, gap detection i nazwy stanów UI pozostają DECISION REQUIRED.
 
 ### Config, Storage, Safety i Alarmy
 
