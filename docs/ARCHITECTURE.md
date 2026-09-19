@@ -413,7 +413,12 @@ Identity jest rozdzielone na `DeviceIdentity`, `BuildIdentity`, `HardwareIdentit
 `RuntimeIdentity`; friendly name nie należy do technical identity. `RestartReason`,
 `RestartRequestReason` i `RestartExecutor` są osobnymi pojęciami. Domain i transport mogą
 otrzymać tylko `RestartRequester`, a minimalny restart Fazy 1 przechodzi przez pending request
-i safe point runtime loop. Dokładne pola identity oraz rozszerzone workflow
+i safe point runtime loop. DeviceIdentity v1 definiuje IDN-101: para domain-owned lowercase
+ASCII device_type (do 23 chars) i full stable hardware MAC48 (6 bytes, canonical 12 uppercase
+hex chars). MAC6 jest derived compact naming suffix MQTT/HA, nie canonical DeviceId.
+DeviceId zachowuje się przez reboot/factory reset; wymiana MCU/source oznacza nowe ID.
+Inicjalizacja jest drugim REQUIRED participant CORE_INIT, po RuntimeIdentity.
+Rozszerzenia Build/Hardware identity schema, non-MAC source oraz rozszerzone workflow
 restartu pozostają DECISION REQUIRED. RuntimeIdentity definiuje SYS-101: non-persistent 64-bit
 nonzero random value jednej instancji runtime, generowane raz w CORE_INIT, z probabilistyczną
 unikalnością i canonical 16 uppercase hex chars. Nie jest security tokenem; payload fields

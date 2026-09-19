@@ -1,6 +1,6 @@
 # Architecture vNext — decyzje
 
-**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE, F1.6 SYS-104 DESIGN GATE, F1.8 SYS-105 RECOVERY DESIGN GATE, F1.9 SYS-106 WRITER OWNERSHIP DESIGN GATE, F1.10 SYS-107 RESTART REQUEST POLICY DESIGN GATE i F1.11 SYS-101 RUNTIME IDENTITY DESIGN GATE
+**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE, F1.6 SYS-104 DESIGN GATE, F1.8 SYS-105 RECOVERY DESIGN GATE, F1.9 SYS-106 WRITER OWNERSHIP DESIGN GATE, F1.10 SYS-107 RESTART REQUEST POLICY DESIGN GATE, F1.11 SYS-101 RUNTIME IDENTITY DESIGN GATE i F1.12 IDN-101 DEVICE IDENTITY DESIGN GATE
 **Scope:** cała platforma aquaOne
 **Zasada:** Architecture vNext jest TARGET. CURRENT wynika z kodu i macierzy projektu. Legacy code is not architecture.
 
@@ -1210,11 +1210,242 @@ F1.10 jest docs-only; ApplicationRuntime i wszystkie istniejące C++ kontrakty p
 
 ### IDN-001 — rozdzielenie identity
 `DeviceIdentity`, `BuildIdentity`, `HardwareIdentity` i `RuntimeIdentity` są osobnymi
-pojęciami. Friendly/user-visible name nie jest częścią technical identity. Dokładne pola,
-format `device_id`, użycie MAC/MAC6 i capacities pozostają
-DECISION REQUIRED.
+pojęciami. Friendly/user-visible name nie jest częścią technical identity.
+Kontrakt RuntimeIdentity definiuje SYS-101, a DeviceIdentity v1 — IDN-101.
+BuildIdentity i HardwareIdentity zachowują odrębność i dotychczasowe capacities;
+rozszerzenia ich schema/grammar pozostają osobnymi otwartymi decyzjami.
 
-Kontrakt RuntimeIdentity definiuje SYS-101; pozostałe pola identity pozostają IDN-101.
+### IDN-101 — DeviceIdentity v1
+
+**Status:** ACCEPTED — TARGET contract; F1.12 jest docs-only. CURRENT F1.3
+Identity::DeviceIdentity ma tylko deviceType; nie implementuje tego kontraktu.
+Legacy AquaCore::DeviceIdentity i wszyscy konsumenci pozostają bez migracji.
+
+#### Wybór modelu device_id
+
+| Model | Ocena dla v1 |
+|---|---|
+| A. Pełny MAC | Stabilny przy stałym źródle sprzętowym, zero provisioning i brak zapisu flash; wymiana MCU zmienia ID. Wybrany jako MAC48 contract. |
+| B. MAC6 | Łatwy UX i zgodny z naming, ale tylko 24 bity; niewystarczający canonical device_id. |
+| C. Persistent random ID | Może zachować logiczną identity po wymianie hardware dopiero z kontrolowanym transferem. Wymaga first-boot generation, atomic NVS, polityki reset/backup/restore i ochrony przed sklonowaniem; odrzucony dla v1. |
+| D. User-assigned ID | Wymaga provisioning, kontroli kolizji i zmian użytkownika; nie daje zero provisioning ani stabilności machine keys. |
+| E. Platform-stable opaque ID | Przydatny dla różnych platform, ale wymaga wyboru width, namespace i cross-platform format; nie uzasadnia teraz frameworka ani arbitralnego bufora. |
+| F. device_type + hardware ID jako jeden string | Powiela type, miesza identity z naming i komplikuje equality; zachowujemy dwa osobne pola. |
+
+Wybrany jest DeviceId v1 = pełny stable hardware MAC48, nie dowolny aktywny
+adres interfejsu. Typ jest neutralny wobec SDK, ale celowo ma semantykę MAC48:
+nie udaje uniwersalnego identyfikatora każdej przyszłej platformy. Persistent random ID
+nie jest automatycznie lepszy: bez migration workflow nie przetrwa wymiany MCU, a
+przeniesienie backupu na dwa urządzenia może sklonować identity. Tutaj nie wymaga się
+takiej ciągłości logicznego assetu. Wszystkie modele są host-testable przez fake input;
+hardware source i persistence wymagałyby osobnej walidacji platformowej.
+
+#### Pola, type token i technical identity
+
+Docelowy AquaCore::Identity::DeviceIdentity zawiera dokładnie dwa wymagane pola:
+DeviceTypeToken deviceType oraz DeviceId deviceId. Nie zawiera friendly name,
+firmwareVersion, coreVersion, hardwareVariant ani RuntimeIdentity. BuildIdentity
+opisuje firmware/Core versions, HardwareIdentity wariant/platformę, a SYS-101
+jedną instancję runtime; żaden z tych składników nie jest częścią DeviceId.
+
+DeviceTypeToken jest owned fixed string, nie centralnym enum katalogu domen.
+Canonical grammar to [a-z][a-z0-9_-]{0,22}: od 1 do 23 ASCII chars, pierwszy
+znak lowercase letter, pozostałe lowercase letters, digits, underscore lub hyphen.
+Brak whitespace, slash, MQTT +/#, non-ASCII i wersji w znaczeniu tokenu.
+Canonical public string jest częścią machine contract: lowercase jest wymagane,
+nie następuje case folding, trim ani truncation. Token jest stabilny między
+kompatybilnymi wydaniami; nie wolno używać tej samej nazwy dla innego typu produktu.
+
+Istniejące canonical v1 product tokens to luma, doser, hydro, clima, gas i fauna.
+panel jest legalnym domain/application-owned tokenem klienta Panel, jeśli ten publikuje
+własną identity; nie awansuje go do zależności krytycznej domeny ani nie wymaga
+centralnego katalogu Core. Lista przykładów nie jest allowlist walidatora.
+Nowy produkt deklaruje własny stały token w composition/build, spełniający grammar;
+nie wymaga zmiany Core. Compile-time validation może wspomagać deklarację,
+ale jawna runtime validation nadal obowiązuje na granicy danych.
+
+Core może przechowywać, porównywać i serializować type metadata, lecz nie ma
+funkcjonalnego switch(device_type), if LUMA/DOSER ani zależności od katalogu domen.
+DeviceId identyfikuje hardware-backed instancję v1 niezależnie od typu.
+Pełna technical identity jest uporządkowaną parą (device_type, device_id);
+DeviceId equality oznacza ten sam pełny 48-bit hardware identifier, niezależnie od `device_type`. DeviceIdentity equality wymaga tego samego DeviceTypeToken oraz tego samego DeviceId: oznacza tę samą techniczną rolę aquaOne na tym samym hardware source. Ten sam DeviceId po zmianie firmware z luma na hydro pozostaje tym samym hardware DeviceId, ale tworzy inną DeviceIdentity pair.
+Type nadaje kontekst produktowy, lecz nie naprawia zduplikowanego hardware ID.
+Zmiana firmware version lub hardwareVariant nie zmienia DeviceId; flash innego
+device_type zachowuje DeviceId, ale zmienia parę technical identity i type-based naming.
+
+Friendly/user name jest osobną konfiguracją/UI metadata, może się zmieniać i nie
+służy do unique_id, MQTT root, machine equality ani persistence key.
+Nie powstaje dodatkowy canonical composite string ani publiczne IdentitySnapshot API.
+Consumers mogą później otrzymać spójny read-only view czterech odrębnych kategorii,
+z jawną availability każdej; exact snapshot schema i transport payloads są otwarte.
+
+#### Binary value, canonical text, MAC6 i capacities
+
+Authoritative DeviceId storage to dokładnie 6 octets w canonical MAC byte order,
+octet 0 pierwszy w zwyczajowym zapisie MAC. Nie wybieramy host-endian uint64
+reinterpretation ani redundantnego authoritative text buffer. UInt64 lower-48-bits
+wymaga dodatkowych upper-bit rules; fixed text powiela format i walidację znaków.
+Value type jest copyable, zero heap, posiada własne fixed storage i nie zależy
+od adresów pointerów. Default jest invalid/unavailable, nigdy legalnym ID.
+
+Canonical textual serialization legalnego ID to dokładnie 12 uppercase ASCII
+hex chars, bez :, -, 0x i locale, po dwa znaki na octet, leading zeros zachowane.
+Przykład: MAC 24:6F:28:A1:B2:C3 → DeviceId 246F28A1B2C3.
+MAC6 to ostatnie 6 chars canonical text, czyli octets 3..5 → A1B2C3.
+MAC6 nie jest osobnym authoritative polem DeviceIdentity ani drugim źródłem prawdy.
+
+Publiczne named limits v1, w bajtach ASCII storage:
+
+- DEVICE_TYPE_CAPACITY = 24, w tym NUL; maksymalnie 23 chars.
+- DEVICE_ID_BYTE_COUNT = 6; nie ma arbitrary string capacity DeviceId.
+- DEVICE_ID_TEXT_LENGTH = 12, MAC6_TEXT_LENGTH = 6.
+- C-string formatter storage wymaga odpowiednio 13 i 7 bajtów z NUL;
+  nie ustanawia to binary/wire storage ABI.
+
+Zachowujemy type capacity CURRENT 24 zamiast zmniejszenia do 16: daje miejsce na
+stabilne nazwy produktów bez arbitralnego wzrostu ani niepotrzebnego zawężenia
+istniejącego limitu. Tokeny dzisiejszych produktów są krótkie, ale nie są katalogiem
+zamkniętym. Zmiana tego publicznego limitu wymaga jawnej oceny kompatybilności.
+
+BuildIdentity i HardwareIdentity zachowują osobne named capacities CURRENT / existing contract:
+FIRMWARE_VERSION_CAPACITY 24, CORE_VERSION_CAPACITY 16 i HARDWARE_VARIANT_CAPACITY 32,
+każda z NUL. Nie zwiększamy ich i nie przenosimy pól do DeviceIdentity.
+Ich istniejące required/null/empty/byte-length rules bez normalization pozostają podstawą CURRENT; IDN-101 ich nie redefiniuje ani nie zatwierdza jako przyszłego schema. Finalny SemVer, platform/revision schema i dodatkowe pola są osobnymi otwartymi decyzjami, nie warunkiem zaakceptowania DeviceIdentity.
+Duplikacja coreVersion limit 16 między modułami jest poza F1.12.
+Legacy deviceName capacity 32 nie staje się polem ani limitem technical identity.
+
+Formatter używa caller-provided storage i explicit result; invalid identity lub
+zbyt mały buffer daje jawny błąd, bez truncation ani publikacji partial ID.
+Jeżeli przy błędzie istnieje writable niepusty C-string buffer, otrzymuje pusty tekst.
+Canonical parser, jeśli przyszła implementacja go udostępni, akceptuje dokładnie
+12 uppercase hex chars i legalne decoded value; lowercase, separators, prefix,
+whitespace i zła długość są odrzucane, nie normalizowane. Backend może odczytać binary
+dane lub jawnie skonwertować format SDK na granicy platformy; to nie rozszerza parsera.
+
+#### Source, stability i portability
+
+Composition Root dostarcza stały product-owned type oraz jawnie wstrzyknięty
+platform identity source. Source deterministycznie odczytuje stable hardware ID
+albo zwraca explicit failure; nie jest RuntimeIdentityGenerator i nie losuje.
+Nie używa NVS identity provisioning, czasu, uptime, sieci, friendly name ani wersji.
+Dokładny source/read interface, SDK calls i lokalna bounded execution należą do
+przyszłego backendu; Core nie importuje ESP32, WiFi ani eFuse API.
+
+ESP32 backend v1 wybiera factory/base hardware MAC, odpowiadający domyślnemu źródłu Wi-Fi STA, bez uzależnienia od runtime interface MAC override, custom/base override ani aktywnego połączenia Wi-Fi. Source selection musi być stałe przez firmware upgrades i nie zależy od STA/AP/BT/Ethernet enablement. Backend odpowiada za właściwy odczyt dla konkretnego ESP-IDF/SoC; Core nie ustanawia konkretnego SDK API.
+Odczyt nie wymaga NetworkService, WiFi connection, AP, MQTT ani Internetu.
+Platform backend odpowiada za read/preconditions i nie może kolidować z early outputs
+ani wcześniejszym RNG window SYS-101. SDK-specific metoda zostaje implementacyjna.
+Espressif opisuje factory base MAC, pochodne interfejsów oraz możliwość override:
+[ESP-IDF MAC Address documentation](https://docs.espressif.com/projects/esp-idf/en/v4.4.6/esp32/api-reference/system/system.html#mac-address).
+
+Reboot, factory reset, config repair, restore i OTA przy tym samym hardware source
+zachowują DeviceId; brak flash identity writes oznacza brak identity-related wear.
+Factory reset nie zmienia product-owned type. Backup/restore nie przywraca ID obcego
+urządzenia jako local authoritative identity. Replacement MCU lub PCB z innym MCU
+oznacza nowy DeviceId v1, nowe naming i nową parę technical identity, bez transferu
+starego assetu. Sama wymiana elementów PCB przy tym samym MCU/source nie zmienia ID.
+Snapshot w RAM jest niezmienny do końca runtime; kolejna instancja odczytuje to samo
+hardware input, podczas gdy RuntimeIdentity niezależnie wykonuje świeżą generację.
+
+Non-MAC platform lub ID szerszy niż 48 bitów nie otrzymuje automatycznej zgodności: nie truncates/hashuje innego ID do MAC48 i nie
+udaje factory source. Taka platforma wymaga osobnej decyzji o source/contract extension.
+V1 nie opiera canonical ID na rotating/random local MAC ani mutable network config.
+
+#### Validation, ownership, startup i failure
+
+Jawna validating factory tworzy kompletną legalną parę albo explicit field/error,
+bez częściowej publikacji, implicit conversion, fallback ID lub setterów dla consumers.
+Default/failed value jest invalid i nie udaje legalnej identity. Po utworzeniu legalna
+wartość jest immutable w lifetime ownera; zwykłe kopie posiadają własne storage.
+DeviceId v1 odrzuca all-zero, all-FF/broadcast oraz multicast (I/G bit octet 0 ustawiony) dla wybranego unicast hardware identity source. Wymóg locally administered nie jest uniwersalną regułą value type: ESP32 v1 factory identity backend MUSI jednak dostarczyć stabilny factory/base hardware MAC zgodny z polityką backendu; universally administered factory source jest oczekiwany, a locally administered, custom i runtime interface override nie są akceptowanym źródłem canonical DeviceId. Type waliduje presence, długość i pełną grammar. Binary input wymaga dokładnie 6 readable bytes; tekst/token
+wymaga null check i bounded readable input zgodnie z kontraktem przyszłego API.
+Legalny format nie dowodzi autentyczności, stabilności source ani braku klonów:
+platform provenance jest odpowiedzialnością backendu. DeviceId/MAC jest publiczną
+technical identity: nie jest secret, credential, auth tokenem ani certificate identity
+oraz nie może być samodzielną podstawą authorization. Clone/spoofing jest możliwy.
+
+Pasuje model Identity::ValidationResult(error, field). Zachowujemy znaczenia
+None, NullInput, EmptyRequiredField, TooLong; przyszła implementacja wymaga także
+rozróżnienia invalid format i invalid/reserved DeviceId oraz pola DeviceId.
+Nazwy/encoding rozszerzeń C++ pozostają implementacyjne. Platform read failure jest
+osobnym wynikiem source, nie fałszywym validation success.
+Identity adapter mapuje source unavailable/failure i invalid type/ID na zwykły
+StartupStepResult::failed ze stable identity-specific code zgodnym z SYS-104.
+Dokładny local code catalog należy do przyszłej implementacji ownera; nie rozszerzamy
+RESULT_CONTRACT_FAILURE na invalid backend identity result.
+
+Composition Root posiada source, participant context i jeden runtime-scoped identity
+owner/storage. Consumer dostaje read-only view albo value copy; żadnego singletona,
+global mutable identity, Registry lookup ani IdentityService frameworka.
+Owner/context/source i pożyczone views żyją przez cały okres używania, co najmniej
+runtime zgodnie z SYS-102. Nowy owner zaczyna unavailable; po sukcesie publikuje raz
+pełną parę. Odczyty nie wykonują hardware I/O ani ponownej derivation.
+
+Normatywna kolejność: early safe outputs → full plan validation → ordinary BOOT →
+pierwszy REQUIRED CORE_INIT RuntimeIdentity (SYS-101) → drugi REQUIRED CORE_INIT
+DeviceIdentity read/validate/publish → pozostałe CORE_INIT i dalsze fazy.
+Root zapewnia ten declaration order SYS-102; nie ma nowego action, priority ani DAG.
+Composition przygotowuje type/source/context bez hardware identity read przed start().
+BOOT nie wymaga legalnej DeviceIdentity; Hardware read nie jest constructor effect.
+Wspólny participant obu identity albo DeviceIdentity przed RuntimeIdentity naruszałby
+przyjęty ordering SYS-101, więc nie jest wybrany. Każdy consumer wymagający DeviceIdentity
+jest deklarowany po jej inicjalizacji. Backend wymagający NETWORK_INIT jest niezgodny.
+
+Legalna DeviceIdentity jest lokalnym invariantem normalnego RUNNING niezależnie od
+opcjonalności MQTT/HA. Missing source/invalid pair oznacza REQUIRED participant failure
+w CORE_INIT → ERROR + FAULT + LOCKED według SYS-102/104/105, bez domain processing.
+Runtime nie interpretuje identity ani type. Wcześniej wygenerowana RuntimeIdentity
+pozostaje legalna i niezmieniona przy DeviceIdentity failure.
+Fatal przed publikacją DeviceIdentity pozostawia ją unavailable; bezpieczna lokalna
+diagnostyka/ERROR shell może działać bez niej, nie wymyśla ID ani transport namespace.
+Fatal później zachowuje opublikowaną parę. Recovery nie ponawia identity read/publish,
+drugi start() jest no-op, config repair nie daje ERROR → RUNNING; nowa próba wymaga
+nowej instancji startupu. RuntimeStatus, StartupReport i SYS-106 handoff są bez zmian.
+
+#### MQTT/HA naming, collisions, testability i scope
+
+Zachowujemy transport/integration standard: compact base aquaone-<MAC6>, type subtree
+aquaone-<MAC6>/<type>, client_id/HA technical name aquaone-<type>-<MAC6> oraz
+unique_id/object_id aquaone_<type>_<MAC6>_<entity>. MAC6 jest pochodną tego samego
+wybranego full source, nie MAC aktywnego AP czy innego interfejsu.
+Nie zmieniamy MQTT implementation ani standardów payload/integration API w F1.12.
+NAMING_VERSIONING_STANDARD §96 używa label device_id dla aquaone-luma-A1B2C3: to dotychczasowa presentation/integration name, nie canonical DeviceId vNext i nie może zostać po cichu reinterpretowana jako 12-hex value. Migracja istniejącego naming/API jest osobnym krokiem; przed zmianą MQTT/HA trzeba sprawdzić, z jakiego MAC source pochodzi dotychczasowy MAC6. Jeśli source różni się od canonical factory source, topic roots i unique_id mogą się zmienić. IDN-101 nie migruje teraz NAMING_VERSIONING_STANDARD.
+
+MAC6 nie gwarantuje globalnej unikalności. Local/home naming akceptuje compact suffix
+jako integration compromise; dwa różne full MAC mogą mieć identyczny suffix.
+Kolizja samego suffix dotyczy base namespace, a dla tego samego type także topic subtree,
+client_id i HA IDs. Dodanie type nie chroni dwóch urządzeń tego samego typu.
+Full DeviceId rozróżnia takie urządzenia, ale samo jego posiadanie nie usuwa kolizji naming.
+Nie używa się MAC6 jako globalnego primary key ani dowodu physical device equality.
+W modelu niezależnych równomiernych suffix birthday approximation dla małego ryzyka
+to n(n-1)/(2·2^24); rzeczywiste vendor allocation nie musi mieć takiego rozkładu.
+Pełny factory MAC korzysta z przydziału producenta, nie losowego collision modelu
+RuntimeIdentity; klony, wadliwy przydział i spoofing nadal wykluczają absolutną gwarancję.
+V1 nie projektuje auto-renaming/collision resolution ani asset registry; wykryta naming
+kolizja wymaga przyszłego integration policy, nie cichego zastąpienia canonical ID.
+
+Przyszłe host tests: legalne i nowe domain-owned type tokens (w tym panel), null/empty,
+uppercase/non-ASCII/whitespace/slash/wildcards, first-character grammar, 23-char boundary
+i overflow; full binary valid/zero/broadcast/multicast rejection, ESP32 backend local-source rejection, pair equality, same DeviceId + same type equality, same DeviceId + different type inequality, DeviceId equality niezależna od type,
+copy independence, invalid factory bez partial publication; canonical 12 hex, leading
+zeros, byte order, parser rejection i small-buffer/no-truncation behavior, MAC6 dokładnie
+last-six; różne full IDs z tym samym suffix pozostają różne. Fake source sprawdza
+required failure/invalid-as-success defensive validation, ordering po early outputs
+i RuntimeIdentity, brak zależności od sieci, no-op second start, fatal availability,
+immutable values/report i identyczne DeviceId przy tym samym input w nowym runtime.
+RuntimeIdentity generuje się niezależnie; test nie wymaga matematycznie różnej wartości.
+
+HIL później: rzeczywisty factory hardware read i preconditions na wspieranych ESP32,
+zgodność domyślnego factory/STA naming source, niezależność od runtime/custom MAC override, reboot/power-cycle/upgrade stability,
+factory reset/restore bez zmiany ID, MCU replacement, wiele interfejsów i active/custom
+MAC overrides bez zmiany canonical source. Host tests wystarczą dla tokenów/formatów,
+HIL nie jest wykonywany ani wymagany dla dokumentacji F1.12.
+
+IDN-101 nie zamyka ARCH-101, current-boot RestartReason, non-ESP32 source/extension,
+device provisioning/migration, asset management, friendly-name config, MQTT/HA full API,
+transport payload formats, naming-collision resolution, security/certificate identities,
+BuildIdentity version grammar ani HardwareIdentity platform/revision schema.
+SYS-101 i wszystkie istniejące C++ kontrakty pozostają bez zmian.
 
 ### CMD-001 — wspólna ścieżka komendy
 Każde źródło sterowania korzysta z Source → Command → Validation → Authorization/Policy → Safety/Action Locks → Domain execution → State update → Event/Result.
@@ -1264,7 +1495,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 ## DECISION REQUIRED
 
 - ARCH-101 — dokładny API Core ↔ Domain;
-- IDN-101 — pola identity, format device_id, MAC/MAC6, capacities i zasady walidacji;
+- Rozszerzenia identity poza IDN-101 v1 — BuildIdentity version grammar, HardwareIdentity platform/revision schema oraz future non-MAC DeviceId/source;
 - CFG-101 — dokładny model pending config i recovery po korupcji;
 - CFG-102 — zakres DomainState w backupie;
 - CMD-101 — command envelope, CommandResult, error_code, request/correlation ID;
