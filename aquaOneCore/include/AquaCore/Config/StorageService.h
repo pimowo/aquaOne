@@ -24,7 +24,12 @@ enum class StorageSlot : uint8_t {
 enum class StorageOperationResult : uint8_t {
     NotAttempted = 0U,
     Success,
-    Failure
+    Failure,
+    NoChange,
+    InvalidArgument,
+    ValidationFailure,
+    BackendFailure,
+    VerifyFailure
 };
 
 struct StorageStatus {
@@ -99,6 +104,7 @@ private:
     const char* slotKey(uint8_t slot) const;
     bool readSlot(uint8_t slot, SlotInfo& info, void* payload);
     bool selectLatest(uint8_t& slot, SlotInfo& info);
+    bool payloadOverlapsWorkspace(const void* payload) const;
     void refreshStatus();
     static bool isGenerationNewer(uint32_t candidate, uint32_t reference);
     static uint16_t readUint16(const uint8_t* data);

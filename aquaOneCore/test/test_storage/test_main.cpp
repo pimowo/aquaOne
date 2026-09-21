@@ -15,7 +15,9 @@
 #include "AquaCore/Config/StorageService.h"
 
 using AquaCore::Config::StorageBackend;
+using AquaCore::Config::StorageOperationResult;
 using AquaCore::Config::StorageService;
+using AquaCore::Config::StorageSlot;
 using AquaCore::Config::StorageWorkspace;
 namespace Record = AquaCore::Config::StorageRecord;
 
@@ -104,6 +106,8 @@ public:
         const void* input,
         size_t length
     ) override {
+        ++writeCount;
+
         if (
             !opened ||
             input == nullptr ||
@@ -150,6 +154,7 @@ public:
         return blob(key);
     }
 
+    size_t writeCount = 0U;
     bool beginResult = true;
     bool opened = false;
     bool failNextWrite = false;
@@ -655,6 +660,308 @@ void test_exact_minimum_workspace_capacity_is_accepted() {
     TEST_ASSERT_EQUAL_MEMORY(&input, &output, sizeof(input));
 }
 
+void test_first_save_reports_success_and_writes_once() {
+    MockStorageBackend backend;
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
+    TEST_ASSERT_TRUE(service.begin(
+        sizeof(TestPayload),
+        TEST_SCHEMA,
+        validateTestPayload
+    ));
+
+    const TestPayload input = payload(10);
+    TEST_ASSERT_TRUE(service.save(&input));
+    TEST_ASSERT_EQUAL_UINT32(1U, backend.writeCount);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageOperationResult::Success),
+        static_cast<uint8_t>(service.status().lastSaveResult)
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageSlot::A),
+        static_cast<uint8_t>(service.status().activeSlot)
+    );
+    TEST_ASSERT_EQUAL_UINT32(1U, service.status().activeGeneration);
+}
+
+void test_identical_save_reports_no_change_without_write() {
+    MockStorageBackend backend;
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
+    TEST_ASSERT_TRUE(service.begin(
+        sizeof(TestPayload),
+        TEST_SCHEMA,
+        validateTestPayload
+    ));
+
+    const TestPayload input = payload(11);
+    TEST_ASSERT_TRUE(service.save(&input));
+    const StorageSlot savedSlot = service.status().activeSlot;
+    const uint32_t savedGeneration = service.status().activeGeneration;
+    const size_t savedWriteCount = backend.writeCount;
+
+    TEST_ASSERT_TRUE(service.save(&input));
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageOperationResult::NoChange),
+        static_cast<uint8_t>(service.status().lastSaveResult)
+    );
+    TEST_ASSERT_EQUAL_UINT32(savedWriteCount, backend.writeCount);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(savedSlot),
+        static_cast<uint8_t>(service.status().activeSlot)
+    );
+    TEST_ASSERT_EQUAL_UINT32(
+        savedGeneration,
+        service.status().activeGeneration
+    );
+}
+
+void test_one_byte_difference_is_saved() {
+    MockStorageBackend backend;
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
+    TEST_ASSERT_TRUE(service.begin(
+        sizeof(TestPayload),
+        TEST_SCHEMA,
+        validateTestPayload
+    ));
+
+    const TestPayload first = payload(12);
+    const TestPayload changed = payload(13);
+    TEST_ASSERT_TRUE(service.save(&first));
+    TEST_ASSERT_TRUE(service.save(&changed));
+    TEST_ASSERT_EQUAL_UINT32(2U, backend.writeCount);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageOperationResult::Success),
+        static_cast<uint8_t>(service.status().lastSaveResult)
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageSlot::B),
+        static_cast<uint8_t>(service.status().activeSlot)
+    );
+    TEST_ASSERT_EQUAL_UINT32(2U, service.status().activeGeneration);
+}
+
+void test_schema_mismatch_is_saved_not_no_change() {
+    MockStorageBackend backend;
+    const TestPayload input = payload(14);
+
+    {
+        TestStorageWorkspace workspace;
+        StorageService original(
+            backend,
+            "ac4",
+            "a",
+            "b",
+            workspace.view()
+        );
+        TEST_ASSERT_TRUE(original.begin(
+            sizeof(TestPayload),
+            TEST_SCHEMA,
+            validateTestPayload
+        ));
+        TEST_ASSERT_TRUE(original.save(&input));
+    }
+
+    TestStorageWorkspace workspace;
+    StorageService changedSchema(
+        backend,
+        "ac4",
+        "a",
+        "b",
+        workspace.view()
+    );
+    TEST_ASSERT_TRUE(changedSchema.begin(
+        sizeof(TestPayload),
+        TEST_SCHEMA + 1U,
+        validateTestPayload
+    ));
+    TEST_ASSERT_TRUE(changedSchema.save(&input));
+    TEST_ASSERT_EQUAL_UINT32(2U, backend.writeCount);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageOperationResult::Success),
+        static_cast<uint8_t>(
+            changedSchema.status().lastSaveResult
+        )
+    );
+}
+
+void test_invalid_current_record_is_saved_not_no_change() {
+    MockStorageBackend backend;
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
+    TEST_ASSERT_TRUE(service.begin(
+        sizeof(TestPayload),
+        TEST_SCHEMA,
+        validateTestPayload
+    ));
+
+    const TestPayload input = payload(15);
+    TEST_ASSERT_TRUE(service.save(&input));
+    backend.raw("a").data[Record::HEADER_SIZE] ^= 0x01U;
+
+    TEST_ASSERT_TRUE(service.save(&input));
+    TEST_ASSERT_EQUAL_UINT32(2U, backend.writeCount);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageOperationResult::Success),
+        static_cast<uint8_t>(service.status().lastSaveResult)
+    );
+}
+
+void test_no_change_uses_selected_older_valid_record() {
+    MockStorageBackend backend;
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
+    TEST_ASSERT_TRUE(service.begin(
+        sizeof(TestPayload),
+        TEST_SCHEMA,
+        validateTestPayload
+    ));
+
+    const TestPayload older = payload(16);
+    const TestPayload newer = payload(17);
+    TEST_ASSERT_TRUE(service.save(&older));
+    TEST_ASSERT_TRUE(service.save(&newer));
+    backend.raw("b").data[Record::HEADER_SIZE] ^= 0x01U;
+
+    TEST_ASSERT_TRUE(service.save(&older));
+    TEST_ASSERT_EQUAL_UINT32(2U, backend.writeCount);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageOperationResult::NoChange),
+        static_cast<uint8_t>(service.status().lastSaveResult)
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageSlot::A),
+        static_cast<uint8_t>(service.status().activeSlot)
+    );
+    TEST_ASSERT_EQUAL_UINT32(1U, service.status().activeGeneration);
+}
+
+void test_no_change_after_generation_rollover_preserves_state() {
+    MockStorageBackend backend;
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
+    TEST_ASSERT_TRUE(service.begin(
+        sizeof(TestPayload),
+        TEST_SCHEMA,
+        validateTestPayload
+    ));
+
+    const TestPayload before = payload(18);
+    const TestPayload after = payload(19);
+    TEST_ASSERT_TRUE(service.save(&before));
+
+    MockStorageBackend::Blob& slotA = backend.raw("a");
+    write32(
+        slotA.data + Record::GENERATION_OFFSET,
+        UINT32_MAX
+    );
+    updateHeaderCrc(slotA);
+
+    TEST_ASSERT_TRUE(service.save(&after));
+    TEST_ASSERT_TRUE(service.save(&after));
+    TEST_ASSERT_EQUAL_UINT32(2U, backend.writeCount);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageOperationResult::NoChange),
+        static_cast<uint8_t>(service.status().lastSaveResult)
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageSlot::B),
+        static_cast<uint8_t>(service.status().activeSlot)
+    );
+    TEST_ASSERT_EQUAL_UINT32(0U, service.status().activeGeneration);
+}
+
+void test_validation_rejection_reports_validation_failure() {
+    MockStorageBackend backend;
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
+    TEST_ASSERT_TRUE(service.begin(
+        sizeof(TestPayload),
+        TEST_SCHEMA,
+        validateTestPayload
+    ));
+
+    const TestPayload invalid = payload(101);
+    TEST_ASSERT_FALSE(service.save(&invalid));
+    TEST_ASSERT_EQUAL_UINT32(0U, backend.writeCount);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(
+            StorageOperationResult::ValidationFailure
+        ),
+        static_cast<uint8_t>(service.status().lastSaveResult)
+    );
+}
+
+void test_backend_write_failure_reports_backend_failure() {
+    MockStorageBackend backend;
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
+    TEST_ASSERT_TRUE(service.begin(
+        sizeof(TestPayload),
+        TEST_SCHEMA,
+        validateTestPayload
+    ));
+
+    backend.failNextWrite = true;
+    const TestPayload input = payload(20);
+    TEST_ASSERT_FALSE(service.save(&input));
+    TEST_ASSERT_EQUAL_UINT32(1U, backend.writeCount);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageOperationResult::BackendFailure),
+        static_cast<uint8_t>(service.status().lastSaveResult)
+    );
+}
+
+void test_readback_failure_reports_verify_failure() {
+    MockStorageBackend backend;
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
+    TEST_ASSERT_TRUE(service.begin(
+        sizeof(TestPayload),
+        TEST_SCHEMA,
+        validateTestPayload
+    ));
+
+    backend.failReadAfterWriteArmed = true;
+    const TestPayload input = payload(21);
+    TEST_ASSERT_FALSE(service.save(&input));
+    TEST_ASSERT_EQUAL_UINT32(1U, backend.writeCount);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageOperationResult::VerifyFailure),
+        static_cast<uint8_t>(service.status().lastSaveResult)
+    );
+}
+
+void test_save_rejects_null_and_workspace_alias() {
+    MockStorageBackend backend;
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
+    TEST_ASSERT_TRUE(service.begin(
+        sizeof(TestPayload),
+        TEST_SCHEMA,
+        validateTestPayload
+    ));
+
+    TEST_ASSERT_FALSE(service.save(nullptr));
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageOperationResult::InvalidArgument),
+        static_cast<uint8_t>(service.status().lastSaveResult)
+    );
+
+    const TestPayload input = payload(22);
+    void* const aliasedPayload =
+        workspace.bytes + Record::HEADER_SIZE;
+    memcpy(aliasedPayload, &input, sizeof(input));
+
+    TEST_ASSERT_FALSE(service.save(aliasedPayload));
+    TEST_ASSERT_EQUAL_UINT32(0U, backend.writeCount);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageOperationResult::InvalidArgument),
+        static_cast<uint8_t>(service.status().lastSaveResult)
+    );
+}
+
 void test_crc_matches_legacy_lumasense_result() {
     const char input[] = "123456789";
     TEST_ASSERT_EQUAL_HEX32(
@@ -699,6 +1006,17 @@ void runTests() {
     RUN_TEST(test_independent_services_use_independent_locations);
     RUN_TEST(test_insufficient_workspace_capacity_is_rejected);
     RUN_TEST(test_exact_minimum_workspace_capacity_is_accepted);
+    RUN_TEST(test_first_save_reports_success_and_writes_once);
+    RUN_TEST(test_identical_save_reports_no_change_without_write);
+    RUN_TEST(test_one_byte_difference_is_saved);
+    RUN_TEST(test_schema_mismatch_is_saved_not_no_change);
+    RUN_TEST(test_invalid_current_record_is_saved_not_no_change);
+    RUN_TEST(test_no_change_uses_selected_older_valid_record);
+    RUN_TEST(test_no_change_after_generation_rollover_preserves_state);
+    RUN_TEST(test_validation_rejection_reports_validation_failure);
+    RUN_TEST(test_backend_write_failure_reports_backend_failure);
+    RUN_TEST(test_readback_failure_reports_verify_failure);
+    RUN_TEST(test_save_rejects_null_and_workspace_alias);
     RUN_TEST(test_crc_matches_legacy_lumasense_result);
 
 }

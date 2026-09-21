@@ -92,15 +92,39 @@ bool StorageService::save(const void* payload) {
     if (
         !opened_ ||
         payload == nullptr ||
-        !validator_(payload, payloadSize_)
+        payloadOverlapsWorkspace(payload)
     ) {
-        lastSaveResult_ = StorageOperationResult::Failure;
+        lastSaveResult_ = StorageOperationResult::InvalidArgument;
+        return false;
+    }
+
+    if (!validator_(payload, payloadSize_)) {
+        lastSaveResult_ = StorageOperationResult::ValidationFailure;
         return false;
     }
 
     uint8_t currentSlot = NO_SLOT;
     SlotInfo currentInfo {};
     const bool currentExists = selectLatest(currentSlot, currentInfo);
+
+    if (currentExists) {
+        SlotInfo comparedInfo {};
+        if (
+            readSlot(currentSlot, comparedInfo, nullptr) &&
+            comparedInfo.generation == currentInfo.generation &&
+            std::memcmp(
+                recordBuffer_ + StorageRecord::HEADER_SIZE,
+                payload,
+                payloadSize_
+            ) == 0
+        ) {
+            hasValidPayload_ = true;
+            activeSlot_ = currentSlot;
+            activeGeneration_ = currentInfo.generation;
+            lastSaveResult_ = StorageOperationResult::NoChange;
+            return true;
+        }
+    }
 
     const uint8_t targetSlot =
         !currentExists || currentSlot == SLOT_B
@@ -160,7 +184,7 @@ bool StorageService::save(const void* payload) {
     );
     if (written != recordSize_) {
         refreshStatus();
-        lastSaveResult_ = StorageOperationResult::Failure;
+        lastSaveResult_ = StorageOperationResult::BackendFailure;
         return false;
     }
 
@@ -175,7 +199,7 @@ bool StorageService::save(const void* payload) {
         ) != 0
     ) {
         refreshStatus();
-        lastSaveResult_ = StorageOperationResult::Failure;
+        lastSaveResult_ = StorageOperationResult::VerifyFailure;
         return false;
     }
 
@@ -366,6 +390,18 @@ bool StorageService::selectLatest(
     slot = SLOT_A;
     info = slotAInfo;
     return true;
+}
+
+bool StorageService::payloadOverlapsWorkspace(const void* payload) const {
+    const uintptr_t payloadAddress = reinterpret_cast<uintptr_t>(payload);
+    const uintptr_t workspaceAddress =
+        reinterpret_cast<uintptr_t>(recordBuffer_);
+
+    if (payloadAddress >= workspaceAddress) {
+        return payloadAddress - workspaceAddress < recordSize_;
+    }
+
+    return workspaceAddress - payloadAddress < payloadSize_;
 }
 
 void StorageService::refreshStatus() {

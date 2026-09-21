@@ -139,14 +139,21 @@ if (storage.begin(sizeof(MyConfig), 1, validator)) {
 
 The workspace is borrowed for the full `StorageService` lifetime. Each concurrently active
 service needs its own buffer; `begin()` rejects insufficient capacity without truncation or a
-heap fallback.
+heap fallback. The workspace is exclusive scratch storage and must not overlap a payload passed
+to `save()`.
 
 **API:**
 - `begin(payloadSize, schemaVersion, validator)` — Initialize
 - `load(payload)` — Read from valid slot
-- `save(payload)` — Atomic write to next slot
+- `save(payload)` — Validate and persist changed data; returns `true` for `Success` and `NoChange`
 - `hasValidPayload()` — Is config loaded?
 - `status()` — Detailed status (slot, generation, last op result)
+
+`NoChange` means the selected valid record has the same schema, payload size and byte-exact
+payload. It performs no backend write or readback verification and preserves the active slot and
+generation. Save failures distinguish `InvalidArgument`, `ValidationFailure`, `BackendFailure`
+and `VerifyFailure`. Namespace and keys must be non-null and non-empty; further length and
+character constraints belong to the selected backend, including the Preferences/NVS adapter.
 
 **Zastosowanie:**
 - aquaOneLuma ✅ (StorageService adapter)
