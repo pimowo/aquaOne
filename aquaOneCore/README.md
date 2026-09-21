@@ -176,10 +176,12 @@ failure oraz legalnej restart-required divergence. Gdy migracja startuje z nowsz
 recordu, starszy byte-identical CURRENT nie daje `NoChange`: canonical CURRENT jest zapisywany
 z generacją nowszą od wybranej raw bazy, aby następny startup nie powtarzał migracji.
 
-To jest neutralna implementacja **CURRENT** kontraktu lifecycle. CFG-101 pozostaje szerszym
-**ACCEPTED — TARGET**; F2.6 nie migruje żadnej domeny i nie dodaje persistent LKG, two-phase
-active marker, cross-record transactions, boot-loop protection, backup/restore, factory reset
-ani automatycznego wykonania restartu.
+To jest neutralna implementacja **CURRENT** kontraktu lifecycle. F2.6 wprowadziło foundation,
+a F2.7 domknęło recovery integration. `StorageService` otrzymał tylko mechaniczne helpery/raw-record
+operations potrzebne do współpracy z `ConfigLifecycle`; nie zawiera policy migracji, config ani recovery.
+CFG-101 pozostaje szerszym **ACCEPTED — TARGET** i nie dodaje persistent LKG, two-phase active
+marker, cross-record transactions, boot-loop protection, backup/restore, factory reset ani
+automatycznego wykonania restartu.
 
 **Zastosowanie:**
 - aquaOneLuma ✅ (StorageService adapter)

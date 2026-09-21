@@ -1677,8 +1677,8 @@ Walidacja poprzedza zapis i zastosowanie.
 
 ### CFG-101 — Config lifecycle v1 — ACCEPTED TARGET
 
-**Status:** ACCEPTED — TARGET contract; F2.5 nie implementuje `ConfigManager`, migracji ani
-zmian w `StorageService`.
+**Status:** ACCEPTED — TARGET contract. F2.6/F2.7 implementują neutralną CURRENT foundation
+zgodnie z tym kontraktem; nie jest to pełny `ConfigManager` ani domenowa implementacja migracji.
 
 V1 rozdziela stored config (trwały desired), decoded config (tymczasowy typed wynik),
 proposed config (kandydat zmiany), active config (ostatni validated i successfully applied
@@ -1695,8 +1695,9 @@ nie jest równa `CURRENT`; udostępnia integralny payload i stored schema versio
 
 Obecny `StorageService` jest CURRENT foundation i wymaga dokładnej zgodności schema version.
 Nie odróżnia więc old-migratable od unsupported-future. Implementacja CFG-101 wymaga wąskiego
-raw record read/inspect contract albo równoważnej adaptacji Storage. Nie przenosi to migration
-semantics do `StorageService` i nie zmienia jego kodu w F2.5.
+raw record read/inspect contract albo równoważnej adaptacji Storage. F2.6/F2.7 mogą dodać do
+`StorageService` mechaniczne helpery/raw-record operations potrzebne do tej współpracy, ale nie
+przenoszą do niego Config semantics ani migration/recovery policy.
 
 Migracje są jawne i krokowe `N → N+1`, wykonywane deterministycznie w bounded workspace.
 Każdy krok używa typed old-schema structure albo project-specific adaptera, sprawdza input i
