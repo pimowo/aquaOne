@@ -151,7 +151,7 @@ Wartość jest immutable albo view jest read-only. Dla view owner i lifetime mus
 runtime Application odpowiada za decode/migration, walidację systemową, persistence i ordering,
 a Domain może zwalidować reguły semantyczne i zastosować dane dopiero po sukcesie. Domain nie
 zapisuje configu ani sam nie restartuje urządzenia; może zwrócić semantyczną informację, że zmiana
-wymaga restartu. Dokładny pending/apply/rollback workflow pozostaje CFG-101. Persistent
+wymaga restartu. Dokładny pending/apply/rollback workflow definiuje CFG-101. Persistent
 `DomainState`, jeśli będzie potrzebny, użyje jawnej typed persistence boundary dostarczonej przez
 adapter aplikacyjny; ARCH-101 ustala kierunek, ale nie jej finalne API.
 
@@ -1672,7 +1672,180 @@ W V1 nie ma event replay. Po reconnect, reboot albo wykryciu niespójności klie
 CoreConfig, DomainConfig, DomainState, SystemState i RuntimeState są rozdzielone. RuntimeState nie jest persistent.
 
 ### CFG-002 — lifecycle konfiguracji
-Konfiguracja przechodzi przez load, decode, version, migrate, validate i apply. Walidacja poprzedza zapis i zastosowanie.
+Konfiguracja przechodzi przez raw load, version inspection, decode, migrate, validate i apply.
+Walidacja poprzedza zapis i zastosowanie.
+
+### CFG-101 — Config lifecycle v1 — ACCEPTED TARGET
+
+**Status:** ACCEPTED — TARGET contract; F2.5 nie implementuje `ConfigManager`, migracji ani
+zmian w `StorageService`.
+
+V1 rozdziela stored config (trwały desired), decoded config (tymczasowy typed wynik),
+proposed config (kandydat zmiany), active config (ostatni validated i successfully applied
+immutable snapshot), defaults oraz migrated config w RAM/workspace. Żaden z nich nie jest
+`DomainState`, `SystemState` ani runtime-derived state.
+
+#### Storage, version i migration ownership
+
+Storage odpowiada za raw record format, integralność, długość, dual-slot, generację, atomic
+write/fallback i readback verification. Schema version jest metadaną recordu, ale jej znaczenie,
+`CURRENT` version, compatibility, decode i migration policy należą do Config/Application oraz
+project-specific adaptera. Storage nie uznaje old/future schema za corruption tylko dlatego, że
+nie jest równa `CURRENT`; udostępnia integralny payload i stored schema version.
+
+Obecny `StorageService` jest CURRENT foundation i wymaga dokładnej zgodności schema version.
+Nie odróżnia więc old-migratable od unsupported-future. Implementacja CFG-101 wymaga wąskiego
+raw record read/inspect contract albo równoważnej adaptacji Storage. Nie przenosi to migration
+semantics do `StorageService` i nie zmienia jego kodu w F2.5.
+
+Migracje są jawne i krokowe `N → N+1`, wykonywane deterministycznie w bounded workspace.
+Każdy krok używa typed old-schema structure albo project-specific adaptera, sprawdza input i
+tworzy output następnej wersji. V1 nie wymaga dynamic JSON DOM, reflection ani skoków
+`N → CURRENT`. Brak kompletnego łańcucha oznacza migration failure; downgrade nie jest wspierany.
+
+#### Startup lifecycle i validation
+
+```text
+initialize storage
+-> load latest integrity-valid raw record and schema metadata
+-> classify empty / corrupt / backend failure
+-> inspect schema version
+-> decode the stored schema into a bounded typed representation
+-> for old supported schema: validate and migrate N -> N+1 to CURRENT
+-> validate complete CURRENT snapshot
+-> apply whole snapshot
+-> publish immutable ActiveConfig
+-> for migrated or empty defaults: persist CURRENT canonical form
+-> complete config startup
+```
+
+Decode validation dotyczy faktycznie zapisanej wersji; pełna CURRENT validation następuje po
+ostatniej migracji. Invalid snapshot nie jest persistowany ani applied. Apply poprzedza
+auto-persist migrated/default config, aby nie zniszczyć poprawnego starego rekordu przed
+dowodem, że nowy snapshot działa. Ready/RUNNING czeka na required config sections.
+
+Walidacja ma kolejność: storage envelope/integrity; version classification; structural decode;
+kontrola input/output każdego migration step; CURRENT structural/schema validation; CoreConfig
+i DomainConfig semantic oraz cross-field validation; na końcu tylko potrzebna hardware-capability
+validation. Czyste reguły semantic nie zależą od hardware. Domain waliduje własny typed config,
+ale nie zna NVS, nie zapisuje storage i nie restartuje; Config owner koordynuje workflow.
+
+CoreConfig i DomainConfig są osobnymi logical configs z osobnymi records, versions, defaults,
+validators i migrations, nawet przy wspólnym backendzie. Atomicity jest per logical record.
+Wspólna atomowa zmiana wymaga jednego logical config albo przyszłego transaction contract.
+Failure wymaganej sekcji blokuje zależnego consumera i normalny startup; jawnie optional sekcja
+może dać DEGRADED tylko gdy system zachowuje autonomy i safety.
+
+#### Defaults i recovery podczas startupu
+
+Defaults powstają z jednego jawnego factory-default constructor, następnie przechodzą pełną
+CURRENT validation i apply. Nie są uniwersalnym zamiennikiem każdego błędu.
+
+| Stan wejścia | Działanie | Stan i persistence |
+|---|---|---|
+| Storage naprawdę empty | Bezpieczne defaults: validate i apply. | Po apply zapisz CURRENT defaults. Persist failure daje jawne DEGRADED/PersistFailed; deterministic defaults mogą pozostać active. |
+| Oba sloty corrupt/invalid | Defaults tylko gdy policy sekcji jawnie uznaje je za bezpieczne. | RUNNING + DEGRADED/RecoveryRequired bez automatycznego nadpisania rekordów; przy unsafe defaults fatal ERROR recovery shell. |
+| Backend read failure albo nie można odróżnić empty od error | Nie zakładaj empty i nie zapisuj defaults. | Zachowaj storage; fatal ERROR dla wymaganej sekcji i user recovery. |
+| Old supported | Decode, stepwise migrate, validate i apply w RAM. | Dopiero po apply zapisz CURRENT canonical. Persist failure zachowuje old record i daje DEGRADED/PersistFailed. |
+| Old migration failure | Bez automatycznych defaults. | Zachowaj old record; fatal ERROR dla wymaganej sekcji i user recovery. |
+| Future/unsupported schema | Bez downgrade i automatycznych defaults. | Nie nadpisuj; UnsupportedVersion i ERROR recovery shell dla wymaganej sekcji. |
+| Decode/current validation failure | Bez automatycznych defaults. | Zachowaj rekord; Invalid/RecoveryRequired, z fatal ERROR dla wymaganej sekcji. |
+| Apply failure | Nie publikuj nowego ActiveConfig i nie persistuj migration/default repair. | Zachowaj stored desired; ApplyFailed/RecoveryRequired. Required config kończy startup w ERROR shell. |
+
+Corruption, future version, migration failure i backend failure pozostają obserwowalne; nie
+wywołują cichego factory reset. ERROR recovery shell, suppression Domain i restart boundaries
+pozostają zgodne z SYS-105. Fatal config failure sam nie tworzy restart requestu ani boot loop.
+
+#### Active, desired i runtime change
+
+ActiveConfig jest authoritative current applied configiem bieżącego runtime: pełnym, validated,
+immutable snapshotem udostępnianym tylko read-only. UI, MQTT, transport i Domain nie mutują go
+w miejscu. Zmiana tworzy osobny proposed snapshot; apply przyjmuje cały validated snapshot,
+bez generic diff engine.
+
+Persistent storage przechowuje desired config. Legalne `persisted desired != active` istnieje
+wyłącznie jako jawny `restart-required` albo `apply-failed/recovery-required`, nigdy jako ukryty
+drift. V1 nie ma osobnego persistent `PendingConfig`, candidate store ani active marker.
+Proposed config jest RAM-only do czasu walidacji, a persisted desired jest trwałą intencją.
+`StorageService::NoChange` jest poprawnym sukcesem; Config nie duplikuje byte comparison.
+
+Runtime live-applicable change ma jeden ordering:
+
+```text
+construct/decode proposed CURRENT snapshot
+-> normalize only where explicitly safe
+-> full validation
+-> persist as desired canonical config
+-> apply whole snapshot
+-> on success replace ActiveConfig at the logical boundary
+```
+
+Persist failure kończy workflow przed apply: active i stored config pozostają bez zmian. V1 nie
+ma implicit volatile apply. Apply failure po persist nie jest sukcesem: poprzedni ActiveConfig
+pozostaje logicznym active snapshotem, desired pozostaje nową wartością, a status pokazuje
+divergence, ApplyFailed i RecoveryRequired. Affected subsystem pozostaje albo przechodzi do safe
+state; failure nie dowodzi hardware rollbacku. Config owner nie zapisuje automatycznie starego
+configu, nie kasuje desired i nie żąda automatycznie restartu. Recovery może zapisać poprawiony
+desired, wykonać jawny restore/factory reset albo zażądać kontrolowanego restartu.
+
+Apply zwraca sukces dopiero po pełnym semantic apply. Na failure nie publikuje się nowego
+ActiveConfig. Domain/apply adapter odpowiada za safe handling częściowo zmienionego hardware,
+bo v1 nie zakłada uniwersalnego undo actuatorów. Runtime Health/Safety consequences agreguje
+SYS-106; CFG-101 nie tworzy drugiego systemu Health/Safety.
+
+#### Restart-required change
+
+Po pełnej walidacji restart-required change Config owner zapisuje ją jako desired, pozostawia
+dotychczasowy ActiveConfig, ustawia jawne `restartRequired` i dopiero po udanym persist requestuje
+`CONFIG_APPLY` przez uprawniony `RestartRequester`. Nie wykonuje live apply. Jeśli request nie
+zostanie przyjęty albo restart nie nastąpi, desired i active pozostają jawnie rozbieżne.
+
+Po rzeczywistym reboot/power loss volatile restart request znika zgodnie z SYS-107, ale startup
+ładuje persisted desired i próbuje go zastosować. Trwałość intencji wynika z config recordu, nie
+z persistence restart requestu. Config owner nie wywołuje `ESP.restart()` i respektuje safe point.
+
+#### Power loss, rollback i last-known-good
+
+| Moment utraty zasilania | Następny boot |
+|---|---|
+| Przed persist | Ładuje poprzedni desired. |
+| W trakcie persist | Dual-slot wybiera poprzedni albo kompletny nowy rekord. |
+| Po persist, przed apply | Ładuje i próbuje zastosować nowy desired. |
+| Podczas apply | Ponownie próbuje nowy desired; repeat failure kończy w ERROR recovery shell bez auto-restartu. |
+| Po apply, przed publikacją active | Ponownie stosuje ten sam persisted desired. |
+| Po persist restart-required | Boot stosuje persisted desired; volatile request nie jest potrzebny. |
+
+V1 nie ma persistent last-known-good ani two-phase candidate/active marker. ActiveConfig w RAM
+jest dowodem ostatniego successful apply tylko dla bieżącego runtime. Poprzedni dual-slot record
+chroni atomic write, ale nie jest semantic LKG: newest valid nie oznacza newest applied.
+Storage zapewnia interrupted-write fallback; Config nie wykonuje automatic logical rollback;
+hardware undo nie jest wymagane. Marker/LKG może wrócić jako osobna decyzja tylko po wykazaniu
+realnej potrzeby.
+
+#### Results, observability i testability
+
+Lifecycle używa wyniku operacji i ortogonalnych status flags/facts, nie jednego mega-enum.
+Minimum read-only observability obejmuje source (`stored`, `defaults`, `migrated`), stored i
+active schema version, desired/active alignment, `restartRequired`, `recoveryRequired`, storage
+health oraz ostatni decode/migration/validation/persist/apply result. Semantyczne wyniki obejmują
+co najmniej Loaded, DefaultsUsed, Migrated, Applied, Persisted/NoChange, RestartRequired, Invalid,
+UnsupportedVersion, PersistFailed, ApplyFailed i RecoveryRequired. Status, diagnostics i logs nie
+ujawniają sekretów zgodnie z SEC-002.
+
+Native tests przyszłej implementacji obejmują startup empty/defaults, current valid, old
+migratable, migration/future/decode/validation/apply failure, canonical persist po migration i
+defaults oraz persist failure. Runtime tests obejmują valid live change, invalid proposal,
+persist failure bez apply, apply failure z divergence, restart-required, NoChange i reboot po
+fault-injected przerwaniu persistence/apply. CoreConfig i fake DomainConfig są testowane osobno.
+
+HIL pozostaje wymagany dla real NVS atomicity/readback, power loss, reboot i `CONFIG_APPLY`,
+hardware apply failure oraz actuator safety. Host tests nie dowodzą physical rollback.
+
+CFG-101 nie ustala finalnego C++ API, konkretnych schemas/migrations, cross-record transaction,
+boot-loop protection implementation, persistent LKG/two-phase marker, CFG-102 backup
+`DomainState`, Maintenance, RestartReason, Commands, Web/MQTT config API, Auth, secret
+encryption, backup/restore/factory-reset workflow ani retry policy. Rozstrzyga v1 lifecycle,
+ownership, ordering, defaults/recovery i desired/active semantics.
 
 ### SAF-001 — rozdział Safety/Maintenance/Action Lock
 Maintenance, Safety i Action Lock są różnymi mechanizmami. SafetyState jest agregatem, nie drugim systemem blokad.
@@ -1707,7 +1880,6 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 ## DECISION REQUIRED
 
 - Rozszerzenia identity poza IDN-101 v1 — BuildIdentity version grammar, HardwareIdentity platform/revision schema oraz future non-MAC DeviceId/source;
-- CFG-101 — dokładny model pending config i recovery po korupcji;
 - CFG-102 — zakres DomainState w backupie;
 - CMD-101 — command envelope, CommandResult, error_code, request/correlation ID;
 - CMD-102 — idempotency i deduplication;

@@ -51,13 +51,15 @@ ponowny odczyt i weryfikację po zapisie.
 ### Implementation: REQUIRED NEXT
 
 Każdy projekt używający storage MUSI dokumentować swoje rekordy, wersję schematu, walidator,
-wartości domyślne i politykę obsługi uszkodzenia. Migracje pozostają odpowiedzialnością
-adaptera domenowego, dopóki Core nie udostępni zatwierdzonego mechanizmu migracji.
+wartości domyślne i politykę obsługi uszkodzenia. Implementacja pełnego lifecycle CFG-101,
+w tym odczytu stored schema niezależnie od `CURRENT`, pozostaje następnym krokiem.
 
 ### Implementation: TARGET
 
-Wspólne migracje, backup/import/export, factory reset i koordynacja wielu rekordów są
-kontraktem docelowym. Nie są częścią obecnego API `StorageService`.
+CFG-101 jest ACCEPTED — TARGET: Storage pozostaje mechanizmem raw record, a Config/Application
+odpowiada za version/decode/migration/validation/persist/apply oraz jawny desired/active status.
+Project-specific typed migrations pozostają po stronie adaptera projektu. Backup/import/export,
+factory reset i koordynacja wielu rekordów nie są częścią obecnego API `StorageService`.
 
 Nazwy urządzeń i wersji definiuje [NAMING_VERSIONING_STANDARD.md](NAMING_VERSIONING_STANDARD.md),
 factory reset definiuje [FACTORY_RESET_ONBOARDING_STANDARD.md](FACTORY_RESET_ONBOARDING_STANDARD.md),
@@ -313,7 +315,8 @@ Zmiana firmware nie musi oznaczać zmiany schematu konfiguracji.
 
 # 12. Migracje
 
-Jeśli nowy firmware oczekuje nowszego schematu, Core wykonuje migrację.
+Jeśli nowy firmware oczekuje nowszego schematu, Config/Application orchestruje migrację przez
+project-specific typed adapter.
 
 Przykład:
 
@@ -338,10 +341,15 @@ Jeśli migracja jest bezpieczna i jednoznaczna, odbywa się automatycznie przy s
 Po udanej migracji:
 
 ```text
-validate
--> save new schema
+validate CURRENT snapshot
+-> apply whole snapshot
+-> save CURRENT canonical schema
 -> continue boot
 ```
+
+Stary poprawny rekord pozostaje nienaruszony do sukcesu migration, validation i apply. Błąd
+zapisu CURRENT po udanym apply jest jawny jako PersistFailed/DEGRADED i nie zamienia starego
+rekordu w uszkodzony.
 
 ---
 
@@ -714,12 +722,15 @@ Dla ustawień, które mogą zmieniać się często, Core może stosować krótki
 Przykład:
 
 ```text
-user moves slider several times
--> apply runtime
--> save final value after short idle
+user moves slider several times as proposals
+-> validate final proposal after short idle
+-> persist desired
+-> apply final snapshot
 ```
 
 Nie stosujemy tego do krytycznych zmian, które muszą być utrwalone natychmiast.
+V1 nie traktuje live preview jako canonical config apply; ewentualny volatile preview wymaga
+osobnego jawnego workflow.
 
 ---
 
@@ -860,42 +871,38 @@ Zapis powinien przechodzić przez warstwę storage/config Core.
 
 # 49. Aktualizacja konfiguracji w runtime
 
-Po udanym save Core powinien powiadomić odpowiedni moduł o zmianie.
+Po pełnej walidacji Config owner zapisuje desired config, a następnie stosuje cały snapshot.
 
 Model:
 
 ```text
-save
--> commit
--> apply callback
+validate
+-> persist desired
+-> apply whole snapshot
+-> publish immutable active
 ```
 
-Nie wymagamy restartu, jeśli dana zmiana może być zastosowana bezpiecznie.
+Persist failure nie zmienia active. Zmiana restart-required kończy się po persist jawnym
+desired/active divergence i requestem `CONFIG_APPLY`, bez live apply.
 
 ---
 
 # 50. Rollback konfiguracji przy apply failure
 
-Jeśli zapis się udał, ale zastosowanie nowej konfiguracji kończy się błędem krytycznym, system powinien mieć możliwość:
-
-- pozostawienia nowego configu oznaczonego jako invalid i przejścia do safe state,
-- albo rollbacku do ostatniej poprawnej konfiguracji.
-
-Dla krytycznych sekcji preferowany jest rollback do ostatniej poprawnej konfiguracji, jeśli jest technicznie możliwy.
+Jeśli persist się udał, ale apply kończy się błędem, persisted desired pozostaje zapisany,
+poprzedni immutable ActiveConfig pozostaje logicznym active, a system raportuje jawne
+`ApplyFailed + RecoveryRequired` i zabezpiecza affected subsystem. V1 nie wykonuje
+automatycznego storage rollbacku ani nie zakłada hardware undo. Recovery może zapisać
+poprawiony desired, wykonać jawny restore/factory reset albo kontrolowany restart.
 
 ---
 
 # 51. Last known good config
 
-Dla szczególnie krytycznych bloków konfiguracji można utrzymywać:
-
-```text
-last_known_good
-```
-
-Nie musi to być pełna kopia całej konfiguracji urządzenia.
-
-Mechanizm powinien być używany tylko tam, gdzie realnie zwiększa bezpieczeństwo.
+CFG-101 v1 nie utrzymuje osobnego persistent `last_known_good` ani active marker.
+ActiveConfig w RAM dowodzi ostatniego successful apply tylko w bieżącym runtime. Poprzedni
+dual-slot record chroni zapis przed utratą zasilania, ale nie jest semantic last-known-good.
+Dodatkowy mechanizm wymaga osobnej decyzji i wykazanej potrzeby.
 
 ---
 
@@ -904,8 +911,9 @@ Mechanizm powinien być używany tylko tam, gdzie realnie zwiększa bezpieczeńs
 Jeśli storage nie może zostać odczytany:
 
 - Core loguje błąd,
-- próbuje odzyskać ostatnią poprawną konfigurację, jeśli istnieje,
-- jeśli to niemożliwe, używa factory defaults tylko wtedy, gdy jest to bezpieczne.
+- nie zakłada, że storage jest pusty,
+- nie nadpisuje automatycznie danych defaults,
+- dla wymaganej sekcji wchodzi w ERROR recovery shell i pozostawia naprawę jawnemu workflow.
 
 Nie wykonujemy cichego resetu configu bez śladu.
 
@@ -918,6 +926,10 @@ Jeśli użycie defaults mogłoby spowodować niebezpieczne działanie urządzeni
 - nie uruchamiamy domeny normalnie,
 - generujemy ERROR/CRITICAL zgodnie z `ALARM_STANDARD`,
 - wchodzimy w odpowiedni safe state.
+
+Przy naprawdę pustym storage bezpieczne defaults są walidowane, applied i następnie zapisywane.
+Przy obu corrupt slotach bezpieczne defaults mogą dać DEGRADED/RecoveryRequired, lecz nie są
+automatycznie zapisywane nad uszkodzonymi rekordami.
 
 ---
 
@@ -1080,7 +1092,8 @@ Nie utrzymujemy osobnych kopii tego samego ustawienia dla:
 - HA,
 - domeny.
 
-Istnieje jedna wartość w modelu konfiguracji urządzenia.
+Istnieje jeden persisted desired config i jeden immutable active snapshot pełniące jawnie różne
+role lifecycle. Nie istnieją konkurencyjne kopie per transport.
 
 ---
 
@@ -1090,10 +1103,13 @@ Rekomendowana sekwencja:
 
 ```text
 storage init
--> load config
--> integrity check
--> migrate
--> validate
+-> load raw config + stored schema version
+-> integrity check and version classification
+-> decode
+-> migrate N -> N+1 when old-supported
+-> validate CURRENT snapshot
+-> apply whole snapshot
+-> persist CURRENT form after successful migration/default apply
 -> restore minimal persistent state
 -> initialize services
 -> initialize domain
@@ -1108,7 +1124,8 @@ Urządzenie nie powinno zgłaszać się jako w pełni gotowe przed:
 
 - poprawnym odczytem konfiguracji,
 - migracją,
-- walidacją.
+- walidacją,
+- apply wymaganych sekcji i rozstrzygnięciem ich persistence result.
 
 To samo dotyczy MQTT online zgodnie z `MQTT_STANDARD`.
 
@@ -1130,9 +1147,10 @@ Nie musi być publikowany do HA.
 
 ---
 
-# 68. Save result
+# 68. Lifecycle i save result
 
-Każda operacja zapisu zwraca jednoznaczny wynik.
+Każdy etap lifecycle zwraca jednoznaczny wynik oraz potrzebne ortogonalne status flags; nie
+tworzymy jednego mega-enum.
 
 Przykłady:
 
@@ -1142,6 +1160,9 @@ NO_CHANGE
 VALIDATION_ERROR
 STORAGE_ERROR
 MIGRATION_ERROR
+APPLY_ERROR
+RESTART_REQUIRED
+RECOVERY_REQUIRED
 ```
 
 Projekt domenowy nie powinien ignorować błędu zapisu.
@@ -1191,15 +1212,17 @@ Przykład:
 
 # 72. Recovery priority
 
-Rekomendowana kolejność odzyskiwania:
+CFG-101 używa deterministycznej klasyfikacji:
 
 ```text
-current valid
--> last known good
--> migrated compatible
--> factory default if safe
--> safe state + user intervention
+current valid -> validate and apply
+old supported -> migrate in RAM -> validate -> apply -> persist CURRENT
+empty -> safe defaults -> validate -> apply -> persist
+corrupt -> safe defaults only as DEGRADED, without automatic overwrite
+future / migration failure / backend read failure -> preserve -> ERROR recovery
 ```
+
+V1 nie ma osobnego persistent last-known-good.
 
 ---
 
@@ -1265,7 +1288,10 @@ Należy testować co najmniej:
 - import,
 - factory reset,
 - no-change write,
-- rollback/recovery.
+- desired/active divergence,
+- persist failure bez apply,
+- apply failure i recovery,
+- power-loss recovery.
 
 ---
 

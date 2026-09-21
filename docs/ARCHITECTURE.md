@@ -441,7 +441,7 @@ Rozróżniamy Snapshot, State Change, Domain Event, Alarm Event, Operation Event
 
 ### Config, Storage, Safety i Alarmy
 
-Rozdzielone są `CoreConfig`, `DomainConfig`, `DomainState`, `SystemState` i `RuntimeState`; RuntimeState nie jest persistent. Config lifecycle to `load → decode → version → migrate → validate → apply`. Walidacja następuje przed zapisem i zastosowaniem, a migracje są jawne (`v1 → v2 → v3`). Obecny StorageService ma wartościowe cechy i jest kandydatem do KEEP.
+Rozdzielone są `CoreConfig`, `DomainConfig`, `DomainState`, `SystemState` i `RuntimeState`; RuntimeState nie jest persistent. CFG-101 definiuje TARGET lifecycle: Storage weryfikuje raw record, Config sprawdza schema version, dekoduje, wykonuje jawne migracje `N → N+1`, waliduje i stosuje cały immutable snapshot. Storage przechowuje desired config, a ActiveConfig oznacza wyłącznie ostatni pomyślnie zastosowany snapshot; ich dozwolona rozbieżność jest zawsze jawna jako restart-required albo apply-failed/recovery-required. Runtime change używa `validate → persist desired → apply`; persist failure nie zmienia active. Obecny StorageService pozostaje CURRENT mechanizmem bazowym i nie implementuje jeszcze pełnego lifecycle CFG-101.
 
 Maintenance, Safety i Action Lock są trzema różnymi mechanizmami. Maintenance opisuje stan serwisowy, Safety chroni system, a Action Lock blokuje konkretną akcję. Jedna akcja może mieć wiele powodów blokady. STOP, EMERGENCY_STOP, status, diagnostics i ACK nie są automatycznie blokowane globalną blokadą. Warning, alarm, fault i safety lock są odrębne; alarm nie oznacza automatycznie Safety Lock, a ACK nie oznacza CLEAR.
 
