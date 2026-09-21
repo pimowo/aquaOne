@@ -1,6 +1,6 @@
 # Architecture vNext — decyzje
 
-**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE, F1.6 SYS-104 DESIGN GATE, F1.8 SYS-105 RECOVERY DESIGN GATE, F1.9 SYS-106 WRITER OWNERSHIP DESIGN GATE, F1.10 SYS-107 RESTART REQUEST POLICY DESIGN GATE, F1.11 SYS-101 RUNTIME IDENTITY DESIGN GATE i F1.12 IDN-101 DEVICE IDENTITY DESIGN GATE
+**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE, F1.6 SYS-104 DESIGN GATE, F1.8 SYS-105 RECOVERY DESIGN GATE, F1.9 SYS-106 WRITER OWNERSHIP DESIGN GATE, F1.10 SYS-107 RESTART REQUEST POLICY DESIGN GATE, F1.11 SYS-101 RUNTIME IDENTITY DESIGN GATE, F1.12 IDN-101 DEVICE IDENTITY DESIGN GATE i F1.13 ARCH-101 CORE ↔ DOMAIN API DESIGN GATE
 **Scope:** cała platforma aquaOne
 **Zasada:** Architecture vNext jest TARGET. CURRENT wynika z kodu i macierzy projektu. Legacy code is not architecture.
 
@@ -27,6 +27,218 @@ koordynuje startup i runtime przez wąskie kontrakty. Nie posiada konkretnych us
 konkretnych klas Domain, Network, Web ani MQTT, nie jest service locatorem ani Registry i nie
 zawiera semantyki domenowej. Dokładny ApplicationPlan, hooks i ownership definiuje decyzja
 SYS-102 poniżej.
+
+### ARCH-101 — Core ↔ Domain API — ACCEPTED TARGET
+
+Granica Core ↔ Domain używa modelu hybrydowego: Domain otrzymuje tylko małe, jawnie
+wstrzyknięte capability i domenowe porty, których faktycznie potrzebuje, a Application/Core
+korzystają z małych endpointów, handlerów i providerów wystawionych przez Domain albo przez
+adapter domenowy. Nie istnieje wspólny duży `CoreContext`, obowiązkowy `DomainContext` ani jedna
+bazowa klasa `IDomain`. Taki podział zachowuje jawne zależności i testowalność bez ESP32, pozwala
+niezależnie rozszerzać różne domeny i nie zmusza prostego modułu do implementowania kontraktów,
+których nie używa.
+
+Rozważone modele:
+
+- jeden duży `CoreContext` upraszcza listę argumentów, ale ukrywa zależności, zwiększa coupling,
+  ułatwia powstanie service locatora i pozwala domenie sięgać po przypadkowe usługi;
+- kilka małych capability zapewnia najlepszą jawność i fakes, ale samo nie określa wyjść domeny;
+- jeden duży `IDomain` centralizuje lifecycle i discovery, lecz tworzy szeroki interfejs z pustymi
+  metodami, wymusza jeden obiekt domenowy i sprzęga Commands, State, Safety i Diagnostics;
+- zestaw wąskich providerów i handlerów dobrze oddziela wyjścia, ale sam nie rozwiązuje wejściowych
+  zależności domeny;
+- wybrany hybrid łączy małe input capabilities z małymi output/provider contracts. Daje więcej
+  jawnych punktów składania niż duży obiekt, lecz Composition Root może je przechowywać w
+  statycznych tablicach, a projekt może lokalnie agregować moduły bez rozszerzania Core.
+
+#### Kierunek zależności i ownership kontraktów
+
+Docelowy kierunek zależności jest następujący:
+
+```text
+Domain -> własne typy, własne porty i minimalne neutralne kontrakty capability
+Hardware adapters -> implementują porty należące do Domain
+Application adapters -> znają Domain i odpowiednią infrastrukturę Core oraz mapują granice
+Application / Composition Root -> zna Core, Domain i adaptery oraz składa je jawnie
+Core -> nie include'uje żadnego konkretnego projektu Domain
+```
+
+Nie powstaje monolityczny framework ani namespace `AquaCore::DomainContract`. Kontrakt capability
+co do zasady należy do konsumenta albo do małego neutralnego pakietu kontraktów. Kontrakt
+providera może należeć do subsystemu, który go konsumuje, jeśli jego semantyka jest wspólna, jak
+w SYS-106; typy stanu, konfiguracji, komend i portów specyficzne dla produktu należą do Domain.
+Adapter aplikacyjny może posiadać kontrakt mapowania potrzebny tylko do integracji. Każdy
+kontrakt ma minimalne includes i nie może tworzyć zależności kołowej.
+
+Domain nie może otrzymać ani wyszukiwać `AquaOneCore&`, `ApplicationRuntime&`, `Registry&`,
+`WebServer&`, `WebSocket&`, `PubSubClient&`, `WiFi&`, `Preferences`/NVS, `Update&`, dostępu do
+`ESP.restart()`, konkretnego drivera, przypadkowego GPIO ani obiektu transportu, sesji lub Auth.
+Core nie może rozgałęziać zachowania po `device_type` ani include'ować konkretnej domeny.
+
+#### Dependency injection i statyczne składanie
+
+Trwałe mandatory dependencies są przekazywane przez constructor jako jawne referencje do małych
+capability albo portów. Zweryfikowane dane startowe, w szczególności typed `DomainConfig`, są
+przekazywane jako input inicjalizacji. Zależność opcjonalna jest jawnym pointerem albo innym
+jednoznacznie opcjonalnym małym kontraktem tylko wtedy, gdy dana funkcja naprawdę jest opcjonalna.
+Nie ma globalnych singletonów, lookup by type/string, pobierania zależności z Registry ani
+dynamicznej rejestracji.
+
+Wspólny `DomainContext` nie jest kontraktem platformy. Projekt może mieć prywatny, silnie typowany
+aggregate albo `DomainRoot` wyłącznie jako pomoc w konstrukcji swoich modułów; nie jest on
+przekazywany jako ogólny worek usług, widoczny dla Core ani rozszerzany opcjonalnymi usługami.
+Jest to wyłącznie ergonomiczną grupą wcześniej jawnie zadeklarowanych, silnie typowanych dependencies. Nie oferuje lookup/discovery, dynamicznie wyszukiwanych optional services ani ukrytych zależności; nie zawiera `AquaOneCore&`, `ApplicationRuntime&`, `Registry&` ani innego whole-system object i nie może stać się service locatorem.
+Jedno urządzenie może składać kilka modułów domenowych. Composition Root może wystawić ich
+oddzielne endpointy/providerów w statycznych tablicach, więc API nie wymusza jednego wielkiego
+obiektu ani klasy bazowej.
+
+Baseline pozwala na model mieszany: integracja z `ApplicationPlan` używa callbacka i opaque
+context zgodnie z SYS-102; długowieczne capability, porty i providerzy mogą być małymi pure
+abstract interfaces przekazanymi przez referencję; lokalna implementacja może użyć templates lub
+static polymorphism. Obiekty i tablice mają statyczny albo composition-owned lifetime. Nie są
+wymagane RTTI, dynamic allocation, `std::function`, ownership transfer przez heap, dynamic
+registration ani globalna capacity.
+Każdy pożyczony capability, hardware port, provider, handler, sink, context, config/state view oraz pointer/count array musi żyć co najmniej tak długo, jak konsument, który może go używać. Pointer/count view pozostaje stabilny, nie wskazuje na znikające ani przenoszone elementy, a owner pozostaje jawny w Composition Root albo project composition. Baseline nie zakłada dynamic replacement ani registration.
+
+#### Lifecycle, startup i runtime processing
+
+ARCH-101 ustanawia dwie role konceptualne: `DomainInitializer` oraz
+`DomainProcessingEndpoint`. Nie są one obowiązkowymi wspólnymi klasami C++ ani finalnymi nazwami
+metod.
+Są to role konceptualne, nie obowiązkowe klasy bazowe. Mogą być zrealizowane jako narrow interface, callback/context albo adapter; exact C++ mechanism pozostaje decyzją implementacyjną, jeśli zachowuje tę granicę. `init()`, `start()`, `stop()`, `enterMaintenance()` i `exitMaintenance()` nie tworzą
+wspólnego lifecycle interface w tej decyzji; przyszłe maintenance hooks mogą zostać dodane jako
+oddzielny wąski kontrakt po MNT-101.
+
+Composition Root tworzy zwykłego participanta `DOMAIN_INIT`, którego callback/adapter wywołuje
+inicjalizację konkretnego modułu lub agregatu Domain. `ApplicationRuntime` widzi wyłącznie
+`StartupParticipant` i nie zna typu Domain. Inicjalizator korzysta z zależności wstrzykniętych
+przy konstrukcji oraz typed, validated startup data/config. Zwraca explicit domain initialization
+result bez exceptions; participant adapter mapuje go na `StartupStepResult` i stabilny lokalny
+error code zgodnie z SYS-104.
+Domain nie musi include'ować `Startup.h` ani znać `StartupStepResult`; może zwrócić własny init result, który mapuje Composition/Application adapter. Requirement participanta określa Composition Root dla danego
+urządzenia/modułu. Domain nie inicjalizuje bezpośrednio GPIO ani konkretnego drivera: porty i ich
+implementacje są gotowe po `HARDWARE_INIT`, a domena wykonuje semantyczną inicjalizację przez
+porty.
+
+Po pełnym sukcesie startupu Application/system runtime wywołuje jawny, wąski processing endpoint.
+ARCH-101 nie utrwala publicznej nazwy `tick()` ani scheduling, częstotliwości i kolejności;
+należą one do przyszłego RuntimePlan. Po fatal startup failure processing i domain commands są
+suppressed, providerzy domenowi mogą być unavailable, a recovery shell działa bez Domain zgodnie
+z SYS-105. Wcześniej zainicjalizowanego Domain nie uruchamia się ponownie przez recovery. Early
+safe outputs i przyszły emergency shutdown pozostają poza normalnym Domain API.
+
+#### Hardware, stan i konfiguracja
+
+Obowiązują trzy warstwy HW-001: generic technical abstraction, concrete driver i domain hardware
+interface. Semantyczne porty, na przykład `PumpPort`, `LightChannelPort` lub
+`TemperatureSensorPort`, należą do pakietu Domain; hardware adapters je implementują, mogąc
+wewnętrznie używać technicznych abstrakcji Core i konkretnych driverów. Domain posiada semantic
+write authority do swoich actuatorów wyłącznie przez te porty. Komenda zewnętrzna zmienia
+domenowy tryb, setpoint albo inną semantyczną intencję, nigdy GPIO lub driver bezpośrednio.
+Dokładny arbitraż Safety/Action Locks pozostaje SAF-101.
+
+Domain jest jedynym authoritative ownerem własnych `DomainState` i `DomainMode`; Core nie
+utrzymuje drugiej mutable kopii i nie zna wartości mode specyficznych dla produktu. Odczyt odbywa
+się przez read-only provider zwracający snapshot/value o typie należącym do projektu.
+Jest to self-contained immutable snapshot value albo ograniczony czasowo immutable read-only view. Dla view owner i lifetime są jawne, adapter nie zatrzymuje go poza gwarantowanym okresem, view nie staje się drugą authoritative kopią, a serializer nie może mutować stanu. Nie jest
+wystawiana mutable reference. Application adapter mapuje project-specific snapshot na HTTP,
+Realtime, MQTT, Panel lub diagnostics. Core nie wymaga `std::variant` obejmującego wszystkie
+domeny i nie musi rozumieć pól snapshotu.
+
+Config/storage lifecycle należy do Core/Application. Domain nie zna NVS ani `ConfigService`;
+otrzymuje typed, validated `DomainConfig` snapshot albo mały typed view.
+Wartość jest immutable albo view jest read-only. Dla view owner i lifetime muszą obejmować cały okres używania; Domain nie może zatrzymać go poza tym lifetime ani mutować storage przez view. Dla przyszłej zmiany
+runtime Application odpowiada za decode/migration, walidację systemową, persistence i ordering,
+a Domain może zwalidować reguły semantyczne i zastosować dane dopiero po sukcesie. Domain nie
+zapisuje configu ani sam nie restartuje urządzenia; może zwrócić semantyczną informację, że zmiana
+wymaga restartu. Dokładny pending/apply/rollback workflow pozostaje CFG-101. Persistent
+`DomainState`, jeśli będzie potrzebny, użyje jawnej typed persistence boundary dostarczonej przez
+adapter aplikacyjny; ARCH-101 ustala kierunek, ale nie jej finalne API.
+
+#### Commands, autonomous control i wyniki
+
+Komendy domenowe są typed i należą do Domain. Application/command adapter mapuje przyszły
+generic/wire envelope na wąski `DomainCommandHandler` dopiero po systemowej validation,
+Auth/policy oraz Safety/Action Locks. Transport nie może wywołać handlera bezpośrednio, a handler
+nie zna źródła HTTP/MQTT/WebSocket, sesji ani formatu odpowiedzi. Domain zwraca semantic result,
+na przykład accepted/completed, domain-rule rejection, invalid domain state albo operation
+started; Application mapuje go na wynik transportowy. Dokładne typy, enum, error codes,
+correlation i idempotency pozostają CMD-101/CMD-102.
+
+CMD-001 obejmuje żądania sterowania składane przez transporty i system/application workflows.
+Scheduler działający jako źródło takiego żądania korzysta z Command Path. Wewnętrzny regulator,
+automat albo closed-loop processing wewnątrz Domain nie jest zewnętrznym command source: steruje
+własnymi actuatorami bez przechodzenia przez remote/system Command pipeline, przestrzegając
+domenowych reguł i intrinsic safety. Nie może to być użyte przez transport adapter jako skrót do
+ominięcia policy lub Safety.
+
+#### Events, Health, Safety, alarms i diagnostics
+
+Semantic events płyną z Domain przez wąski, jawnie wstrzyknięty `DomainEventSink` albo
+równoważny non-owning callback contract do adaptera aplikacyjnego.
+Sink i jego context muszą żyć co najmniej tak długo, jak emitujący moduł może ich używać. Domain nie przejmuje ownership, nie dopuszcza dangling callback/context i nie wykonuje heap ownership transfer. Domain nie publikuje MQTT ani
+WebSocket i nie zna transportu. ARCH-101 ustala ten kierunek i ownership; EVT-101 rozstrzygnie
+dokładne sygnatury, typy zdarzeń, lifetime, delivery/buffering, envelope, priorytety i sequence.
+Implementacja musi pozostać statyczna, bounded i bez dynamicznego event busa.
+
+Domain może wystawić `DomainHealthProvider` i `DomainSafetyProvider`, które zwracają bieżące
+facts/contributions. Nie zapisuje globalnego `HealthState` ani `SafetyState`, nie otrzymuje
+setterów i nie wykonuje globalnego unlock. `RuntimeStateCoordinator` agreguje providerów zgodnie
+z SYS-106. Providerzy nie są obowiązkowymi metodami jednego Domain interface i nie są odpytywani,
+gdy ich moduł jest unavailable po nieudanej inicjalizacji.
+
+Domain posiada semantyczne warunki alarmowe, identyfikatory, active/clear logic oraz domenowe
+metadata. Przyszły Core alarm framework konsumuje je przez wąski provider lub emission adapter.
+Alarm nie musi automatycznie degradować Health ani blokować Safety; mapping jest osobną policy.
+Dokładny Alarm API pozostaje ALM-101.
+
+`DomainDiagnosticsProvider` wystawia wyłącznie semantic domain diagnostics, bez transportów,
+sekretów i Core diagnostics. CoreDiagnostics oraz DomainDiagnostics pozostają rozdzielone.
+Dokładny schema, listy capability i serializacja pozostają DIAG-101.
+
+#### Małe capabilities i izolacja transportów
+
+Domain może dostać mały monotonic clock, osobny wall/civil clock, best-effort log sink, event
+sink, semantic input lub typed persistence capability tylko wtedy, gdy ich potrzebuje. Nie
+otrzymuje całego TimeService ani loggera będącego toolboxem/service locatorem. Awaria logowania
+nie zatrzymuje logiki domenowej. `RestartRequester` jest explicit opt-in przekazywany tylko
+uprawnionemu adapterowi/workflow zgodnie z SYS-107 i nie jest obowiązkową zależnością Domain.
+
+Domain nie zależy od Network. Dane zewnętrzne trafiają przez adapter jako semantic input.
+Capability przekazywana Domain domyślnie nie ujawnia Wi-Fi/MQTT credentials, session tokens, auth secrets, private keys ani transport-specific credentials. Wyjątek wymaga osobnego, jawnego kontraktu dla rzeczywiście niezbędnego semantic inputu; capability nie może być boczną drogą do transport/session/auth internals.
+Transport i UI układają się jako `Domain ↔ semantic contracts ↔ Application adapters ↔ Core
+transport infrastructure ↔ HTTP/WS/MQTT/Panel`. Domain nie posiada serwera, routes, HTML,
+WebSocket, users, sessions, passwords ani transport permissions. Auth i authorization kończą się
+przed semantic command execution; domena może odrzucić operację wyłącznie z powodów domenowych.
+WEB-001 i dokładny UI/config schema pozostają bez zmian.
+
+#### Registry, errors i testability
+
+Domain nie rejestruje się globalnie. Composition Root jawnie składa lifecycle/processing
+endpointy, handlery, providerów, sinki i capability. Registry może w przyszłości statycznie
+katalogować metadata lub providerów dla ich konsumentów, ale Domain nie używa go do discovery ani
+dependency resolution. Dokładny Registry API pozostaje REG-101.
+
+Nie ma exceptions ani jednego globalnego error enum. Startup używa domenowego init result
+mapowanego przez adapter na `StartupStepResult`; command boundary ma własny semantic result;
+providerzy są read-only queries bez wyjątków; hardware ports zwracają jawny result/status
+odpowiedni dla danego portu.
+Subsystem/domain-specific errors mogą pozostać lokalne i być mapowane przez Application adapter na stabilną diagnostyczną identyfikację/representation do późniejszej publikacji przez Diagnostics/Events; brak globalnego mega-enum nie może gubić informacji.
+
+Kontrakt jest host-testable. Domain tests uruchamiają moduły bez ESP32 z fake ports oraz fake
+time/log/event capability i sprawdzają config validation, state transitions, commands oraz
+Health/Safety contributions. Core tests używają fake endpoints/providerów bez konkretnej domeny,
+a integration tests składają Composition Root z fake Domain. Testy zależności sprawdzają brak
+whole-Core access, transport access i Registry lookup. HIL jest potrzebny dopiero dla konkretnych
+hardware adapters, realnego timingu sensorów/actuatorów, fizycznego safety i integracji ESP32;
+nie jest wymagany do potwierdzenia samego Core ↔ Domain contract.
+
+ARCH-101 zamyka dependency direction, ownership, lifecycle integration, hardware/state/command/
+provider/event/config boundaries, DI, transport isolation, static zero-heap composition i
+testability. Nie zamyka dokładnych metod przyszłych interfejsów, Command API, Event API, Alarm
+API, Action Locks API, Maintenance workflow, RuntimePlan scheduling, config apply workflow,
+Diagnostics schema, Web routes, MQTT adapters, serialization, Auth details ani konkretnych portów
+hardware poszczególnych projektów.
 
 ### SYS-001 — lifecycle
 Docelowy lifecycle to: POWER ON, BOOT, CORE INIT, LOAD/VALIDATE CONFIG, HARDWARE INIT, DOMAIN INIT, SAFETY VALIDATION, NETWORK INIT, INTERFACES INIT, RUNNING.
@@ -1494,7 +1706,6 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 
 ## DECISION REQUIRED
 
-- ARCH-101 — dokładny API Core ↔ Domain;
 - Rozszerzenia identity poza IDN-101 v1 — BuildIdentity version grammar, HardwareIdentity platform/revision schema oraz future non-MAC DeviceId/source;
 - CFG-101 — dokładny model pending config i recovery po korupcji;
 - CFG-102 — zakres DomainState w backupie;

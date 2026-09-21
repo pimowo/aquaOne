@@ -347,7 +347,7 @@ Application / Composition Root
     └── Hardware adapters / drivers
 ```
 
-Domain korzysta z wąskich kontraktów Core i domenowych interfejsów hardware, ale nie zna transportów. Composition Root jest jedynym miejscem znającym konkretny skład urządzenia, BoardProfile i połączenia usług. Domain nie otrzymuje całego `AquaOneCore&`; zależności są jawne, preferowana jest dependency injection. Registry jest rejestrem capability/providerów, nie service locatorem.
+Domain korzysta wyłącznie z jawnie wstrzykniętych małych capability i własnych interfejsów hardware, ale nie zna transportów. Composition Root jest jedynym miejscem znającym konkretny skład urządzenia, BoardProfile i połączenia usług. Nie istnieje wspólny duży `CoreContext`, obowiązkowy `DomainContext` ani bazowy `IDomain`; wejścia oraz wystawiane endpointy/providerzy są rozdzielone według odpowiedzialności. Registry może katalogować capability/providerów, ale nie jest service locatorem ani źródłem zależności Domain.
 
 Composition Root współpracuje z `ApplicationRuntime`, który koordynuje startup i runtime
 wyłącznie przez wąskie kontrakty. ApplicationRuntime nie posiada konkretnych usług, nie zna
@@ -356,7 +356,7 @@ zawiera semantyki domenowej. `ApplicationPlan` jest niemodyfikowalnym widokiem n
 statyczną tablicę participantów przypisanych do stałych faz. Dokładny kontrakt planu,
 ownership i kolejność definiuje decyzja SYS-102 w `ARCHITECTURE_VNEXT_DECISIONS.md`.
 
-Domain odpowiada za state, config domenowy, logic, commands, domain mode, domain status, alarms, safety policy i diagnostics domenowe. Domain nie używa bezpośrednio WiFi, WebServer, WebSocket, PubSubClient, Preferences/NVS, Update, `ESP.restart()` ani przypadkowych GPIO. Hardware jest dostępny przez jawne interfejsy domenowe, np. `IDosingPump`, `ILightOutput`, `IReservoirLevelSensor`.
+Domain jest authoritative ownerem własnych `DomainState` i `DomainMode` oraz odpowiada za logikę funkcjonalną, typed commands, semantyczne reguły config, alarmy, domenową część safety i diagnostics. Config/storage lifecycle pozostaje w Core/Application, a odczyt stanu odbywa się przez read-only project-specific snapshot/provider bez drugiej mutable kopii w Core. Domain nie używa bezpośrednio WiFi, WebServer, WebSocket, PubSubClient, Preferences/NVS, Update, `ESP.restart()` ani przypadkowych GPIO. Hardware jest dostępny przez interfejsy portów należące do Domain i implementowane przez hardware adapters, np. `PumpPort`, `LightChannelPort`, `TemperatureSensorPort`.
 
 Docelowy Core obejmuje Identity, Lifecycle, System state, Time, Storage, Config framework, Logging, Diagnostics, Alarm framework, Safety framework, Maintenance, Network, Commands, Events, Registry, Web, Realtime, MQTT infrastructure, OTA, Restart, Factory Reset, Backup/Restore, Versioning i Auth. To jest TARGET; nie wszystkie elementy są CURRENT.
 
@@ -426,14 +426,14 @@ Events/Realtime pozostają osobnymi otwartymi kontraktami.
 
 ### Command Path
 
-Wszystkie źródła sterowania — WEB, MQTT, PANEL, przycisk fizyczny, scheduler, automatyka lokalna i system — korzystają z jednej ścieżki:
+Wszystkie zewnętrzne i system/application źródła żądań sterowania — WEB, MQTT, PANEL, przycisk fizyczny oraz scheduler składający żądanie — korzystają z jednej ścieżki:
 
 ```text
 Source → Command → Validation → Authorization/Policy → Safety/Action Locks →
 Domain execution → State update → Event/Result
 ```
 
-Transport nigdy nie steruje bezpośrednio GPIO/driverem. Scheduler również korzysta z Command Path. Command i Event są osobnymi pojęciami. Długie operacje mogą używać `operation_id`; dokładne envelope, error codes i idempotency pozostają DECISION REQUIRED.
+Transport nigdy nie steruje bezpośrednio GPIO/driverem. Wewnętrzny regulator lub automat Domain nie jest zewnętrznym command source: steruje własnymi actuatorami przez domenowe porty bez przechodzenia przez tę ścieżkę, zachowując domenowe reguły i intrinsic safety. Transport ani adapter nie może użyć tego mechanizmu do ominięcia validation/policy/safety. Command i Event są osobnymi pojęciami. Długie operacje mogą używać `operation_id`; dokładne envelope, error codes i idempotency pozostają DECISION REQUIRED.
 
 ### Snapshot, Events i Realtime
 
