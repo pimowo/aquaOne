@@ -32,6 +32,22 @@ enum class StorageOperationResult : uint8_t {
     VerifyFailure
 };
 
+enum class StorageRawLoadResult : uint8_t {
+    Success = 0U,
+    Empty,
+    NoValidRecord,
+    InvalidArgument,
+    InsufficientCapacity
+};
+
+struct StorageRawRecord {
+    StorageRawLoadResult result = StorageRawLoadResult::InvalidArgument;
+    uint16_t schemaVersion = 0U;
+    size_t payloadSize = 0U;
+    uint32_t generation = 0U;
+    StorageSlot slot = StorageSlot::None;
+};
+
 struct StorageStatus {
     bool backendReady = false;
     bool hasValidPayload = false;
@@ -63,13 +79,30 @@ public:
         PayloadValidator validator
     );
     bool load(void* payload);
+    StorageRawRecord loadLatestRaw(
+        void* payload,
+        size_t payloadCapacity
+    );
     bool save(const void* payload);
+    bool saveCurrentRaw(
+        uint16_t schemaVersion,
+        const void* payload,
+        size_t payloadSize
+    );
     bool hasValidPayload() const;
     StorageStatus status() const;
 
 private:
     struct SlotInfo {
         bool valid = false;
+        uint32_t generation = 0U;
+    };
+
+    struct RawSlotInfo {
+        bool present = false;
+        bool valid = false;
+        uint16_t schemaVersion = 0U;
+        size_t payloadSize = 0U;
         uint32_t generation = 0U;
     };
 
@@ -95,6 +128,9 @@ private:
         StorageOperationResult::NotAttempted;
     StorageOperationResult lastSaveResult_ =
         StorageOperationResult::NotAttempted;
+    bool rawBaseValid_ = false;
+    uint8_t rawBaseSlot_ = NO_SLOT;
+    uint32_t rawBaseGeneration_ = 0U;
 
     bool configure(
         size_t payloadSize,
@@ -103,6 +139,7 @@ private:
     );
     const char* slotKey(uint8_t slot) const;
     bool readSlot(uint8_t slot, SlotInfo& info, void* payload);
+    bool readRawSlot(uint8_t slot, RawSlotInfo& info);
     bool selectLatest(uint8_t& slot, SlotInfo& info);
     bool payloadOverlapsWorkspace(const void* payload) const;
     void refreshStatus();

@@ -88,6 +88,96 @@ bool StorageService::load(void* payload) {
     return true;
 }
 
+StorageRawRecord StorageService::loadLatestRaw(
+    void* payload,
+    size_t payloadCapacity
+) {
+    StorageRawRecord result {};
+    rawBaseValid_ = false;
+    rawBaseSlot_ = NO_SLOT;
+    rawBaseGeneration_ = 0U;
+
+    if (!opened_ || payload == nullptr) {
+        result.result = StorageRawLoadResult::InvalidArgument;
+        return result;
+    }
+
+    RawSlotInfo slotAInfo {};
+    RawSlotInfo slotBInfo {};
+    const bool slotAValid = readRawSlot(SLOT_A, slotAInfo);
+    const bool slotBValid = readRawSlot(SLOT_B, slotBInfo);
+
+    if (!slotAValid && !slotBValid) {
+        result.result =
+            !slotAInfo.present && !slotBInfo.present
+                ? StorageRawLoadResult::Empty
+                : StorageRawLoadResult::NoValidRecord;
+        return result;
+    }
+
+    uint8_t selectedSlot = SLOT_A;
+    RawSlotInfo selectedInfo = slotAInfo;
+    if (
+        slotBValid &&
+        (
+            !slotAValid ||
+            isGenerationNewer(
+                slotBInfo.generation,
+                slotAInfo.generation
+            )
+        )
+    ) {
+        selectedSlot = SLOT_B;
+        selectedInfo = slotBInfo;
+    }
+
+    if (payloadCapacity < selectedInfo.payloadSize) {
+        result.result = StorageRawLoadResult::InsufficientCapacity;
+        return result;
+    }
+
+    RawSlotInfo verifiedInfo {};
+    if (!readRawSlot(selectedSlot, verifiedInfo)) {
+        result.result = StorageRawLoadResult::NoValidRecord;
+        return result;
+    }
+
+    std::memcpy(
+        payload,
+        recordBuffer_ + StorageRecord::HEADER_SIZE,
+        verifiedInfo.payloadSize
+    );
+
+    rawBaseValid_ = true;
+    rawBaseSlot_ = selectedSlot;
+    rawBaseGeneration_ = verifiedInfo.generation;
+    result.result = StorageRawLoadResult::Success;
+    result.schemaVersion = verifiedInfo.schemaVersion;
+    result.payloadSize = verifiedInfo.payloadSize;
+    result.generation = verifiedInfo.generation;
+    result.slot =
+        selectedSlot == SLOT_A
+            ? StorageSlot::A
+            : StorageSlot::B;
+    return result;
+}
+
+bool StorageService::saveCurrentRaw(
+    uint16_t schemaVersion,
+    const void* payload,
+    size_t payloadSize
+) {
+    if (
+        schemaVersion != schemaVersion_ ||
+        payloadSize != payloadSize_
+    ) {
+        lastSaveResult_ = StorageOperationResult::InvalidArgument;
+        return false;
+    }
+
+    return save(payload);
+}
+
 bool StorageService::save(const void* payload) {
     if (
         !opened_ ||
@@ -121,18 +211,28 @@ bool StorageService::save(const void* payload) {
             hasValidPayload_ = true;
             activeSlot_ = currentSlot;
             activeGeneration_ = currentInfo.generation;
+            rawBaseValid_ = true;
+            rawBaseSlot_ = currentSlot;
+            rawBaseGeneration_ = currentInfo.generation;
             lastSaveResult_ = StorageOperationResult::NoChange;
             return true;
         }
     }
 
+    const bool baseExists = currentExists || rawBaseValid_;
+    const uint8_t baseSlot =
+        currentExists ? currentSlot : rawBaseSlot_;
+    const uint32_t baseGeneration =
+        currentExists
+            ? currentInfo.generation
+            : rawBaseGeneration_;
     const uint8_t targetSlot =
-        !currentExists || currentSlot == SLOT_B
+        !baseExists || baseSlot == SLOT_B
             ? SLOT_A
             : SLOT_B;
     const uint32_t nextGeneration =
-        currentExists
-            ? currentInfo.generation + 1U
+        baseExists
+            ? baseGeneration + 1U
             : 1U;
 
     std::memset(recordBuffer_, 0, recordSize_);
@@ -206,6 +306,9 @@ bool StorageService::save(const void* payload) {
     hasValidPayload_ = true;
     activeSlot_ = targetSlot;
     activeGeneration_ = nextGeneration;
+    rawBaseValid_ = true;
+    rawBaseSlot_ = targetSlot;
+    rawBaseGeneration_ = nextGeneration;
     lastSaveResult_ = StorageOperationResult::Success;
     return true;
 }
@@ -354,6 +457,93 @@ bool StorageService::readSlot(
         std::memcpy(payload, candidate, payloadSize_);
     }
 
+    return true;
+}
+
+bool StorageService::readRawSlot(
+    uint8_t slot,
+    RawSlotInfo& info
+) {
+    info = {};
+
+    if (
+        !opened_ ||
+        recordBuffer_ == nullptr ||
+        (slot != SLOT_A && slot != SLOT_B)
+    ) {
+        return false;
+    }
+
+    const char* key = slotKey(slot);
+    const size_t storedSize = backend_.blobLength(key);
+    if (storedSize == 0U) {
+        return false;
+    }
+
+    info.present = true;
+    if (
+        storedSize < StorageRecord::HEADER_SIZE ||
+        storedSize > recordCapacity_ ||
+        backend_.readBlob(key, recordBuffer_, storedSize) != storedSize
+    ) {
+        return false;
+    }
+
+    if (
+        readUint32(recordBuffer_ + StorageRecord::MAGIC_OFFSET) !=
+            StorageRecord::MAGIC ||
+        readUint16(
+            recordBuffer_ + StorageRecord::FORMAT_VERSION_OFFSET
+        ) != StorageRecord::FORMAT_VERSION
+    ) {
+        return false;
+    }
+
+    const uint32_t storedHeaderCrc = readUint32(
+        recordBuffer_ + StorageRecord::HEADER_CRC_OFFSET
+    );
+    if (
+        crc32(
+            recordBuffer_,
+            StorageRecord::HEADER_CRC_INPUT_SIZE
+        ) != storedHeaderCrc
+    ) {
+        return false;
+    }
+
+    const uint32_t encodedPayloadSize = readUint32(
+        recordBuffer_ + StorageRecord::PAYLOAD_LENGTH_OFFSET
+    );
+    if (
+        encodedPayloadSize > SIZE_MAX - StorageRecord::HEADER_SIZE ||
+        StorageRecord::HEADER_SIZE +
+            static_cast<size_t>(encodedPayloadSize) != storedSize
+    ) {
+        return false;
+    }
+
+    const size_t payloadSize =
+        static_cast<size_t>(encodedPayloadSize);
+    const uint32_t storedPayloadCrc = readUint32(
+        recordBuffer_ + StorageRecord::PAYLOAD_CRC_OFFSET
+    );
+    if (
+        crc32(
+            recordBuffer_ + StorageRecord::HEADER_SIZE,
+            payloadSize
+        ) != storedPayloadCrc
+    ) {
+        return false;
+    }
+
+    info.valid = true;
+    info.schemaVersion = readUint16(
+        recordBuffer_ + StorageRecord::SCHEMA_VERSION_OFFSET
+    );
+    info.payloadSize = payloadSize;
+    info.generation = readUint32(
+        recordBuffer_ + StorageRecord::GENERATION_OFFSET
+    );
     return true;
 }
 

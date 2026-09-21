@@ -155,6 +155,27 @@ generation. Save failures distinguish `InvalidArgument`, `ValidationFailure`, `B
 and `VerifyFailure`. Namespace and keys must be non-null and non-empty; further length and
 character constraints belong to the selected backend, including the Preferences/NVS adapter.
 
+**CURRENT F2.6 — Config lifecycle foundation:** `ConfigLifecycle` koordynuje jeden logiczny
+rekord konfiguracji przez małe zestawy callbacków z kontekstem. Adapter projektu odpowiada za
+defaults, decode, migrację krokową, walidację, apply, klasyfikację restart-required i własność
+typed `ActiveConfig`; coordinator przechowuje tylko status lifecycle. Trzy rozłączne bufory
+`ConfigWorkspace` (`raw`, `candidateA`, `candidateB`) są własnością Composition Root i są
+borrowed przez cały czas życia coordinatora.
+
+Startup rozróżnia empty, corrupt, future schema, migration/validation/apply/persist failure.
+Defaults i zmigrowany CURRENT są zapisywane dopiero po udanym apply. Runtime update wykonuje
+pełną walidację i persist desired przed live apply; restart-required zapisuje desired bez live
+apply. `ConfigLifecycleStatus` ujawnia m.in. źródło, wersje stored/active, aligned, restart,
+recovery i degraded, bez wartości konfiguracji. `StorageService::loadLatestRaw()` dostarcza
+zweryfikowany rekord do lifecycle, a `saveCurrentRaw()` wymusza zgodny CURRENT schema/size i
+zachowuje mapowanie `NoChange` jako sukces. Workspace StorageService powinien mieścić nagłówek
+i największy obsługiwany zapisany payload potrzebny do migracji.
+
+To jest neutralna implementacja **CURRENT** kontraktu lifecycle. CFG-101 pozostaje szerszym
+**ACCEPTED — TARGET**; F2.6 nie migruje żadnej domeny i nie dodaje persistent LKG, two-phase
+active marker, cross-record transactions, boot-loop protection, backup/restore, factory reset
+ani automatycznego wykonania restartu.
+
 **Zastosowanie:**
 - aquaOneLuma ✅ (StorageService adapter)
 - aquaOneHydro ✅ (HydroSenseConfigStorage adapter)
