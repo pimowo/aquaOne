@@ -175,7 +175,10 @@ bool StorageService::saveCurrentRaw(
         return false;
     }
 
-    return save(payload);
+    rawBaseForSave_ = rawBaseValid_;
+    const bool saved = save(payload);
+    rawBaseForSave_ = false;
+    return saved;
 }
 
 bool StorageService::save(const void* payload) {
@@ -196,8 +199,18 @@ bool StorageService::save(const void* payload) {
     uint8_t currentSlot = NO_SLOT;
     SlotInfo currentInfo {};
     const bool currentExists = selectLatest(currentSlot, currentInfo);
+    const bool currentCoversRawBase =
+        !rawBaseForSave_ ||
+        (
+            currentSlot == rawBaseSlot_ &&
+            currentInfo.generation == rawBaseGeneration_
+        ) ||
+        isGenerationNewer(
+            currentInfo.generation,
+            rawBaseGeneration_
+        );
 
-    if (currentExists) {
+    if (currentExists && currentCoversRawBase) {
         SlotInfo comparedInfo {};
         if (
             readSlot(currentSlot, comparedInfo, nullptr) &&
@@ -219,11 +232,14 @@ bool StorageService::save(const void* payload) {
         }
     }
 
-    const bool baseExists = currentExists || rawBaseValid_;
+    const bool useCurrentBase =
+        currentExists && currentCoversRawBase;
+    const bool baseExists =
+        useCurrentBase || (rawBaseForSave_ && rawBaseValid_);
     const uint8_t baseSlot =
-        currentExists ? currentSlot : rawBaseSlot_;
+        useCurrentBase ? currentSlot : rawBaseSlot_;
     const uint32_t baseGeneration =
-        currentExists
+        useCurrentBase
             ? currentInfo.generation
             : rawBaseGeneration_;
     const uint8_t targetSlot =

@@ -155,7 +155,7 @@ generation. Save failures distinguish `InvalidArgument`, `ValidationFailure`, `B
 and `VerifyFailure`. Namespace and keys must be non-null and non-empty; further length and
 character constraints belong to the selected backend, including the Preferences/NVS adapter.
 
-**CURRENT F2.6 — Config lifecycle foundation:** `ConfigLifecycle` koordynuje jeden logiczny
+**CURRENT F2.6/F2.7 — Config lifecycle foundation:** `ConfigLifecycle` koordynuje jeden logiczny
 rekord konfiguracji przez małe zestawy callbacków z kontekstem. Adapter projektu odpowiada za
 defaults, decode, migrację krokową, walidację, apply, klasyfikację restart-required i własność
 typed `ActiveConfig`; coordinator przechowuje tylko status lifecycle. Trzy rozłączne bufory
@@ -170,6 +170,11 @@ recovery i degraded, bez wartości konfiguracji. `StorageService::loadLatestRaw(
 zweryfikowany rekord do lifecycle, a `saveCurrentRaw()` wymusza zgodny CURRENT schema/size i
 zachowuje mapowanie `NoChange` jako sukces. Workspace StorageService powinien mieścić nagłówek
 i największy obsługiwany zapisany payload potrzebny do migracji.
+
+Recovery status zachowuje rozróżnienie empty, corrupt, unsupported, migration/apply/persist
+failure oraz legalnej restart-required divergence. Gdy migracja startuje z nowszego old-schema
+recordu, starszy byte-identical CURRENT nie daje `NoChange`: canonical CURRENT jest zapisywany
+z generacją nowszą od wybranej raw bazy, aby następny startup nie powtarzał migracji.
 
 To jest neutralna implementacja **CURRENT** kontraktu lifecycle. CFG-101 pozostaje szerszym
 **ACCEPTED — TARGET**; F2.6 nie migruje żadnej domeny i nie dodaje persistent LKG, two-phase

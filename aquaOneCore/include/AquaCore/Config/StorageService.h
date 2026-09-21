@@ -131,6 +131,7 @@ private:
     bool rawBaseValid_ = false;
     uint8_t rawBaseSlot_ = NO_SLOT;
     uint32_t rawBaseGeneration_ = 0U;
+    bool rawBaseForSave_ = false;
 
     bool configure(
         size_t payloadSize,

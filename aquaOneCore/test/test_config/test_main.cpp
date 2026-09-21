@@ -587,6 +587,15 @@ void test_startup_current_loads_applies_without_rewrite() {
     TEST_ASSERT_TRUE(rig.adapterContext.activeValid);
     TEST_ASSERT_EQUAL_UINT32(20U, rig.adapterContext.active.level);
     TEST_ASSERT_TRUE(lifecycle.status().desiredActiveAligned);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigSource::Stored),
+        static_cast<uint8_t>(lifecycle.status().source)
+    );
+    TEST_ASSERT_TRUE(lifecycle.status().hasStoredSchema);
+    TEST_ASSERT_TRUE(lifecycle.status().hasActiveConfig);
+    TEST_ASSERT_FALSE(lifecycle.status().restartRequired);
+    TEST_ASSERT_FALSE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_FALSE(lifecycle.status().degraded);
     assertOrdered(rig.trace, 'L', 'D');
     assertOrdered(rig.trace, 'D', 'V');
     assertOrdered(rig.trace, 'V', 'A');
@@ -612,6 +621,13 @@ void test_startup_empty_applies_defaults_then_persists() {
     TEST_ASSERT_EQUAL_UINT32(10U, rig.adapterContext.active.level);
     TEST_ASSERT_EQUAL_UINT32(1U, rig.backend.writeCount);
     TEST_ASSERT_TRUE(lifecycle.status().desiredActiveAligned);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigSource::Defaults),
+        static_cast<uint8_t>(lifecycle.status().source)
+    );
+    TEST_ASSERT_TRUE(lifecycle.status().hasStoredSchema);
+    TEST_ASSERT_FALSE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_FALSE(lifecycle.status().degraded);
     assertOrdered(rig.trace, 'F', 'V');
     assertOrdered(rig.trace, 'V', 'A');
     assertOrdered(rig.trace, 'A', 'C');
@@ -637,6 +653,14 @@ void test_startup_empty_persist_failure_keeps_active_defaults() {
     TEST_ASSERT_FALSE(lifecycle.status().desiredActiveAligned);
     TEST_ASSERT_TRUE(lifecycle.status().degraded);
     TEST_ASSERT_FALSE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_TRUE(lifecycle.status().hasActiveConfig);
+    TEST_ASSERT_FALSE(lifecycle.status().hasStoredSchema);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigPersistenceResult::BackendFailure),
+        static_cast<uint8_t>(
+            lifecycle.status().lastPersistenceResult
+        )
+    );
 }
 
 void test_startup_old_schema_migrates_stepwise_then_persists() {
@@ -659,6 +683,20 @@ void test_startup_old_schema_migrates_stepwise_then_persists() {
     TEST_ASSERT_EQUAL_UINT32(1U, rig.backend.writeCount);
     TEST_ASSERT_GREATER_THAN_UINT32(0U, rig.backend.raw(SLOT_B_KEY).length);
     TEST_ASSERT_TRUE(lifecycle.status().desiredActiveAligned);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigSource::Migrated),
+        static_cast<uint8_t>(lifecycle.status().source)
+    );
+    TEST_ASSERT_EQUAL_UINT16(
+        CURRENT_SCHEMA,
+        lifecycle.status().storedSchemaVersion
+    );
+    TEST_ASSERT_EQUAL_UINT16(
+        CURRENT_SCHEMA,
+        lifecycle.status().activeSchemaVersion
+    );
+    TEST_ASSERT_FALSE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_FALSE(lifecycle.status().degraded);
     assertOrdered(rig.trace, 'L', 'D');
     assertOrdered(rig.trace, 'D', 'M');
     assertOrdered(rig.trace, 'M', 'V');
@@ -687,6 +725,10 @@ void test_startup_migration_failure_does_not_apply_or_write() {
     TEST_ASSERT_FALSE(rig.adapterContext.activeValid);
     TEST_ASSERT_EQUAL_UINT32(0U, rig.backend.writeCount);
     TEST_ASSERT_TRUE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_TRUE(lifecycle.status().degraded);
+    TEST_ASSERT_TRUE(lifecycle.status().hasStoredSchema);
+    TEST_ASSERT_FALSE(lifecycle.status().hasActiveConfig);
+    TEST_ASSERT_EQUAL_UINT16(1U, lifecycle.status().storedSchemaVersion);
 }
 
 void test_startup_migration_respects_maximum_steps() {
@@ -741,6 +783,14 @@ void test_startup_future_schema_is_preserved_and_rejected() {
     TEST_ASSERT_FALSE(rig.adapterContext.activeValid);
     TEST_ASSERT_EQUAL_UINT32(0U, rig.backend.writeCount);
     TEST_ASSERT_EQUAL_UINT32(4U, lifecycle.status().storedSchemaVersion);
+    TEST_ASSERT_TRUE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_TRUE(lifecycle.status().degraded);
+    TEST_ASSERT_TRUE(lifecycle.status().hasStoredSchema);
+    TEST_ASSERT_FALSE(lifecycle.status().hasActiveConfig);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigSource::None),
+        static_cast<uint8_t>(lifecycle.status().source)
+    );
 }
 
 void test_startup_semantic_validation_failure_preserves_record() {
@@ -769,6 +819,10 @@ void test_startup_semantic_validation_failure_preserves_record() {
     );
     TEST_ASSERT_FALSE(rig.adapterContext.activeValid);
     TEST_ASSERT_EQUAL_UINT32(0U, rig.backend.writeCount);
+    TEST_ASSERT_TRUE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_TRUE(lifecycle.status().degraded);
+    TEST_ASSERT_TRUE(lifecycle.status().hasStoredSchema);
+    TEST_ASSERT_FALSE(lifecycle.status().hasActiveConfig);
 }
 
 void test_startup_apply_failure_does_not_publish_or_rewrite() {
@@ -791,6 +845,9 @@ void test_startup_apply_failure_does_not_publish_or_rewrite() {
     TEST_ASSERT_EQUAL_UINT32(0U, rig.adapterContext.commitCount);
     TEST_ASSERT_EQUAL_UINT32(0U, rig.backend.writeCount);
     TEST_ASSERT_TRUE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_TRUE(lifecycle.status().degraded);
+    TEST_ASSERT_TRUE(lifecycle.status().hasStoredSchema);
+    TEST_ASSERT_FALSE(lifecycle.status().hasActiveConfig);
 }
 
 void test_startup_corrupt_requires_recovery_without_fallback() {
@@ -824,6 +881,8 @@ void test_startup_corrupt_requires_recovery_without_fallback() {
     TEST_ASSERT_EQUAL_UINT32(0U, rig.backend.writeCount);
     TEST_ASSERT_TRUE(lifecycle.status().recoveryRequired);
     TEST_ASSERT_TRUE(lifecycle.status().degraded);
+    TEST_ASSERT_FALSE(lifecycle.status().hasStoredSchema);
+    TEST_ASSERT_FALSE(lifecycle.status().hasActiveConfig);
 }
 void test_startup_corrupt_uses_recovery_defaults_without_write() {
     TestRig rig;
@@ -859,6 +918,12 @@ void test_startup_corrupt_uses_recovery_defaults_without_write() {
     TEST_ASSERT_TRUE(lifecycle.status().degraded);
     TEST_ASSERT_TRUE(lifecycle.status().recoveryRequired);
     TEST_ASSERT_FALSE(lifecycle.status().desiredActiveAligned);
+    TEST_ASSERT_FALSE(lifecycle.status().hasStoredSchema);
+    TEST_ASSERT_TRUE(lifecycle.status().hasActiveConfig);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigSource::Defaults),
+        static_cast<uint8_t>(lifecycle.status().source)
+    );
 }
 
 void test_overlapping_workspace_is_rejected() {
@@ -1024,6 +1089,18 @@ void test_runtime_invalid_proposal_does_not_persist_or_apply() {
         rig.adapterContext.applyCount
     );
     TEST_ASSERT_EQUAL_UINT32(10U, rig.adapterContext.active.level);
+    TEST_ASSERT_TRUE(lifecycle.status().desiredActiveAligned);
+    TEST_ASSERT_FALSE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_FALSE(lifecycle.status().restartRequired);
+    TEST_ASSERT_FALSE(lifecycle.status().degraded);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(
+            ConfigPersistenceResult::NotAttempted
+        ),
+        static_cast<uint8_t>(
+            lifecycle.status().lastPersistenceResult
+        )
+    );
 }
 
 void test_runtime_persist_failure_does_not_apply() {
@@ -1062,6 +1139,11 @@ void test_runtime_persist_failure_does_not_apply() {
         rig.adapterContext.applyCount
     );
     TEST_ASSERT_EQUAL_UINT32(10U, rig.adapterContext.active.level);
+    TEST_ASSERT_TRUE(lifecycle.status().desiredActiveAligned);
+    TEST_ASSERT_FALSE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_FALSE(lifecycle.status().restartRequired);
+    TEST_ASSERT_TRUE(lifecycle.status().degraded);
+    TEST_ASSERT_EQUAL_UINT32(0U, rig.trace.count('R'));
 }
 
 void test_runtime_apply_failure_keeps_old_active_and_desired() {
@@ -1097,6 +1179,8 @@ void test_runtime_apply_failure_keeps_old_active_and_desired() {
     TEST_ASSERT_EQUAL_UINT32(10U, rig.adapterContext.active.level);
     TEST_ASSERT_FALSE(lifecycle.status().desiredActiveAligned);
     TEST_ASSERT_TRUE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_TRUE(lifecycle.status().degraded);
+    TEST_ASSERT_FALSE(lifecycle.status().restartRequired);
     TEST_ASSERT_EQUAL_UINT32(1U, rig.backend.writeCount);
 
     rig.adapterContext.failApply = false;
@@ -1145,6 +1229,7 @@ void test_runtime_restart_required_persists_without_live_apply() {
     TEST_ASSERT_TRUE(lifecycle.status().restartRequired);
     TEST_ASSERT_FALSE(lifecycle.status().recoveryRequired);
     TEST_ASSERT_FALSE(lifecycle.status().desiredActiveAligned);
+    TEST_ASSERT_FALSE(lifecycle.status().degraded);
     TEST_ASSERT_EQUAL_UINT32(1U, rig.trace.count('R'));
     assertOrdered(rig.trace, 'P', 'R');
 }
@@ -1240,6 +1325,450 @@ void test_two_lifecycles_are_independent() {
     );
     TEST_ASSERT_EQUAL_UINT32(0U, coreRig.backend.writeCount);
     TEST_ASSERT_EQUAL_UINT32(1U, domainRig.backend.writeCount);
+}
+
+void test_empty_and_corrupt_defaults_have_distinct_status() {
+    TestRig emptyRig;
+    TestRig corruptRig;
+    const ExampleConfig stored = config(22U);
+    seedRecord(
+        corruptRig.backend,
+        SLOT_A_KEY,
+        CURRENT_SCHEMA,
+        &stored,
+        sizeof(stored),
+        2U
+    );
+    corruptRig.backend.raw(SLOT_A_KEY).data[
+        Record::HEADER_SIZE
+    ] ^= 0x55U;
+    TEST_ASSERT_TRUE(emptyRig.begin());
+    TEST_ASSERT_TRUE(corruptRig.begin());
+    ConfigLifecycleOptions recoveryOptions {};
+    recoveryOptions.allowDefaultsForCorruptStorage = true;
+    ConfigLifecycle emptyLifecycle(
+        emptyRig.storagePlan(),
+        emptyRig.adapterPlan(),
+        emptyRig.workspace()
+    );
+    ConfigLifecycle corruptLifecycle(
+        corruptRig.storagePlan(),
+        corruptRig.adapterPlan(),
+        corruptRig.workspace(),
+        recoveryOptions
+    );
+
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::DefaultsApplied),
+        static_cast<uint8_t>(emptyLifecycle.startup())
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::RecoveryRequired),
+        static_cast<uint8_t>(corruptLifecycle.startup())
+    );
+    TEST_ASSERT_TRUE(emptyLifecycle.status().hasStoredSchema);
+    TEST_ASSERT_TRUE(emptyLifecycle.status().desiredActiveAligned);
+    TEST_ASSERT_FALSE(emptyLifecycle.status().recoveryRequired);
+    TEST_ASSERT_FALSE(emptyLifecycle.status().degraded);
+    TEST_ASSERT_EQUAL_UINT32(1U, emptyRig.backend.writeCount);
+    TEST_ASSERT_FALSE(corruptLifecycle.status().hasStoredSchema);
+    TEST_ASSERT_FALSE(corruptLifecycle.status().desiredActiveAligned);
+    TEST_ASSERT_TRUE(corruptLifecycle.status().recoveryRequired);
+    TEST_ASSERT_TRUE(corruptLifecycle.status().degraded);
+    TEST_ASSERT_EQUAL_UINT32(0U, corruptRig.backend.writeCount);
+}
+
+void test_startup_structural_validation_failure_preserves_record() {
+    TestRig rig;
+    const ConfigV2 malformedCurrent {20U, 50U};
+    seedRecord(
+        rig.backend,
+        SLOT_A_KEY,
+        CURRENT_SCHEMA,
+        &malformedCurrent,
+        sizeof(malformedCurrent),
+        3U
+    );
+    const size_t originalLength = rig.backend.raw(SLOT_A_KEY).length;
+    TEST_ASSERT_TRUE(rig.begin());
+    ConfigLifecycle lifecycle(
+        rig.storagePlan(),
+        rig.adapterPlan(),
+        rig.workspace()
+    );
+
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::ValidationFailed),
+        static_cast<uint8_t>(lifecycle.startup())
+    );
+    TEST_ASSERT_FALSE(lifecycle.status().hasActiveConfig);
+    TEST_ASSERT_TRUE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_TRUE(lifecycle.status().degraded);
+    TEST_ASSERT_EQUAL_UINT32(0U, rig.adapterContext.applyCount);
+    TEST_ASSERT_EQUAL_UINT32(0U, rig.adapterContext.commitCount);
+    TEST_ASSERT_EQUAL_UINT32(0U, rig.backend.writeCount);
+    TEST_ASSERT_EQUAL_UINT32(
+        originalLength,
+        rig.backend.raw(SLOT_A_KEY).length
+    );
+}
+
+void test_startup_hardware_validation_failure_preserves_record() {
+    TestRig rig;
+    const ExampleConfig unsupported = config(20U, 120U);
+    seedRecord(
+        rig.backend,
+        SLOT_A_KEY,
+        CURRENT_SCHEMA,
+        &unsupported,
+        sizeof(unsupported),
+        3U
+    );
+    TEST_ASSERT_TRUE(rig.begin());
+    ConfigLifecycle lifecycle(
+        rig.storagePlan(),
+        rig.adapterPlan(),
+        rig.workspace()
+    );
+
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::ValidationFailed),
+        static_cast<uint8_t>(lifecycle.startup())
+    );
+    TEST_ASSERT_EQUAL_UINT32(1U, rig.trace.count('H'));
+    TEST_ASSERT_EQUAL_UINT32(0U, rig.adapterContext.applyCount);
+    TEST_ASSERT_EQUAL_UINT32(0U, rig.adapterContext.commitCount);
+    TEST_ASSERT_EQUAL_UINT32(0U, rig.backend.writeCount);
+    TEST_ASSERT_TRUE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_TRUE(lifecycle.status().degraded);
+}
+
+void test_migration_persist_failure_keeps_active_and_old_stored() {
+    TestRig rig;
+    const ConfigV1 stored {25U};
+    seedRecord(
+        rig.backend,
+        SLOT_A_KEY,
+        1U,
+        &stored,
+        sizeof(stored),
+        9U
+    );
+    TEST_ASSERT_TRUE(rig.begin());
+    rig.backend.failNextWrite = true;
+    ConfigLifecycle lifecycle(
+        rig.storagePlan(),
+        rig.adapterPlan(),
+        rig.workspace()
+    );
+
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::PersistFailed),
+        static_cast<uint8_t>(lifecycle.startup())
+    );
+    TEST_ASSERT_TRUE(lifecycle.status().hasActiveConfig);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigSource::Migrated),
+        static_cast<uint8_t>(lifecycle.status().source)
+    );
+    TEST_ASSERT_EQUAL_UINT16(1U, lifecycle.status().storedSchemaVersion);
+    TEST_ASSERT_EQUAL_UINT16(
+        CURRENT_SCHEMA,
+        lifecycle.status().activeSchemaVersion
+    );
+    TEST_ASSERT_FALSE(lifecycle.status().desiredActiveAligned);
+    TEST_ASSERT_TRUE(lifecycle.status().degraded);
+    TEST_ASSERT_FALSE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_EQUAL_UINT32(25U, rig.adapterContext.active.level);
+    TEST_ASSERT_EQUAL_UINT32(0U, rig.backend.raw(SLOT_B_KEY).length);
+}
+
+void test_migration_rewrites_canonical_behind_newer_old_record() {
+    TestRig rig;
+    const ExampleConfig canonical = config(25U);
+    const ConfigV1 newerOld {25U};
+    seedRecord(
+        rig.backend,
+        SLOT_A_KEY,
+        CURRENT_SCHEMA,
+        &canonical,
+        sizeof(canonical),
+        8U
+    );
+    seedRecord(
+        rig.backend,
+        SLOT_B_KEY,
+        1U,
+        &newerOld,
+        sizeof(newerOld),
+        9U
+    );
+    TEST_ASSERT_TRUE(rig.begin());
+    ConfigLifecycle lifecycle(
+        rig.storagePlan(),
+        rig.adapterPlan(),
+        rig.workspace()
+    );
+
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::Migrated),
+        static_cast<uint8_t>(lifecycle.startup())
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigPersistenceResult::Success),
+        static_cast<uint8_t>(
+            lifecycle.status().lastPersistenceResult
+        )
+    );
+    TEST_ASSERT_EQUAL_UINT32(1U, rig.backend.writeCount);
+    const StorageRawRecord latest = rig.storage.loadLatestRaw(
+        rig.rawBytes,
+        sizeof(rig.rawBytes)
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageRawLoadResult::Success),
+        static_cast<uint8_t>(latest.result)
+    );
+    TEST_ASSERT_EQUAL_UINT16(CURRENT_SCHEMA, latest.schemaVersion);
+    TEST_ASSERT_EQUAL_UINT32(10U, latest.generation);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(StorageSlot::A),
+        static_cast<uint8_t>(latest.slot)
+    );
+    TEST_ASSERT_TRUE(lifecycle.status().desiredActiveAligned);
+}
+
+void test_no_change_retry_applies_persisted_desired_and_clears_recovery() {
+    TestRig rig;
+    const ExampleConfig initial = config(10U);
+    seedRecord(
+        rig.backend,
+        SLOT_A_KEY,
+        CURRENT_SCHEMA,
+        &initial,
+        sizeof(initial),
+        1U
+    );
+    TEST_ASSERT_TRUE(rig.begin());
+    ConfigLifecycle lifecycle(
+        rig.storagePlan(),
+        rig.adapterPlan(),
+        rig.workspace()
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::Success),
+        static_cast<uint8_t>(lifecycle.startup())
+    );
+    const ExampleConfig desired = config(35U);
+    rig.adapterContext.failApply = true;
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::ApplyFailed),
+        static_cast<uint8_t>(
+            lifecycle.update(&desired, sizeof(desired))
+        )
+    );
+    const size_t writesAfterFailure = rig.backend.writeCount;
+    const size_t commitsAfterFailure = rig.adapterContext.commitCount;
+    rig.adapterContext.failApply = false;
+    rig.trace = {};
+
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::NoChange),
+        static_cast<uint8_t>(
+            lifecycle.update(&desired, sizeof(desired))
+        )
+    );
+    TEST_ASSERT_EQUAL_UINT32(writesAfterFailure, rig.backend.writeCount);
+    TEST_ASSERT_EQUAL_UINT32(
+        commitsAfterFailure + 1U,
+        rig.adapterContext.commitCount
+    );
+    TEST_ASSERT_EQUAL_UINT32(35U, rig.adapterContext.active.level);
+    TEST_ASSERT_TRUE(lifecycle.status().desiredActiveAligned);
+    TEST_ASSERT_FALSE(lifecycle.status().restartRequired);
+    TEST_ASSERT_FALSE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_FALSE(lifecycle.status().degraded);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigPersistenceResult::NoChange),
+        static_cast<uint8_t>(
+            lifecycle.status().lastPersistenceResult
+        )
+    );
+    assertOrdered(rig.trace, 'P', 'R');
+    assertOrdered(rig.trace, 'R', 'A');
+    assertOrdered(rig.trace, 'A', 'C');
+}
+
+void test_restart_required_no_change_preserves_legal_divergence() {
+    TestRig rig;
+    const ExampleConfig initial = config(10U);
+    seedRecord(
+        rig.backend,
+        SLOT_A_KEY,
+        CURRENT_SCHEMA,
+        &initial,
+        sizeof(initial),
+        1U
+    );
+    TEST_ASSERT_TRUE(rig.begin());
+    ConfigLifecycle lifecycle(
+        rig.storagePlan(),
+        rig.adapterPlan(),
+        rig.workspace()
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::Success),
+        static_cast<uint8_t>(lifecycle.startup())
+    );
+    const ExampleConfig desired = config(40U, 50U, 1U);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::RestartRequired),
+        static_cast<uint8_t>(
+            lifecycle.update(&desired, sizeof(desired))
+        )
+    );
+    const size_t writesAfterFirst = rig.backend.writeCount;
+    const size_t appliesAfterFirst = rig.adapterContext.applyCount;
+    const size_t commitsAfterFirst = rig.adapterContext.commitCount;
+
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::RestartRequired),
+        static_cast<uint8_t>(
+            lifecycle.update(&desired, sizeof(desired))
+        )
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigPersistenceResult::NoChange),
+        static_cast<uint8_t>(
+            lifecycle.status().lastPersistenceResult
+        )
+    );
+    TEST_ASSERT_EQUAL_UINT32(writesAfterFirst, rig.backend.writeCount);
+    TEST_ASSERT_EQUAL_UINT32(
+        appliesAfterFirst,
+        rig.adapterContext.applyCount
+    );
+    TEST_ASSERT_EQUAL_UINT32(
+        commitsAfterFirst,
+        rig.adapterContext.commitCount
+    );
+    TEST_ASSERT_EQUAL_UINT32(10U, rig.adapterContext.active.level);
+    TEST_ASSERT_TRUE(lifecycle.status().restartRequired);
+    TEST_ASSERT_FALSE(lifecycle.status().desiredActiveAligned);
+    TEST_ASSERT_FALSE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_FALSE(lifecycle.status().degraded);
+}
+
+void test_persist_failure_then_success_clears_degraded_status() {
+    TestRig rig;
+    const ExampleConfig initial = config(10U);
+    seedRecord(
+        rig.backend,
+        SLOT_A_KEY,
+        CURRENT_SCHEMA,
+        &initial,
+        sizeof(initial),
+        1U
+    );
+    TEST_ASSERT_TRUE(rig.begin());
+    ConfigLifecycle lifecycle(
+        rig.storagePlan(),
+        rig.adapterPlan(),
+        rig.workspace()
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::Success),
+        static_cast<uint8_t>(lifecycle.startup())
+    );
+    const ExampleConfig desired = config(20U);
+    rig.backend.failNextWrite = true;
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::PersistFailed),
+        static_cast<uint8_t>(
+            lifecycle.update(&desired, sizeof(desired))
+        )
+    );
+    TEST_ASSERT_TRUE(lifecycle.status().degraded);
+    TEST_ASSERT_TRUE(lifecycle.status().desiredActiveAligned);
+
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::Success),
+        static_cast<uint8_t>(
+            lifecycle.update(&desired, sizeof(desired))
+        )
+    );
+    TEST_ASSERT_EQUAL_UINT32(20U, rig.adapterContext.active.level);
+    TEST_ASSERT_TRUE(lifecycle.status().desiredActiveAligned);
+    TEST_ASSERT_FALSE(lifecycle.status().restartRequired);
+    TEST_ASSERT_FALSE(lifecycle.status().recoveryRequired);
+    TEST_ASSERT_FALSE(lifecycle.status().degraded);
+}
+
+void test_recovery_failure_isolated_between_lifecycles() {
+    TestRig coreRig;
+    TestRig domainRig;
+    const ExampleConfig coreStored = config(11U);
+    const ExampleConfig domainStored = config(22U);
+    seedRecord(
+        coreRig.backend,
+        SLOT_A_KEY,
+        CURRENT_SCHEMA,
+        &coreStored,
+        sizeof(coreStored),
+        1U
+    );
+    seedRecord(
+        domainRig.backend,
+        SLOT_A_KEY,
+        CURRENT_SCHEMA,
+        &domainStored,
+        sizeof(domainStored),
+        1U
+    );
+    TEST_ASSERT_TRUE(coreRig.begin());
+    TEST_ASSERT_TRUE(domainRig.begin());
+    ConfigLifecycle coreLifecycle(
+        coreRig.storagePlan(),
+        coreRig.adapterPlan(),
+        coreRig.workspace()
+    );
+    ConfigLifecycle domainLifecycle(
+        domainRig.storagePlan(),
+        domainRig.adapterPlan(),
+        domainRig.workspace()
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::Success),
+        static_cast<uint8_t>(coreLifecycle.startup())
+    );
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::Success),
+        static_cast<uint8_t>(domainLifecycle.startup())
+    );
+    const ConfigLifecycleStatus domainBefore = domainLifecycle.status();
+    coreRig.adapterContext.failApply = true;
+    const ExampleConfig coreDesired = config(30U);
+
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(ConfigOperationResult::ApplyFailed),
+        static_cast<uint8_t>(
+            coreLifecycle.update(&coreDesired, sizeof(coreDesired))
+        )
+    );
+    TEST_ASSERT_TRUE(coreLifecycle.status().recoveryRequired);
+    TEST_ASSERT_TRUE(coreLifecycle.status().degraded);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(domainBefore.lastResult),
+        static_cast<uint8_t>(domainLifecycle.status().lastResult)
+    );
+    TEST_ASSERT_EQUAL_UINT32(
+        domainBefore.desiredActiveAligned,
+        domainLifecycle.status().desiredActiveAligned
+    );
+    TEST_ASSERT_FALSE(domainLifecycle.status().recoveryRequired);
+    TEST_ASSERT_FALSE(domainLifecycle.status().degraded);
+    TEST_ASSERT_EQUAL_UINT32(22U, domainRig.adapterContext.active.level);
+    TEST_ASSERT_EQUAL_UINT32(0U, domainRig.backend.writeCount);
 }
 
 void test_storage_adapter_rejects_schema_or_size_mismatch() {
@@ -1358,6 +1887,15 @@ int main() {
     RUN_TEST(test_runtime_restart_required_persists_without_live_apply);
     RUN_TEST(test_next_startup_retries_persisted_desired);
     RUN_TEST(test_two_lifecycles_are_independent);
+    RUN_TEST(test_empty_and_corrupt_defaults_have_distinct_status);
+    RUN_TEST(test_startup_structural_validation_failure_preserves_record);
+    RUN_TEST(test_startup_hardware_validation_failure_preserves_record);
+    RUN_TEST(test_migration_persist_failure_keeps_active_and_old_stored);
+    RUN_TEST(test_migration_rewrites_canonical_behind_newer_old_record);
+    RUN_TEST(test_no_change_retry_applies_persisted_desired_and_clears_recovery);
+    RUN_TEST(test_restart_required_no_change_preserves_legal_divergence);
+    RUN_TEST(test_persist_failure_then_success_clears_degraded_status);
+    RUN_TEST(test_recovery_failure_isolated_between_lifecycles);
     RUN_TEST(test_storage_adapter_rejects_schema_or_size_mismatch);
     RUN_TEST(test_storage_result_mapping_preserves_no_change_and_failures);
 
