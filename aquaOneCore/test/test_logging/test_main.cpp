@@ -1,11 +1,16 @@
+#if defined(ARDUINO)
 #include <Arduino.h>
+#endif
+
 #include <unity.h>
+#if defined(ARDUINO)
+#include "AquaCore/Logging/SerialLogSink.h"
+#endif
 
 #include <stdint.h>
 #include <string.h>
 
 #include "AquaCore/Logging/Logger.h"
-#include "AquaCore/Logging/SerialLogSink.h"
 
 using namespace AquaCore;
 
@@ -64,6 +69,8 @@ private:
     }
 };
 
+#if defined(ARDUINO)
+
 class CapturePrint final : public Print {
 public:
     size_t write(uint8_t value) override {
@@ -78,6 +85,8 @@ public:
     char buffer[160] {};
     size_t length = 0U;
 };
+
+#endif
 
 #if AQUA_CORE_LOGGING_ENABLED
 
@@ -206,6 +215,28 @@ void test_two_loggers_can_have_different_levels() {
     TEST_ASSERT_EQUAL_UINT8(0U, secondSink.count);
 }
 
+void test_threshold_change_is_deterministic() {
+    CaptureSink sink;
+    Logger logger(sink);
+
+    logger.setLevel(LogLevel::Warning);
+    logger.info("M", "blocked");
+    logger.warning("M", "accepted");
+    TEST_ASSERT_EQUAL_UINT8(1U, sink.count);
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(LogLevel::Warning),
+        static_cast<int>(sink.entries[0].level)
+    );
+
+    logger.setLevel(LogLevel::Debug);
+    logger.debug("M", "now accepted");
+    TEST_ASSERT_EQUAL_UINT8(2U, sink.count);
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(LogLevel::Debug),
+        static_cast<int>(sink.entries[1].level)
+    );
+}
+
 void test_two_loggers_can_have_different_sinks() {
     CaptureSink firstSink;
     CaptureSink secondSink;
@@ -311,6 +342,8 @@ void test_null_message_is_safe() {
     TEST_ASSERT_EQUAL_STRING("", sink.entries[0].message);
 }
 
+#if defined(ARDUINO)
+
 void test_serial_sink_uses_common_format() {
     CapturePrint output;
     SerialLogSink sink(output);
@@ -322,6 +355,8 @@ void test_serial_sink_uses_common_format() {
         output.buffer
     );
 }
+
+#endif
 
 void test_logger_does_not_modify_inputs() {
     CaptureSink sink;
@@ -373,8 +408,7 @@ void test_compile_time_disabled_api_remains_available() {
 
 } // namespace
 
-void setup() {
-    delay(2000);
+void runTests() {
     UNITY_BEGIN();
 
 #if AQUA_CORE_LOGGING_ENABLED
@@ -395,15 +429,33 @@ void setup() {
     RUN_TEST(test_error_helper);
     RUN_TEST(test_null_module_is_safe);
     RUN_TEST(test_null_message_is_safe);
+#if defined(ARDUINO)
     RUN_TEST(test_serial_sink_uses_common_format);
+#endif
     RUN_TEST(test_logger_does_not_modify_inputs);
     RUN_TEST(test_compile_time_configuration_is_available);
 #else
     RUN_TEST(test_compile_time_disabled_api_remains_available);
 #endif
 
+}
+
+#if defined(ARDUINO)
+
+void setup() {
+    delay(2000);
+    runTests();
     UNITY_END();
 }
 
 void loop() {
 }
+
+#else
+
+int main() {
+    runTests();
+    return UNITY_END();
+}
+
+#endif
