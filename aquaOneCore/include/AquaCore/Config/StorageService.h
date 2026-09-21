@@ -10,6 +10,11 @@ namespace Config {
 
 using PayloadValidator = bool (*)(const void* payload, size_t payloadSize);
 
+struct StorageWorkspace {
+    uint8_t* buffer;
+    size_t capacity;
+};
+
 enum class StorageSlot : uint8_t {
     None = 0U,
     A,
@@ -39,7 +44,8 @@ public:
         StorageBackend& backend,
         const char* storageNamespace,
         const char* slotAKey,
-        const char* slotBKey
+        const char* slotBKey,
+        StorageWorkspace workspace
     );
     ~StorageService();
 
@@ -70,8 +76,8 @@ private:
     const char* storageNamespace_;
     const char* slotAKey_;
     const char* slotBKey_;
-    uint8_t* recordBuffer_ = nullptr;
-    uint8_t* candidateBuffer_ = nullptr;
+    uint8_t* recordBuffer_;
+    size_t recordCapacity_;
     size_t payloadSize_ = 0U;
     size_t recordSize_ = 0U;
     uint16_t schemaVersion_ = 0U;

@@ -2,7 +2,6 @@
 
 #include <cstring>
 #include <limits.h>
-#include <new>
 
 #include "AquaCore/Config/Crc32.h"
 #include "AquaCore/Config/StorageRecord.h"
@@ -14,21 +13,21 @@ StorageService::StorageService(
     StorageBackend& backend,
     const char* storageNamespace,
     const char* slotAKey,
-    const char* slotBKey
+    const char* slotBKey,
+    StorageWorkspace workspace
 )
     : backend_(backend),
       storageNamespace_(storageNamespace),
       slotAKey_(slotAKey),
-      slotBKey_(slotBKey) {
+      slotBKey_(slotBKey),
+      recordBuffer_(workspace.buffer),
+      recordCapacity_(workspace.capacity) {
 }
 
 StorageService::~StorageService() {
     if (opened_) {
         backend_.end();
     }
-
-    delete[] recordBuffer_;
-    delete[] candidateBuffer_;
 }
 
 bool StorageService::begin(
@@ -169,7 +168,11 @@ bool StorageService::save(const void* payload) {
     if (
         !readSlot(targetSlot, verifiedInfo, nullptr) ||
         verifiedInfo.generation != nextGeneration ||
-        std::memcmp(candidateBuffer_, payload, payloadSize_) != 0
+        std::memcmp(
+            recordBuffer_ + StorageRecord::HEADER_SIZE,
+            payload,
+            payloadSize_
+        ) != 0
     ) {
         refreshStatus();
         lastSaveResult_ = StorageOperationResult::Failure;
@@ -228,31 +231,12 @@ bool StorageService::configure(
         StorageRecord::HEADER_SIZE + payloadSize;
 
     if (
-        recordBuffer_ != nullptr &&
-        candidateBuffer_ != nullptr &&
-        payloadSize_ == payloadSize
+        recordBuffer_ == nullptr ||
+        recordCapacity_ < requestedRecordSize
     ) {
-        schemaVersion_ = schemaVersion;
-        validator_ = validator;
-        recordSize_ = requestedRecordSize;
-        return true;
-    }
-
-    uint8_t* newRecord =
-        new (std::nothrow) uint8_t[requestedRecordSize];
-    uint8_t* newCandidate =
-        new (std::nothrow) uint8_t[payloadSize];
-
-    if (newRecord == nullptr || newCandidate == nullptr) {
-        delete[] newRecord;
-        delete[] newCandidate;
         return false;
     }
 
-    delete[] recordBuffer_;
-    delete[] candidateBuffer_;
-    recordBuffer_ = newRecord;
-    candidateBuffer_ = newCandidate;
     payloadSize_ = payloadSize;
     recordSize_ = requestedRecordSize;
     schemaVersion_ = schemaVersion;
@@ -274,7 +258,6 @@ bool StorageService::readSlot(
     if (
         !opened_ ||
         recordBuffer_ == nullptr ||
-        candidateBuffer_ == nullptr ||
         (slot != SLOT_A && slot != SLOT_B)
     ) {
         return false;
@@ -332,12 +315,9 @@ bool StorageService::readSlot(
         return false;
     }
 
-    std::memcpy(
-        candidateBuffer_,
-        recordBuffer_ + StorageRecord::HEADER_SIZE,
-        payloadSize_
-    );
-    if (!validator_(candidateBuffer_, payloadSize_)) {
+    uint8_t* const candidate =
+        recordBuffer_ + StorageRecord::HEADER_SIZE;
+    if (!validator_(candidate, payloadSize_)) {
         return false;
     }
 
@@ -347,7 +327,7 @@ bool StorageService::readSlot(
     );
 
     if (payload != nullptr) {
-        std::memcpy(payload, candidateBuffer_, payloadSize_);
+        std::memcpy(payload, candidate, payloadSize_);
     }
 
     return true;

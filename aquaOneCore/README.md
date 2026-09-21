@@ -87,19 +87,28 @@ Persistent storage with CRC32, schema versioning, dual-slot safety.
 
 ```cpp
 #include <Preferences.h>
+#include <AquaCore/Config/StorageRecord.h>
 #include <AquaCore/Config/StorageService.h>
 #include <AquaCore/Config/PreferencesStorageBackend.h>
 
+struct MyConfig { /* ... */ };
+
 AquaCore::Config::PreferencesStorageBackend<Preferences> backend;
+uint8_t storageBuffer[
+    AquaCore::Config::StorageRecord::HEADER_SIZE + sizeof(MyConfig)
+] {};
+AquaCore::Config::StorageWorkspace workspace {
+    storageBuffer,
+    sizeof(storageBuffer)
+};
 
 AquaCore::Config::StorageService storage(
     backend,
     "namespace",
     "slot_a_key",
-    "slot_b_key"
+    "slot_b_key",
+    workspace
 );
-
-struct MyConfig { /* ... */ };
 
 bool validator(const void* payload, size_t sz) {
     if (payload == nullptr || sz != sizeof(MyConfig)) {
@@ -126,6 +135,11 @@ if (storage.begin(sizeof(MyConfig), 1, validator)) {
 - **Schema versioning** — Migration support
 - **Generic backend** — Not tied to Preferences API
 - **Custom validator** — Per-project validation logic
+- **Zero-heap workspace** — caller-owned buffer with minimum capacity `StorageRecord::HEADER_SIZE + payloadSize`
+
+The workspace is borrowed for the full `StorageService` lifetime. Each concurrently active
+service needs its own buffer; `begin()` rejects insufficient capacity without truncation or a
+heap fallback.
 
 **API:**
 - `begin(payloadSize, schemaVersion, validator)` — Initialize

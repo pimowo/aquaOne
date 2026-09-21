@@ -1,4 +1,8 @@
+#if defined(ARDUINO)
 #include <Arduino.h>
+#include <Preferences.h>
+#include "AquaCore/Config/PreferencesStorageBackend.h"
+#endif
 #include <unity.h>
 
 #include <stddef.h>
@@ -12,12 +16,21 @@
 
 using AquaCore::Config::StorageBackend;
 using AquaCore::Config::StorageService;
+using AquaCore::Config::StorageWorkspace;
 namespace Record = AquaCore::Config::StorageRecord;
 
 namespace {
 
 constexpr size_t BLOB_CAPACITY = 256U;
 constexpr uint16_t TEST_SCHEMA = 7U;
+
+struct TestStorageWorkspace {
+    uint8_t bytes[BLOB_CAPACITY] {};
+
+    StorageWorkspace view() {
+        return StorageWorkspace {bytes, sizeof(bytes)};
+    }
+};
 
 struct TestPayload {
     uint32_t marker;
@@ -246,7 +259,8 @@ void assertPayloadValue(
 
 void test_empty_storage_load_false() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(
         sizeof(TestPayload),
         TEST_SCHEMA,
@@ -260,7 +274,8 @@ void test_empty_storage_load_false() {
 
 void test_valid_save_and_load_blob() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(
         sizeof(TestPayload),
         TEST_SCHEMA,
@@ -276,7 +291,8 @@ void test_valid_save_and_load_blob() {
 
 void test_one_valid_slot() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(
         sizeof(TestPayload),
         TEST_SCHEMA,
@@ -291,7 +307,8 @@ void test_one_valid_slot() {
 
 void test_a_corrupt_b_valid() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload first = payload(11);
     TestPayload second = payload(22);
@@ -303,7 +320,8 @@ void test_a_corrupt_b_valid() {
 
 void test_b_corrupt_a_valid() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload first = payload(11);
     TestPayload second = payload(22);
@@ -315,7 +333,8 @@ void test_b_corrupt_a_valid() {
 
 void test_both_valid_newer_generation_wins() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload first = payload(31);
     TestPayload second = payload(32);
@@ -326,7 +345,8 @@ void test_both_valid_newer_generation_wins() {
 
 void test_generation_rollover() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload before = payload(40);
     TestPayload after = payload(41);
@@ -352,7 +372,8 @@ void test_generation_rollover() {
 
 void test_bad_magic() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload input = payload(1);
     TEST_ASSERT_TRUE(service.save(&input));
@@ -364,7 +385,8 @@ void test_bad_magic() {
 
 void test_bad_format_version() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload input = payload(2);
     TEST_ASSERT_TRUE(service.save(&input));
@@ -379,7 +401,8 @@ void test_bad_format_version() {
 
 void test_bad_schema_version() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload input = payload(3);
     TEST_ASSERT_TRUE(service.save(&input));
@@ -394,7 +417,8 @@ void test_bad_schema_version() {
 
 void test_bad_payload_length() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload input = payload(4);
     TEST_ASSERT_TRUE(service.save(&input));
@@ -409,7 +433,8 @@ void test_bad_payload_length() {
 
 void test_bad_header_crc() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload input = payload(5);
     TEST_ASSERT_TRUE(service.save(&input));
@@ -420,7 +445,8 @@ void test_bad_header_crc() {
 
 void test_bad_payload_crc() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload input = payload(6);
     TEST_ASSERT_TRUE(service.save(&input));
@@ -431,7 +457,8 @@ void test_bad_payload_crc() {
 
 void test_semantic_validator_rejects_payload() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload input = payload(7);
     TEST_ASSERT_TRUE(service.save(&input));
@@ -450,7 +477,8 @@ void test_semantic_validator_rejects_payload() {
 
 void test_partial_write_preserves_previous_record() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload previous = payload(20);
     TestPayload next = payload(21);
@@ -463,7 +491,8 @@ void test_partial_write_preserves_previous_record() {
 
 void test_write_failure_preserves_previous_record() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload previous = payload(30);
     TestPayload next = payload(31);
@@ -475,7 +504,8 @@ void test_write_failure_preserves_previous_record() {
 
 void test_readback_verification_failure_is_reported() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload input = payload(50);
     backend.failReadAfterWriteArmed = true;
@@ -484,7 +514,8 @@ void test_readback_verification_failure_is_reported() {
 
 void test_multiple_saves_alternate_slots() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload first = payload(1);
     TestPayload second = payload(2);
@@ -506,7 +537,8 @@ void test_multiple_saves_alternate_slots() {
 void test_latest_payload_survives_service_recreation() {
     MockStorageBackend backend;
     {
-        StorageService first(backend, "ac4", "a", "b");
+        TestStorageWorkspace workspace;
+        StorageService first(backend, "ac4", "a", "b", workspace.view());
         TEST_ASSERT_TRUE(first.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
         TestPayload one = payload(60);
         TestPayload two = payload(61);
@@ -514,14 +546,16 @@ void test_latest_payload_survives_service_recreation() {
         TEST_ASSERT_TRUE(first.save(&two));
     }
 
-    StorageService restarted(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService restarted(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(restarted.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     assertPayloadValue(restarted, 61);
 }
 
 void test_save_does_not_modify_source_payload() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload source = payload(70);
     const TestPayload before = source;
@@ -531,7 +565,8 @@ void test_save_does_not_modify_source_payload() {
 
 void test_load_failure_does_not_modify_destination() {
     MockStorageBackend backend;
-    StorageService service(backend, "ac4", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "ac4", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TestPayload destination = payload(71);
     const TestPayload before = destination;
@@ -541,7 +576,8 @@ void test_load_failure_does_not_modify_destination() {
 
 void test_arbitrary_non_lumasense_payload_can_be_stored() {
     MockStorageBackend backend;
-    StorageService service(backend, "other", "a", "b");
+    TestStorageWorkspace workspace;
+    StorageService service(backend, "other", "a", "b", workspace.view());
     TEST_ASSERT_TRUE(service.begin(
         sizeof(OtherPayload),
         99U,
@@ -558,8 +594,10 @@ void test_arbitrary_non_lumasense_payload_can_be_stored() {
 void test_independent_services_use_independent_locations() {
     MockStorageBackend firstBackend;
     MockStorageBackend secondBackend;
-    StorageService first(firstBackend, "device-one", "a", "b");
-    StorageService second(secondBackend, "device-two", "a", "b");
+    TestStorageWorkspace firstWorkspace;
+    TestStorageWorkspace secondWorkspace;
+    StorageService first(firstBackend, "device-one", "a", "b", firstWorkspace.view());
+    StorageService second(secondBackend, "device-two", "a", "b", secondWorkspace.view());
 
     TEST_ASSERT_TRUE(first.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
     TEST_ASSERT_TRUE(second.begin(sizeof(TestPayload), TEST_SCHEMA, validateTestPayload));
@@ -573,6 +611,48 @@ void test_independent_services_use_independent_locations() {
     TEST_ASSERT_EQUAL_STRING("device-two", secondBackend.selectedNamespace);
     assertPayloadValue(first, 80);
     assertPayloadValue(second, 81);
+}
+
+void test_insufficient_workspace_capacity_is_rejected() {
+    MockStorageBackend backend;
+    uint8_t buffer[Record::HEADER_SIZE + sizeof(TestPayload) - 1U] {};
+    StorageService service(
+        backend,
+        "ac4",
+        "a",
+        "b",
+        StorageWorkspace {buffer, sizeof(buffer)}
+    );
+
+    TEST_ASSERT_FALSE(service.begin(
+        sizeof(TestPayload),
+        TEST_SCHEMA,
+        validateTestPayload
+    ));
+    TEST_ASSERT_FALSE(backend.opened);
+}
+
+void test_exact_minimum_workspace_capacity_is_accepted() {
+    MockStorageBackend backend;
+    uint8_t buffer[Record::HEADER_SIZE + sizeof(TestPayload)] {};
+    StorageService service(
+        backend,
+        "ac4",
+        "a",
+        "b",
+        StorageWorkspace {buffer, sizeof(buffer)}
+    );
+
+    TEST_ASSERT_TRUE(service.begin(
+        sizeof(TestPayload),
+        TEST_SCHEMA,
+        validateTestPayload
+    ));
+    const TestPayload input = payload(82);
+    TestPayload output {};
+    TEST_ASSERT_TRUE(service.save(&input));
+    TEST_ASSERT_TRUE(service.load(&output));
+    TEST_ASSERT_EQUAL_MEMORY(&input, &output, sizeof(input));
 }
 
 void test_crc_matches_legacy_lumasense_result() {
@@ -591,8 +671,7 @@ void setUp() {
 void tearDown() {
 }
 
-void setup() {
-    delay(2000);
+void runTests() {
     UNITY_BEGIN();
 
     RUN_TEST(test_empty_storage_load_false);
@@ -618,10 +697,32 @@ void setup() {
     RUN_TEST(test_load_failure_does_not_modify_destination);
     RUN_TEST(test_arbitrary_non_lumasense_payload_can_be_stored);
     RUN_TEST(test_independent_services_use_independent_locations);
+    RUN_TEST(test_insufficient_workspace_capacity_is_rejected);
+    RUN_TEST(test_exact_minimum_workspace_capacity_is_accepted);
     RUN_TEST(test_crc_matches_legacy_lumasense_result);
 
+}
+
+#if defined(ARDUINO)
+
+void setup() {
+    AquaCore::Config::PreferencesStorageBackend<Preferences>
+        preferencesCompileFixture;
+    (void)preferencesCompileFixture;
+
+    delay(2000);
+    runTests();
     UNITY_END();
 }
 
 void loop() {
 }
+
+#else
+
+int main() {
+    runTests();
+    return UNITY_END();
+}
+
+#endif
