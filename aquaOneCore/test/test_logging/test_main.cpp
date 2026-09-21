@@ -9,8 +9,10 @@
 
 #include <stdint.h>
 #include <string.h>
+#include <type_traits>
 
 #include "AquaCore/Logging/Logger.h"
+#include "AquaCore/Logging/LogWriter.h"
 
 using namespace AquaCore;
 
@@ -21,6 +23,26 @@ void tearDown() {
 }
 
 namespace {
+
+template <typename T>
+class HasSetLevel {
+private:
+    template <typename U, void (U::*)(LogLevel)>
+    struct Signature;
+
+    template <typename U>
+    static char test(Signature<U, &U::setLevel>*);
+
+    template <typename U>
+    static int test(...);
+
+public:
+    static constexpr bool value = sizeof(test<T>(nullptr)) == sizeof(char);
+};
+
+static_assert(std::is_abstract<LogWriter>::value, "LogWriter remains a contract");
+static_assert(std::is_base_of<LogWriter, Logger>::value, "Logger implements LogWriter");
+static_assert(!HasSetLevel<LogWriter>::value, "LogWriter cannot mutate threshold");
 
 struct CapturedLog {
     LogLevel level;
@@ -237,6 +259,81 @@ void test_threshold_change_is_deterministic() {
     );
 }
 
+void test_log_writer_delegates_to_logger_and_fake_sink() {
+    CaptureSink sink;
+    Logger logger(sink);
+    LogWriter& writer = logger;
+
+    writer.write(LogLevel::Warning, "Domain", "degraded");
+
+    TEST_ASSERT_EQUAL_UINT8(1U, sink.count);
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(LogLevel::Warning),
+        static_cast<int>(sink.entries[0].level)
+    );
+    TEST_ASSERT_EQUAL_STRING("Domain", sink.entries[0].module);
+    TEST_ASSERT_EQUAL_STRING("degraded", sink.entries[0].message);
+}
+
+void test_log_writer_uses_logger_threshold() {
+    CaptureSink sink;
+    Logger logger(sink);
+    LogWriter& writer = logger;
+    logger.setLevel(LogLevel::Warning);
+
+    writer.write(LogLevel::Info, "Domain", "filtered");
+    writer.write(LogLevel::Warning, "Domain", "accepted");
+
+    TEST_ASSERT_EQUAL_UINT8(1U, sink.count);
+    TEST_ASSERT_EQUAL_STRING("accepted", sink.entries[0].message);
+}
+
+void test_log_writer_instances_are_independent() {
+    CaptureSink firstSink;
+    CaptureSink secondSink;
+    Logger firstLogger(firstSink);
+    Logger secondLogger(secondSink);
+    LogWriter& first = firstLogger;
+    LogWriter& second = secondLogger;
+
+    first.write(LogLevel::Info, "First", "one");
+    second.write(LogLevel::Error, "Second", "two");
+
+    TEST_ASSERT_EQUAL_UINT8(1U, firstSink.count);
+    TEST_ASSERT_EQUAL_UINT8(1U, secondSink.count);
+    TEST_ASSERT_EQUAL_STRING("First", firstSink.entries[0].module);
+    TEST_ASSERT_EQUAL_STRING("Second", secondSink.entries[0].module);
+}
+
+void test_log_writer_without_sink_is_safe() {
+    Logger logger;
+    LogWriter& writer = logger;
+
+    writer.write(LogLevel::Error, "Domain", "not delivered");
+
+    TEST_ASSERT_EQUAL_INT(
+        static_cast<int>(LogLevel::Info),
+        static_cast<int>(logger.level())
+    );
+}
+
+void test_log_writer_does_not_modify_caller_owned_inputs() {
+    CaptureSink sink;
+    Logger logger(sink);
+    LogWriter& writer = logger;
+    char module[] = "Domain";
+    char message[] = "running";
+    char moduleBefore[sizeof(module)] {};
+    char messageBefore[sizeof(message)] {};
+    memcpy(moduleBefore, module, sizeof(module));
+    memcpy(messageBefore, message, sizeof(message));
+
+    writer.write(LogLevel::Info, module, message);
+
+    TEST_ASSERT_EQUAL_MEMORY(moduleBefore, module, sizeof(module));
+    TEST_ASSERT_EQUAL_MEMORY(messageBefore, message, sizeof(message));
+}
+
 void test_two_loggers_can_have_different_sinks() {
     CaptureSink firstSink;
     CaptureSink secondSink;
@@ -421,6 +518,11 @@ void runTests() {
     RUN_TEST(test_module_is_forwarded);
     RUN_TEST(test_message_is_forwarded);
     RUN_TEST(test_two_loggers_can_have_different_levels);
+    RUN_TEST(test_log_writer_delegates_to_logger_and_fake_sink);
+    RUN_TEST(test_log_writer_uses_logger_threshold);
+    RUN_TEST(test_log_writer_instances_are_independent);
+    RUN_TEST(test_log_writer_without_sink_is_safe);
+    RUN_TEST(test_log_writer_does_not_modify_caller_owned_inputs);
     RUN_TEST(test_two_loggers_can_have_different_sinks);
     RUN_TEST(test_sink_can_be_changed_at_runtime);
     RUN_TEST(test_debug_helper);

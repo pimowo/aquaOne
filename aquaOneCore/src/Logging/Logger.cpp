@@ -74,6 +74,14 @@ void Logger::log(
 #endif
 }
 
+void Logger::write(
+    LogLevel level,
+    const char* module,
+    const char* message
+) {
+    log(level, module, message);
+}
+
 void Logger::debug(
     const char* module,
     const char* message

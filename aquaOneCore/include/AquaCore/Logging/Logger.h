@@ -2,10 +2,11 @@
 
 #include "AquaCore/Logging/LoggingConfig.h"
 #include "AquaCore/Logging/LogSink.h"
+#include "AquaCore/Logging/LogWriter.h"
 
 namespace AquaCore {
 
-class Logger {
+class Logger : public LogWriter {
 public:
     Logger();
     explicit Logger(LogSink& sink);
@@ -19,6 +20,12 @@ public:
         const char* module,
         const char* message
     );
+
+    void write(
+        LogLevel level,
+        const char* module,
+        const char* message
+    ) override;
 
     void debug(const char* module, const char* message);
     void info(const char* module, const char* message);

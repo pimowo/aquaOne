@@ -177,6 +177,12 @@ logger.error("module", "message");
 - `debug/info/warning/error(module, msg)` — Log methods
 - `compiledIn()` — Is logging enabled?
 
+`LogWriter` is the narrow write-only capability for Domain-facing dependencies. `Logger`
+implements it, so Composition Root can inject a borrowed `LogWriter&` without exposing threshold
+or sink mutation. The owner must outlive the consumer. Calls are synchronous and best-effort:
+`module` and `message` remain caller-owned and valid for the call, delivery is not guaranteed, and
+logging has no semantic result for Domain logic. The capability uses no heap or global state.
+
 **Zastosowanie:**
 - aquaOneLuma ✅
 - aquaOneHydro ❌
