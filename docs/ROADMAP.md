@@ -15,7 +15,7 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 
 ## Kolejność docelowa
 
-1. **FAZA 1 — System / Lifecycle / Identity**: runtime/boot identity (dokładna nazwa i kontrakt: DECISION REQUIRED), state model i composition pattern.
+1. **FAZA 1 — System / Lifecycle / Identity / Core↔Domain foundation (CLOSED)**: dostarczony system/runtime state model, startup plan/result/report, ApplicationRuntime startup foundation, recovery semantics, runtime Health/Safety ownership, restart request policy, RuntimeIdentity TARGET, DeviceIdentity TARGET, Core↔Domain TARGET boundary oraz native System test foundation. Zaakceptowane kontrakty TARGET nie oznaczają pełnej implementacji CURRENT.
 2. **FAZA 2 — Logging / Storage / Config**: adaptacja istniejących mechanizmów i pełny lifecycle konfiguracji.
 3. **FAZA 3 — Commands / Safety**: wspólna ścieżka komend, policy i Action Locks.
 4. **FAZA 4 — Events / Alarms**: snapshot, event contracts i lifecycle alarmów.

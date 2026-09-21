@@ -38,9 +38,9 @@ CURRENT; legacy `AquaCore::DeviceIdentity`, SystemService i konsumenci pozostaj�
 `assign()` zwraca jawny ValidationResult (error + field); null, pusty tekst lub przekroczenie
 limitu czyści cały obiekt i ustawia invalid. Brak truncation i dynamic allocation.
 Limity implementacji, łącznie z NUL: deviceType/firmwareVersion 24, coreVersion 16,
-hardwareVariant 32 bajty. Nie są to finalne decyzje Architecture vNext.
-Format device_id, MAC/MAC6, finalne pola, capacities i walidacja pozostają IDN-101
-DECISION REQUIRED; RuntimeIdentity (SYS-101) i jego generator nie są zaimplementowane.
+hardwareVariant 32 bajty. Istniejące typy i foundation pozostają CURRENT i nie implementują pełnego TARGET RuntimeIdentity ani docelowego DeviceIdentity contract.
+Format device_id, MAC/MAC6, finalne pola, capacities i walidacja są opisane przez zaakceptowany kierunek IDN-101.
+Statusy kontraktów docelowych: SYS-101 — ACCEPTED — TARGET; IDN-101 — ACCEPTED — TARGET. RuntimeIdentity (SYS-101) i jego generator nie są zaimplementowane; obecny kod nie implementuje pełnego TARGET contract.
 Nowe typy są testowane w `platformio test -e native -f test_system`.
 
 **CURRENT F1.4:** `AquaCore/System/SystemState.h` defines independent neutral
