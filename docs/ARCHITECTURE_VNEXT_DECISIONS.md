@@ -1678,6 +1678,19 @@ Pozostały zakres CMD-101 — envelope, source metadata, request/correlation ID,
 error code, async operation identity i wire representation — pozostaje DECISION REQUIRED.
 CMD-102 pozostaje otwarte.
 
+F3.2 ustala drugi sub-boundary: pipeline wykonuje dokładnie structural validation → policy →
+safety gate → Domain handler i zatrzymuje się na pierwszym odrzuceniu. Wyniki orchestration to
+`InvalidCommand`, `BlockedByPolicy`, `BlockedBySafety`, `Handled` z obecnym
+`DomainCommandResult` oraz `InvalidPipeline` dla naruszenia callback contract. Wynik Domain
+jest obecny wyłącznie po wywołaniu handlera i nie jest reinterpretowany przez pipeline.
+
+Validator, policy gate, safety gate i handler są wymagane; brak callbacka jest fail-closed.
+Contexts są opaque i borrowed, a `nullptr` jest dozwolony dla callbacka bezstanowego; używany
+context musi żyć co najmniej tak długo jak pipeline. Świadomy brak ograniczeń wymaga jawnego
+allow callbacka. Handler nie widzi policy, safety ani transportu. Pipeline nie przechowuje komendy.
+F3.2 nie jest SAF-101 Action Locks ani RuntimeStatus gating. Internal autonomous Domain control
+pozostaje poza tym pipeline.
+
 ### EVT-001 — snapshot jest źródłem prawdy
 Snapshot jest autorytatywnym stanem. Realtime i Event informują o zmianach, ale nie zastępują snapshotu.
 
@@ -1898,7 +1911,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 
 - Rozszerzenia identity poza IDN-101 v1 — BuildIdentity version grammar, HardwareIdentity platform/revision schema oraz future non-MAC DeviceId/source;
 - CFG-102 — zakres DomainState w backupie;
-- CMD-101 (pozostały zakres) — command envelope, orchestration result, source metadata, stable machine error code, async operation identity, request/correlation ID i wire representation;
+- CMD-101 (pozostały zakres) — command envelope, source metadata, stable machine error code, async operation identity, request/correlation ID i wire representation;
 - CMD-102 — idempotency i deduplication;
 - EVT-101 — event envelope, priority i sequence format;
 - EVT-102 — snapshot schema oraz relacja snapshot/HTTP/realtime;

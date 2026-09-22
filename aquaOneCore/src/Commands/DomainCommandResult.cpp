@@ -3,6 +3,18 @@
 namespace AquaCore {
 namespace Commands {
 
+bool isDomainCommandResultValid(DomainCommandResult result) {
+    switch (result) {
+        case DomainCommandResult::Completed:
+        case DomainCommandResult::Rejected:
+        case DomainCommandResult::InvalidState:
+        case DomainCommandResult::OperationStarted:
+            return true;
+        default:
+            return false;
+    }
+}
+
 const char* domainCommandResultName(DomainCommandResult result) {
     switch (result) {
         case DomainCommandResult::Completed:

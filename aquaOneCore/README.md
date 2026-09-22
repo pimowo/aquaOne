@@ -25,11 +25,15 @@ Istniejący kod i API mogą zostać ocenione jako KEEP, ADAPT, REWRITE albo REMO
 zachowuje dokumentację CURRENT API, ale nie obiecuje braku breaking changes ani zgodności
 z przyszłym Core vNext.
 
-**CURRENT F3.1 — Command result foundation:** `AquaCore::Commands::DomainCommandResult`
+**CURRENT F3.1/F3.2 — Command foundation:** `AquaCore::Commands::DomainCommandResult`
 udostępnia transport-neutralne wyniki wykonania dopuszczonej komendy domenowej: `Completed`,
 `Rejected`, `InvalidState` i `OperationStarted`, wraz ze stabilnym helperem nazw. Foundation
-nie implementuje command pipeline, handlera, routingu, policy, Safety/Action Locks, envelope,
-source metadata, identyfikatorów żądań ani async operation API.
+obejmuje też typed `CommandPipeline<T>` wykonujący validation → policy → safety gate → handler,
+z short-circuit i oddzielnym `CommandExecutionResult`. Wszystkie callbacki są wymagane i
+statycznie komponowane; borrowed context może być `nullptr` dla callbacka bezstanowego. Brak
+callbacka jest fail-closed. Obecny safety gate jest wąskim
+punktem orkiestracji, nie SafetyManagerem ani SAF-101 Action Locks. Foundation nie implementuje
+routingu, envelope, source metadata, identyfikatorów żądań ani async operation API.
 
 ## 📦 Moduły (v0.6.2)
 

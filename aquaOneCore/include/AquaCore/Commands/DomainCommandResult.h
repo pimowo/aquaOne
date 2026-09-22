@@ -12,6 +12,7 @@ enum class DomainCommandResult : uint8_t {
     OperationStarted
 };
 
+bool isDomainCommandResultValid(DomainCommandResult result);
 const char* domainCommandResultName(DomainCommandResult result);
 
 } // namespace Commands
