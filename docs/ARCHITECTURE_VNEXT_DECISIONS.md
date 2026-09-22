@@ -1662,6 +1662,22 @@ SYS-101 i wszystkie istniejące C++ kontrakty pozostają bez zmian.
 ### CMD-001 — wspólna ścieżka komendy
 Każde źródło sterowania korzysta z Source → Command → Validation → Authorization/Policy → Safety/Action Locks → Domain execution → State update → Event/Result.
 
+### CMD-101 — Domain semantic result vocabulary — PARTIALLY ACCEPTED
+
+F3.1 ustala wyłącznie wynik wykonania komendy już dopuszczonej do Domain. Minimalne kategorie
+v1 to `Completed`, `Rejected`, `InvalidState` i `OperationStarted`. Oznaczają odpowiednio:
+zakończoną poprawnie akcję semantyczną; świadome odrzucenie przez regułę domenową; poprawne
+żądanie niemożliwe do wykonania w bieżącym stanie Domain; oraz rozpoczęcie operacji kończącej
+się później. F3.1 nie definiuje async operation API.
+
+`InvalidCommand`/structural validation failure, `BlockedByPolicy` i `BlockedBySafety` są wynikami
+orchestration przed wywołaniem Domain i nie należą do Domain semantic result. Handler domenowy
+nie zwraca wyników policy ani safety. Finalny orchestration result type pozostaje otwarty.
+
+Pozostały zakres CMD-101 — envelope, source metadata, request/correlation ID, stable machine
+error code, async operation identity i wire representation — pozostaje DECISION REQUIRED.
+CMD-102 pozostaje otwarte.
+
 ### EVT-001 — snapshot jest źródłem prawdy
 Snapshot jest autorytatywnym stanem. Realtime i Event informują o zmianach, ale nie zastępują snapshotu.
 
@@ -1882,7 +1898,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 
 - Rozszerzenia identity poza IDN-101 v1 — BuildIdentity version grammar, HardwareIdentity platform/revision schema oraz future non-MAC DeviceId/source;
 - CFG-102 — zakres DomainState w backupie;
-- CMD-101 — command envelope, CommandResult, error_code, request/correlation ID;
+- CMD-101 (pozostały zakres) — command envelope, orchestration result, source metadata, stable machine error code, async operation identity, request/correlation ID i wire representation;
 - CMD-102 — idempotency i deduplication;
 - EVT-101 — event envelope, priority i sequence format;
 - EVT-102 — snapshot schema oraz relacja snapshot/HTTP/realtime;

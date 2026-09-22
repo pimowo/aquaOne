@@ -25,6 +25,12 @@ Istniejący kod i API mogą zostać ocenione jako KEEP, ADAPT, REWRITE albo REMO
 zachowuje dokumentację CURRENT API, ale nie obiecuje braku breaking changes ani zgodności
 z przyszłym Core vNext.
 
+**CURRENT F3.1 — Command result foundation:** `AquaCore::Commands::DomainCommandResult`
+udostępnia transport-neutralne wyniki wykonania dopuszczonej komendy domenowej: `Completed`,
+`Rejected`, `InvalidState` i `OperationStarted`, wraz ze stabilnym helperem nazw. Foundation
+nie implementuje command pipeline, handlera, routingu, policy, Safety/Action Locks, envelope,
+source metadata, identyfikatorów żądań ani async operation API.
+
 ## 📦 Moduły (v0.6.2)
 
 ### System — ✅ READY
