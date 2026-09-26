@@ -1034,7 +1034,7 @@ shell.
 
 ### SYS-106 — writer ownership i agregacja Health/Safety po startupie
 
-**Status:** ACCEPTED — TARGET contract; F1.9 nie implementuje coordinatora ani writerów.
+**Status:** ACCEPTED — TARGET contract; F3.3 implementuje CURRENT coordinator/handoff foundation.
 
 Rozważone modele ownership:
 
@@ -1210,9 +1210,17 @@ nie otrzymują write authority. Diagnostics również nie jest alternatywnym wri
 
 #### Migration, testability i scope
 
-F1.9 jest docs-only. Nie zmienia F1.7 ani ApplicationPlan, start() i StartupReport API.
-Przyszła implementacja doda ograniczoną write authority, handoff, startup facts boundary
-i coordinator bez drugiej kopii stanu. Oddzielny SystemStateStore nie jest wymagany.
+F3.3 zachowuje F1.7 ApplicationPlan, start() i StartupReport API oraz dodaje
+`RuntimeStateCoordinator`, statyczne provider arrays i jawny one-shot handoff. Coordinator
+zapisuje Health/Safety w tym samym prywatnym `ApplicationRuntime::status_`; nie posiada drugiej
+authoritative kopii. Startup-derived DEGRADED przejmuje provider należący do ownera condition.
+Jeżeli aggregate podczas handoffu spadłby poniżej startup Health/Safety, jest to błąd kompozycji:
+handoff nie zachodzi, a live status przechodzi do `ERROR + FAULT + LOCKED`. Composition Root
+nadal odpowiada za reprezentację każdej odrębnej przyczyny; porównanie aggregate nie dowodzi
+tożsamości poszczególnych conditions. Nie pozostaje zwykły `RUNNING` bez runtime writer handoff.
+Capacity zero albo overflow raportu nie są źródłem runtime facts; późniejsze potwierdzone
+recovery providera może przywrócić OK po poprawnym handoffie. Oddzielny SystemStateStore
+nie jest wymagany.
 
 Przyszłe host tests muszą objąć:
 

@@ -63,6 +63,15 @@ startup foundation, plan participantów, state transitions oraz immutable startu
 heap. Foundation nie jest jeszcze używana przez domeny i nie obejmuje recovery ani runtime
 loop. Legacy `SystemService` pozostaje bez zmian.
 
+**CURRENT F3.3:** `RuntimeStateCoordinator` agreguje statycznie skomponowanych
+`HealthProvider` i `SafetyProvider` przez jawny pull `refresh()`. Po udanym startupie
+`ApplicationRuntime::handoffRuntimeState()` przekazuje jednorazowo write authority do
+Health/Safety bez tworzenia drugiej kopii `RuntimeStatus`; OperationalState i StartupPhase
+pozostają własnością runtime. Właściciel condition musi utrzymać startup-derived fact w providerze
+niezależnie od pojemności `StartupReport`; gdy aggregate podczas handoffu zgubi startup
+`DEGRADED`, runtime przechodzi do `ERROR + FAULT + LOCKED` bez aktywacji coordinatora. Foundation
+nie implementuje Action Locks, SafetyManagera, alarmów ani integracji CommandPipeline.
+
 ```cpp
 #include <AquaCore/System/SystemService.h>
 

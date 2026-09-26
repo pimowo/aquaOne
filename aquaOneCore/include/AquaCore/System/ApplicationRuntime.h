@@ -5,6 +5,8 @@
 namespace AquaCore {
 namespace System {
 
+class RuntimeStateCoordinator;
+
 class ApplicationRuntime {
 public:
     // Non-copyable/non-movable: plan, contexts and failure storage are borrowed.
@@ -22,6 +24,8 @@ public:
     const StartupReport& start();
     RuntimeStatus status() const;
     const StartupReport& startupReport() const;
+    bool handoffRuntimeState(RuntimeStateCoordinator& coordinator);
+    bool runtimeStateHandedOff() const;
 
 private:
     bool validateEarlySafeOutputs();
@@ -54,6 +58,7 @@ private:
     RuntimeStatus status_;
     StartupReport report_;
     bool startInProgress_;
+    bool runtimeStateHandedOff_;
 };
 
 } // namespace System

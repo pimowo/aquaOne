@@ -1,5 +1,7 @@
 #include "AquaCore/System/ApplicationRuntime.h"
 
+#include <AquaCore/System/RuntimeStateCoordinator.h>
+
 #include <string.h>
 
 namespace AquaCore {
@@ -100,7 +102,8 @@ ApplicationRuntime::ApplicationRuntime(
         optionalFailureStorage.capacity,
         status_
     ),
-    startInProgress_(false) {
+    startInProgress_(false),
+    runtimeStateHandedOff_(false) {
 }
 
 const StartupReport& ApplicationRuntime::start() {
@@ -139,6 +142,32 @@ RuntimeStatus ApplicationRuntime::status() const {
 
 const StartupReport& ApplicationRuntime::startupReport() const {
     return report_;
+}
+
+bool ApplicationRuntime::handoffRuntimeState(
+    RuntimeStateCoordinator& coordinator
+) {
+    if (runtimeStateHandedOff_ ||
+        !report_.isComplete() ||
+        report_.hasFatalFailure() ||
+        status_.operational != OperationalState::RUNNING ||
+        status_.startupPhase != StartupPhase::RUNNING) {
+        return false;
+    }
+    if (!coordinator.activate(status_)) {
+        // A completed startup with an incomplete runtime composition cannot
+        // continue normal processing without a Health/Safety owner.
+        status_.operational = OperationalState::ERROR;
+        status_.health = HealthState::FAULT;
+        status_.safety = SafetyState::LOCKED;
+        return false;
+    }
+    runtimeStateHandedOff_ = true;
+    return true;
+}
+
+bool ApplicationRuntime::runtimeStateHandedOff() const {
+    return runtimeStateHandedOff_;
 }
 
 bool ApplicationRuntime::validateEarlySafeOutputs() {
