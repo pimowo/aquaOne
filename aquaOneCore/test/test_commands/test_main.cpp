@@ -10,6 +10,8 @@
 #include "AquaCore/Commands/CommandPipeline.h"
 #include "AquaCore/Commands/DomainCommandResult.h"
 
+void runRuntimeCommandSafetyGateTests();
+
 namespace {
 
 using AquaCore::Commands::DomainCommandResult;
@@ -430,6 +432,7 @@ void runTests() {
     RUN_TEST(test_invalid_handler_result_is_not_exposed_as_domain_result);
     RUN_TEST(test_pipelines_and_contexts_are_independent);
     RUN_TEST(test_pipeline_does_not_mutate_input_command);
+    runRuntimeCommandSafetyGateTests();
 }
 
 } // namespace

@@ -1699,6 +1699,18 @@ allow callbacka. Handler nie widzi policy, safety ani transportu. Pipeline nie p
 F3.2 nie jest SAF-101 Action Locks ani RuntimeStatus gating. Internal autonomous Domain control
 pozostaje poza tym pipeline.
 
+F3.5 dodaje CURRENT adapter safety callback dla normalnych Domain commands: wąski read-only
+RuntimeStatus source, jawny typed Command → Action resolver i ActionLockCoordinator. Dopuszcza
+wykonanie tylko przy RUNNING + SafetyState CLEAR + odblokowanej akcji. BOOTING, ERROR i
+MAINTENANCE są fail-closed w tym baseline; nie jest to finalna polityka Maintenance.
+Brak readera/resolvera, błędny odczyt lub invalid Action Lock composition także daje
+BlockedBySafety bez wywołania Domain handlera. HealthState DEGRADED/FAULT sam nie blokuje:
+właściciel condition mapuje potrzebną blokadę przez Safety albo Action Lock policy.
+Po SYS-106 handoff callback czyta live RuntimeStatus przy każdym wykonaniu, bez cache.
+Istniejąca kolejność validation → policy → safety → handler i autonomous Domain control
+pozostają bez zmian. System/recovery commands, ich wyjątki i pełne Maintenance są poza F3.5
+(F3.6); CMD-101, SAF-101 i stable machine reason codes pozostają otwarte w pozostałym zakresie.
+
 ### EVT-001 — snapshot jest źródłem prawdy
 Snapshot jest autorytatywnym stanem. Realtime i Event informują o zmianach, ale nie zastępują snapshotu.
 
