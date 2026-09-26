@@ -11,6 +11,7 @@
 #include "AquaCore/Commands/DomainCommandResult.h"
 
 void runRuntimeCommandSafetyGateTests();
+void runRuntimeCommandPolicyGateTests();
 
 namespace {
 
@@ -433,6 +434,7 @@ void runTests() {
     RUN_TEST(test_pipelines_and_contexts_are_independent);
     RUN_TEST(test_pipeline_does_not_mutate_input_command);
     runRuntimeCommandSafetyGateTests();
+    runRuntimeCommandPolicyGateTests();
 }
 
 } // namespace

@@ -6,7 +6,7 @@
 namespace AquaCore {
 namespace Commands {
 
-// Safety callback adapter for normal Domain commands. Composition Root owns the
+// Safety callback adapter for normal Domain commands only. Composition Root owns the
 // gate, its contexts, and the ActionLockCoordinator for the pipeline lifetime.
 // Readers and resolvers are borrowed; nullptr context is valid for stateless
 // callbacks. Execute and runtime refresh must use the serialized runtime
@@ -43,7 +43,6 @@ public:
 
         System::RuntimeStatus status {};
         if (!readStatus_(statusContext_, status) ||
-            status.operational != System::OperationalState::RUNNING ||
             status.safety != System::SafetyState::CLEAR) {
             return false;
         }

@@ -184,7 +184,7 @@ void test_running_clear_unlocked_reaches_handler() {
     TEST_ASSERT_EQUAL_MEMORY("VPSH", fixture.trace.calls, 4U);
 }
 
-void test_non_running_states_block_normal_domain_commands() {
+void test_safety_gate_does_not_own_operational_policy() {
     Fixture fixture;
     Commands::CommandPipeline<TestCommand> pipeline(fixture.config());
     const System::OperationalState states[] = {
@@ -195,11 +195,11 @@ void test_non_running_states_block_normal_domain_commands() {
     for (size_t i = 0U; i < 3U; ++i) {
         fixture.status.current.operational = states[i];
         assertOutcome(pipeline.execute(TestCommand{0U}),
-            Commands::CommandExecutionOutcome::BlockedBySafety);
+            Commands::CommandExecutionOutcome::Handled);
     }
-    TEST_ASSERT_EQUAL_UINT(0U, fixture.trace.handled);
-    TEST_ASSERT_EQUAL_UINT(0U, fixture.resolver.calls);
-    TEST_ASSERT_EQUAL_UINT(0U, fixture.first.queries);
+    TEST_ASSERT_EQUAL_UINT(3U, fixture.trace.handled);
+    TEST_ASSERT_EQUAL_UINT(3U, fixture.resolver.calls);
+    TEST_ASSERT_EQUAL_UINT(3U, fixture.first.queries);
 }
 
 void test_global_safety_lock_blocks_unlocked_action() {
@@ -409,7 +409,7 @@ void test_live_runtime_status_after_handoff_and_refresh() {
 
 void runRuntimeCommandSafetyGateTests() {
     RUN_TEST(test_running_clear_unlocked_reaches_handler);
-    RUN_TEST(test_non_running_states_block_normal_domain_commands);
+    RUN_TEST(test_safety_gate_does_not_own_operational_policy);
     RUN_TEST(test_global_safety_lock_blocks_unlocked_action);
     RUN_TEST(test_degraded_and_fault_health_alone_do_not_block);
     RUN_TEST(test_action_lock_is_granular_and_recovery_is_live);

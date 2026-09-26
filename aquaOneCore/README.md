@@ -78,14 +78,22 @@ Integrację z CommandPipeline opisuje F3.5 poniżej. Action ID i provider należ
 Composition Root posiada providerów oraz listę. Nie jest to pełny Safety framework ani Alarm/
 Maintenance implementation.
 
-**CURRENT F3.5 — normal Domain command safety gate:** RuntimeCommandSafetyGate<Command, Action>
-podłącza istniejący safety callback CommandPipeline do odczytu aktualnego RuntimeStatus i
-ActionLockCoordinator. Adapter jawnie mapuje typed Command na typed Action. Normalna komenda
-przechodzi tylko przy RUNNING + SafetyState CLEAR + odblokowanej akcji; BOOTING, ERROR,
-MAINTENANCE i błędna kompozycja blokują ją wynikiem BlockedBySafety. HealthState sam nie
-blokuje. Composition Root wykonuje handoff przed pierwszą normalną komendą; odczyt jest
-świeży po każdym refresh. Autonomous Domain control nadal używa własnych ports i intrinsic
-safety. System/recovery commands i wyjątki Maintenance pozostają zakresem F3.6.
+**CURRENT F3.5/F3.6 — normal Domain command gates:** `CommandClass` rozróżnia
+`NormalDomain` i `SystemRecovery` niezależnie od transportu, roli, action ID i wyniku.
+`RuntimeCommandPolicyGate` czyta live `RuntimeStatus` i typed class resolver:
+dla `NormalDomain` dopuszcza tylko RUNNING, a dla `SystemRecovery` RUNNING i ERROR.
+Każda instancja bramki dopuszcza tylko klasę przypisaną do swojej ścieżki handlera.
+BOOTING i MAINTENANCE są blokowane w obu klasach (baseline do Phase 5).
+Brak readera/resolvera, błędny odczyt lub nieznana klasa blokują policy
+(`BlockedByPolicy`). `RuntimeCommandSafetyGate` pozostaje tylko dla normalnych
+Domain commands: sprawdza SafetyState CLEAR i odblokowaną typed Action przez
+ActionLockCoordinator; odmowa daje `BlockedBySafety`. Obie bramki są potrzebne
+w normalnym Domain pipeline; HealthState sam nie blokuje. Po SYS-106 handoff
+każde wywołanie czyta świeży stan, bez cache. ERROR recovery shell nie uruchamia
+normalnego Domain handlera ani Domain processing. F3.6 określa jedynie policy
+dla `SystemRecovery`: per-command safety exceptions, handler/result i konkretne
+workflow (w tym restart/config repair) wymagają dalszego kontraktu. Autonomous
+Domain control nadal pozostaje poza external command pipeline.
 
 ```cpp
 #include <AquaCore/System/SystemService.h>

@@ -1699,17 +1699,32 @@ allow callbacka. Handler nie widzi policy, safety ani transportu. Pipeline nie p
 F3.2 nie jest SAF-101 Action Locks ani RuntimeStatus gating. Internal autonomous Domain control
 pozostaje poza tym pipeline.
 
-F3.5 dodaje CURRENT adapter safety callback dla normalnych Domain commands: wąski read-only
-RuntimeStatus source, jawny typed Command → Action resolver i ActionLockCoordinator. Dopuszcza
-wykonanie tylko przy RUNNING + SafetyState CLEAR + odblokowanej akcji. BOOTING, ERROR i
-MAINTENANCE są fail-closed w tym baseline; nie jest to finalna polityka Maintenance.
-Brak readera/resolvera, błędny odczyt lub invalid Action Lock composition także daje
-BlockedBySafety bez wywołania Domain handlera. HealthState DEGRADED/FAULT sam nie blokuje:
-właściciel condition mapuje potrzebną blokadę przez Safety albo Action Lock policy.
-Po SYS-106 handoff callback czyta live RuntimeStatus przy każdym wykonaniu, bez cache.
-Istniejąca kolejność validation → policy → safety → handler i autonomous Domain control
-pozostają bez zmian. System/recovery commands, ich wyjątki i pełne Maintenance są poza F3.5
-(F3.6); CMD-101, SAF-101 i stable machine reason codes pozostają otwarte w pozostałym zakresie.
+F3.5 wprowadziło CURRENT adapter safety callback dla normalnych Domain commands:
+wąski read-only RuntimeStatus source, typed Command → Action resolver i
+ActionLockCoordinator. F3.6 rozdziela odpowiedzialność: nowy typed `CommandClass`
+(`NormalDomain`, `SystemRecovery`) i `RuntimeCommandPolicyGate` decydują o
+OperationalState, a `RuntimeCommandSafetyGate` sprawdza SafetyState CLEAR i
+Action Locks wyłącznie dla normalnych Domain commands. NormalDomain wymaga
+RUNNING; BOOTING, ERROR i MAINTENANCE dają `BlockedByPolicy`. RUNNING z Safety
+LOCKED lub zablokowaną akcją daje `BlockedBySafety`. SystemRecovery przechodzi
+policy w RUNNING i ERROR, lecz nie w BOOTING ani MAINTENANCE (ostrożny baseline
+do Phase 5). Instancja policy gate jest przypisana do jednej klasy ścieżki handlera:
+SystemRecovery nie może przejść przez normalny Domain pipeline. Brak status readera,
+class resolvera, nieudany odczyt lub nieznana klasa blokują policy bez wywołania handlera. HealthState DEGRADED/FAULT sam nie
+blokuje; odczyt stanu jest live przy każdym wywołaniu bez cache. Kolejność
+validation → policy → safety → handler pozostaje bez zmian.
+
+F3.6 nie implementuje pełnej ścieżki SystemRecovery. Dopuszczenie przez policy
+w ERROR nie jest zezwoleniem na pominięcie Safety, uruchomienie Domain handlera
+ani wykonanie konkretnego workflow. Per-command safety exceptions dla statusu,
+diagnostics, restartu, ACK, config repair, OTA, restore i factory reset (część może
+działać przy LOCKED), authorization, system handler/result i zależności recovery
+wymagają osobnego kontraktu i kompozycji. Normalne Domain
+commands oraz autonomous Domain processing są w ERROR niedostępne. Config repair
+nie daje ERROR → RUNNING in-place; wymaga restartu zgodnie z SYS-105/SYS-107.
+CMD-101 pozostaje częściowo zaakceptowane: envelope, source metadata, exact
+system-command result, stable error codes, request/correlation IDs, async identity i wire format
+pozostają otwarte; CMD-102 i pozostały SAF-101 również.
 
 ### EVT-001 — snapshot jest źródłem prawdy
 Snapshot jest autorytatywnym stanem. Realtime i Event informują o zmianach, ale nie zastępują snapshotu.
