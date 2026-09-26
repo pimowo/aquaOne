@@ -32,8 +32,7 @@ obejmuje też typed `CommandPipeline<T>` wykonujący validation → policy → s
 z short-circuit i oddzielnym `CommandExecutionResult`. Wszystkie callbacki są wymagane i
 statycznie komponowane; borrowed context może być `nullptr` dla callbacka bezstanowego. Brak
 callbacka jest fail-closed. Obecny safety gate jest wąskim
-punktem orkiestracji, nie SafetyManagerem ani SAF-101 Action Locks. Foundation nie implementuje
-routingu, envelope, source metadata, identyfikatorów żądań ani async operation API.
+punktem orkiestracji, nie SafetyManagerem. F3.4 dodaje oddzielny Action Lock foundation; jego integracja jako gate/policy input pozostaje poza tym krokiem. Foundation nie implementuje routingu, envelope, source metadata, identyfikatorów żądań ani async operation API.
 
 ## 📦 Moduły (v0.6.2)
 
@@ -69,8 +68,15 @@ loop. Legacy `SystemService` pozostaje bez zmian.
 Health/Safety bez tworzenia drugiej kopii `RuntimeStatus`; OperationalState i StartupPhase
 pozostają własnością runtime. Właściciel condition musi utrzymać startup-derived fact w providerze
 niezależnie od pojemności `StartupReport`; gdy aggregate podczas handoffu zgubi startup
-`DEGRADED`, runtime przechodzi do `ERROR + FAULT + LOCKED` bez aktywacji coordinatora. Foundation
-nie implementuje Action Locks, SafetyManagera, alarmów ani integracji CommandPipeline.
+`DEGRADED`, runtime przechodzi do `ERROR + FAULT + LOCKED` bez aktywacji coordinatora. Foundation nie implementuje SafetyManagera, alarmów ani integracji CommandPipeline.
+
+**CURRENT F3.4 — Action Lock foundation:** AquaCore/Safety/ActionLockCoordinator.h udostępnia
+typed ActionLockProvider<Action> i statyczny pull coordinator z immutable borrowed listą
+providerów. Agreguje niezależne blokady przez OR, raportuje safety-critical lock i liczbę
+aktywnych providerów; nie utrzymuje reason registry, nie zapisuje SafetyState i nie jest jeszcze
+zintegrowany z CommandPipeline (to pozostaje F3.5). Action ID i provider należą do Domain/projektu;
+Composition Root posiada providerów oraz listę. Nie jest to pełny Safety framework ani Alarm/
+Maintenance implementation.
 
 ```cpp
 #include <AquaCore/System/SystemService.h>

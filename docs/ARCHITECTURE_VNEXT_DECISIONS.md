@@ -1888,6 +1888,24 @@ ownership, ordering, defaults/recovery i desired/active semantics.
 ### SAF-001 — rozdział Safety/Maintenance/Action Lock
 Maintenance, Safety i Action Lock są różnymi mechanizmami. SafetyState jest agregatem, nie drugim systemem blokad.
 
+### SAF-101 — Action Lock foundation — częściowo ACCEPTED
+
+F3.4 ustala minimalny model Action Lock: typed ActionLockProvider<Action> odpowiada pull-query
+o konkretną action ID należącą do konsumenta/projektu/Domain; Core nie utrzymuje centralnego
+katalogu action IDs. Composition Root statycznie składa borrowed providerów bez mutable centralnej
+tablicy, globalnej bitmaski ani token/handle rejestracji. Każdy provider zwraca wkład locked oraz
+opcjonalny safety-critical; agregacja jest OR, więc niezależne aktywne blokady nie są nadpisywane
+przez last writer. Wynik podaje też liczbę providerów z aktywnym wkładem, bez ustanawiania
+reason registry.
+
+Wybrano typed provider query: mutable lock table i token/handle model wymagają centralnego
+lifecycle/rejestracji; globalna bitmask wymaga wspólnego katalogu i limitów ID. Sam
+bool isLocked() gubi użyteczny summary; caller-owned buffer i callback enumeration
+przedwcześnie ustalałyby publiczny format reasonów. Dokładne reason IDs, ich metadane/priority,
+enumeracja diagnostyczna i finalny szerszy API pozostają otwarte. Safety-critical mapping do
+Safety contribution należy do policy/provider boundary; ActionLockCoordinator nie zapisuje
+SafetyState. Niesafety-critical lock nie implikuje globalnego safety lock.
+
 ### ALM-001 — rozdział pojęć alarmowych
 Warning, alarm, fault i safety lock są różne. ACK nie oznacza CLEAR, a alarm nie oznacza automatycznie Safety Lock.
 
@@ -1924,7 +1942,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 - EVT-101 — event envelope, priority i sequence format;
 - EVT-102 — snapshot schema oraz relacja snapshot/HTTP/realtime;
 - ALM-101 — wspólny API alarmów i zakres capability;
-- SAF-101 — dokładny model Action Lock i priorytet powodów;
+- SAF-101 — dokładne reason IDs, priority/metadata oraz szerszy publiczny Action Lock API (poza częściowo zaakceptowaną F3.4 foundation);
 - MNT-101 — kontrakt przygotowania domeny do maintenance;
 - DIAG-101 — lista providerów/capability diagnostycznych;
 - REG-101 — nazwy providerów, API registry i limity;
