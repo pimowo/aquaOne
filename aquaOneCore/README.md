@@ -47,9 +47,17 @@ CURRENT; legacy `AquaCore::DeviceIdentity`, SystemService i konsumenci pozostaj�
 `assign()` zwraca jawny ValidationResult (error + field); null, pusty tekst lub przekroczenie
 limitu czyści cały obiekt i ustawia invalid. Brak truncation i dynamic allocation.
 Limity implementacji, łącznie z NUL: deviceType/firmwareVersion 24, coreVersion 16,
-hardwareVariant 32 bajty. Istniejące typy i foundation pozostają CURRENT i nie implementują pełnego TARGET RuntimeIdentity ani docelowego DeviceIdentity contract.
+hardwareVariant 32 bajty. Istniejące typy i foundation pozostają CURRENT i nie implementują
+docelowego DeviceIdentity contract.
 Format device_id, MAC/MAC6, finalne pola, capacities i walidacja są opisane przez zaakceptowany kierunek IDN-101.
-Statusy kontraktów docelowych: SYS-101 — ACCEPTED — TARGET; IDN-101 — ACCEPTED — TARGET. RuntimeIdentity (SYS-101) i jego generator nie są zaimplementowane; obecny kod nie implementuje pełnego TARGET contract.
+Statusy kontraktów docelowych: SYS-101 — ACCEPTED — TARGET; IDN-101 — ACCEPTED — TARGET.
+**CURRENT F4.2:** `RuntimeIdentity` ma 64-bitową niezerową wartość i zapis jako 16 wielkich
+cyfr hex w buforze wywołującego. `RuntimeIdentityState` przechowuje jedną wartość na instancję
+runtime i podejmuje generację tylko raz. `RuntimeIdentityStartup` dostarcza wymagany participant
+`CORE_INIT`, który Composition Root umieszcza jako pierwszy w tej fazie. ESP32 generator
+korzysta z krótkiego okna entropy potwierdzanego przez Composition Root, bez zależności od
+Network, czasu ani storage. Adapter nie jest jeszcze podłączony do domen ani EventSink;
+integracja planu startupu należy do Composition Root.
 Nowe typy są testowane w `platformio test -e native -f test_system`.
 
 **CURRENT F1.4:** `AquaCore/System/SystemState.h` defines independent neutral

@@ -284,7 +284,9 @@ MQTT offline, timeouty i OTA workflow pozostają poza Fazą 1.
 
 ### SYS-101 — RuntimeIdentity
 
-**Status:** ACCEPTED — TARGET contract; F1.11 nie implementuje value type ani generatora.
+**Status:** ACCEPTED — TARGET contract. F4.2 implementuje CURRENT `RuntimeIdentity` value type,
+one-shot owner, startup participant adapter i ESP32 generator; integracja Composition Root
+pozostaje po stronie projektu.
 
 #### Nazwa, semantyka i wybór reprezentacji
 
@@ -354,8 +356,10 @@ nie wymaga RTC/NTP ani nie tworzy architektonicznej zależności od Network, AP 
 Warunki entropy readiness, RF preparation, SDK calls i cleanup należą do backendu. ESP32 jest
 przykładem backendu, nie uniwersalną procedurą; sama obecność esp_random() nie dowodzi jakości
 przed NETWORK_INIT. Backend nie może kolidować z ADC/I2S/RF ani early safe outputs, a brak
-preconditions oznacza failure, nie przesunięcie generowania do Network. Dokładne SDK calls są
-przyszłą implementacją.
+preconditions oznacza failure, nie przesunięcie generowania do Network. F4.2 ESP32 backend
+używa `bootloader_random_enable()`/`disable()` oraz `esp_random()` w bounded window.
+Composition Root potwierdza, że ADC/I2S/RF nie są wtedy używane; brak potwierdzenia daje
+failure. Gotowość entropy i brak konfliktów zasobów wymagają jeszcze weryfikacji na sprzęcie.
 Źródło wymagań platformowych: [Espressif ESP32 RNG documentation](https://docs.espressif.com/projects/esp-idf/en/v4.4.5/esp32/api-reference/system/random.html).
 
 Przyjęta jest praktyczna probabilistyczna unikalność, przy niezależnych, równomiernych
@@ -449,14 +453,15 @@ auth token, security nonce ani anti-replay primitive; nie może stanowić podsta
 
 #### Testability, HIL i scope
 
-Przyszłe host tests obejmują default/zero invalid, nonzero factory, pełne binary equality,
-copy independence i 16 uppercase hex chars; backend generatora: legal nonzero, invalid candidates,
-bounded retry zgodnie z własnym limitem i failure po jego wyczerpaniu; participant: legal success,
+F4.2 host tests obejmują default/zero invalid, nonzero factory, pełne binary equality,
+copy independence i 16 uppercase hex chars; fake generator: legal nonzero, failure i invalid
+success; participant: legal success,
 generator failure, defensive invalid jako participant failure i brak interpretacji identity przez
 ApplicationRuntime; lifecycle: jedno generate na normalną instancję, stałe odczyty, drugi start bez
 regeneracji, fatal przed identity unavailable, fatal po identity zachowuje wartość oraz nowa
 instancja wywołuje generator ponownie bez wymagania różnej wartości. Deep sleep testuje się tylko
-zgodnie z future lifecycle. Bez testów/buildów w F1.11.
+zgodnie z future lifecycle. ESP32 backend ma compile-only evidence; jego rzeczywisty
+entropy window, bounded retry i cleanup wymagają weryfikacji na sprzęcie.
 
 HIL później sprawdza real platform RNG/entropy readiness i resource cleanup, startup bez zależności
 od Network service, reboot/brownout/reset jako nową instancję i nowy generation attempt oraz
@@ -466,8 +471,8 @@ value-type correctness pozostaje host-testable.
 
 SYS-101 nie zamyka IDN-101, ARCH-101, current-boot RestartReason catalog, event payload API,
 Realtime protocol, MQTT payload/topic standard, Diagnostics full API, logger formatting,
-boot history, next-boot metadata ani security/session identifiers. F1.11 nie zmienia
-ApplicationRuntime, istniejących Device/Build/Hardware identity ani kodu produkcyjnego.
+boot history, next-boot metadata ani security/session identifiers. F4.2 nie zmienia
+ApplicationRuntime ani istniejących Device/Build/Hardware identity.
 
 ### SYS-102 — ApplicationPlan i participanty startupu
 `ApplicationRuntime` używa hybrydowego planu: publiczna kolejność `StartupPhase` jest stała,

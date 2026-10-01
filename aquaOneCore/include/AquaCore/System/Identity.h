@@ -11,7 +11,8 @@ namespace Identity {
 // F1.3 coexistence with legacy AquaCore::DeviceIdentity; no consumer migration.
 // These are the minimum fields backed by CURRENT data, not final IDN-101 fields.
 // Capacities include the NUL byte and reuse CURRENT implementation limits.
-// device_id, MAC/MAC6, final syntax/capacities and RuntimeIdentity remain open.
+// device_id, MAC/MAC6 and final syntax/capacities remain open;
+// RuntimeIdentity has its own CURRENT foundation in RuntimeIdentity.h.
 enum class ValidationError : uint8_t {
     None,
     NullInput,
