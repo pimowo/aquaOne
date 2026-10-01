@@ -438,9 +438,10 @@ HardwareIdentity fizyczny wariant; reboot przy tych samych wartościach nadal lo
 RuntimeIdentity. MAC nie jest RuntimeIdentity i nie jest wymaganym składnikiem RuntimeIdentity generatora. Nie łączy się
 identity categories w jeden canonical string; presentation może pokazać je obok siebie.
 
-Future event sequence jest scoped do runtime instance: para RuntimeIdentity + per-runtime seq
+F4.3 CURRENT event sequence jest scoped do runtime instance: para RuntimeIdentity + per-runtime seq
 rozróżnia ten sam numer przed/po reboot z przyjętym probabilistycznym zastrzeżeniem.
-Device context pozostaje osobny. Seq width, overflow, allocation i payload API pozostają otwarte.
+Device context pozostaje osobny. F4.3 ustala 64-bitową szerokość, brak wrap i jawne exhaustion;
+payload API pozostaje otwarte.
 Zgodnie z EVT-002 nie tworzy to replay; reconnect/full resync może publikować identity,
 a zmiana identity unieważnia poprzedni runtime state/seq consumers. Unavailable identity nie
 udaje legalnego event stream ID. Dokładne zachowanie protokołu przy unavailable jest przyszłe.
@@ -1738,7 +1739,7 @@ Snapshot jest autorytatywnym stanem. Realtime i Event informują o zmianach, ale
 ### EVT-002 — resync
 W V1 nie ma event replay. Po reconnect, reboot albo wykryciu niespójności klient wykonuje pełny resync.
 
-### EVT-101 — semantic event emission — częściowo ustalone w F4.1
+### EVT-101 — semantic event emission i metadata — częściowo ustalone w F4.1/F4.3
 
 CURRENT F4.1 udostępnia `AquaCore::Events::EventSink<Event>`: typ semantic event należy do Domain,
 a Domain emituje go przez wymagany, pożyczany, transport-neutralny sink należący do
@@ -1747,9 +1748,23 @@ bez gwarancji dostarczenia przez transport; event należy do wywołującego i je
 czas wywołania. Adapter musi skopiować dane, jeśli potrzebuje ich później. Jawny
 `NullEventSink<Event>` pozwala Composition Root odrzucać eventy. Nie ma globalnego busa.
 
-EVT-101 pozostaje DECISION REQUIRED dla globalnego envelope, RuntimeIdentity metadata,
-szerokości i overflow sequence, timestampów, kategorii, priorytetów, kolejek/backpressure,
-serializacji, fan-out i wire format. EVT-102 pozostaje DECISION REQUIRED.
+CURRENT F4.3 dodaje transport-neutralne `EventMetadata` złożone wyłącznie z legalnej
+`RuntimeIdentity` i legalnej 64-bitowej `EventSequence`. Zero jest invalid. Jeden
+Application-owned sequencer na runtime event stream wydaje numery od 1, monotonicznie +1;
+nie utrwala stanu, nie owija po `UINT64_MAX` i po wydaniu tej wartości zwraca jawne
+`Exhausted` bez kolejnego legalnego metadata. Nieważna RuntimeIdentity daje osobny failure.
+Para (RuntimeIdentity, sequence) identyfikuje pozycję eventu w jednym runtime stream;
+nie jest tokenem bezpieczeństwa ani globalną gwarancją unikalności. Domain emituje nadal
+semantic event bez metadata, a stamping należy do Application-side processing. Przyszły
+consumer może użyć zmiany RuntimeIdentity jako granicy runtime/reboot oraz discontinuity
+sekwencji jako sygnału gap; snapshot pozostaje authoritative. Issuance zakłada
+serializowany kontekst Application;
+concurrent/ISR issuance nie jest zagwarantowana. Obserwacja reboot/gap nie implementuje
+resync ani replay.
+
+EVT-101 pozostaje DECISION REQUIRED dla pełnego envelope, payload representation,
+timestampów, kategorii, priorytetów, kolejek/backpressure, serializacji, fan-out i wire
+format. EVT-102 pozostaje DECISION REQUIRED.
 
 ### CFG-001 — rozdział konfiguracji
 CoreConfig, DomainConfig, DomainState, SystemState i RuntimeState są rozdzielone. RuntimeState nie jest persistent.
@@ -1985,7 +2000,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 - CFG-102 — zakres DomainState w backupie;
 - CMD-101 (pozostały zakres) — command envelope, source metadata, stable machine error code, async operation identity, request/correlation ID i wire representation;
 - CMD-102 — idempotency i deduplication;
-- EVT-101 (pozostały zakres) — globalny envelope, RuntimeIdentity metadata, sequence width/overflow, timestamps, categories, priority, queue/backpressure, serialization, fan-out i wire format;
+- EVT-101 (pozostały zakres) — pełny envelope, payload representation, timestamps, categories, priority, queue/backpressure, serialization, fan-out i wire format;
 - EVT-102 — snapshot schema oraz relacja snapshot/HTTP/realtime;
 - ALM-101 — wspólny API alarmów i zakres capability;
 - SAF-101 — dokładne reason IDs, priority/metadata oraz szerszy publiczny Action Lock API (poza częściowo zaakceptowaną F3.4 foundation);

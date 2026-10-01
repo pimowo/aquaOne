@@ -110,6 +110,15 @@ dostarczenia. Composition Root posiada sink i może jawnie użyć `NullEventSink
 Foundation nie alokuje heap i nie definiuje globalnego envelope, metadata RuntimeIdentity,
 sequence ani transportu. EVT-101 i EVT-102 pozostają otwarte w pozostałym zakresie.
 
+**CURRENT F4.3 — event metadata:** `EventMetadata` zawiera tylko `RuntimeIdentity` oraz
+64-bitową `EventSequence`. Application-owned `EventMetadataSequencer` wydaje numery od 1
+w jednym runtime stream; po `UINT64_MAX` zwraca `Exhausted` bez wrap. Stan nie jest
+utrwalany, a foundation nie zapewnia replay. Domain `EventSink<Event>` nadal przyjmuje
+semantic event bez metadata. Wydawanie numerów wymaga serializowanego kontekstu Application;
+metadata stamping należy do Application-side processing, a concurrent/ISR issuance pozostaje
+poza kontraktem. Realtime może później używać zmiany runtime ID/gap jako sygnałów spójności;
+snapshot pozostaje autorytatywny, bez replay/resync w F4.3. EVT-101 i EVT-102 pozostają otwarte.
+
 ```cpp
 #include <AquaCore/System/SystemService.h>
 

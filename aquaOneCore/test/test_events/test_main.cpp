@@ -8,6 +8,8 @@
 
 #include "AquaCore/Events/EventSink.h"
 
+void runEventMetadataTests();
+
 namespace {
 
 using AquaCore::Events::EventSink;
@@ -139,6 +141,7 @@ void runTests() {
     RUN_TEST(testDistinctEventTypesAndNonTrivialPayload);
     RUN_TEST(testBorrowedStackSinkAndCallerOwnedTemporary);
     RUN_TEST(testExplicitNullSink);
+    runEventMetadataTests();
 }
 
 } // namespace
