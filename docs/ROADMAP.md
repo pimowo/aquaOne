@@ -17,8 +17,8 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 
 1. **FAZA 1 — System / Lifecycle / Identity / Core↔Domain foundation (CLOSED)**: dostarczony system/runtime state model, startup plan/result/report, ApplicationRuntime startup foundation, recovery semantics, runtime Health/Safety ownership, restart request policy, RuntimeIdentity TARGET, DeviceIdentity TARGET, Core↔Domain TARGET boundary oraz native System test foundation. Zaakceptowane kontrakty TARGET nie oznaczają pełnej implementacji CURRENT.
 2. **FAZA 2 — Logging / Storage / Config (CLOSED)**: dostarczone logging, storage foundation i neutralny config lifecycle z recovery integration.
-3. **FAZA 3 — Commands / Safety (REQUIRED NEXT)**: wspólna ścieżka komend, policy i Action Locks.
-4. **FAZA 4 — Events / Alarms**: snapshot, event contracts i lifecycle alarmów.
+3. **FAZA 3 — Commands / Safety (CLOSED)**: wspólna ścieżka komend, policy i Action Locks.
+4. **FAZA 4 — Events / Alarms (REQUIRED NEXT)**: snapshot, event contracts i lifecycle alarmów.
 5. **FAZA 5 — Maintenance**: wspólne workflow maintenance, restartu i przygotowania domeny.
 6. **FAZA 6 — Diagnostics / Registry**: provider/capability diagnostics i jawny registry.
 7. **FAZA 7 — Time / Network adaptation**: dopasowanie istniejących usług do kontraktów vNext.
