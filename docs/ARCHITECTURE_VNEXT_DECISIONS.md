@@ -1970,6 +1970,24 @@ SafetyState. Niesafety-critical lock nie implikuje globalnego safety lock.
 ### ALM-001 — rozdział pojęć alarmowych
 Warning, alarm, fault i safety lock są różne. ACK nie oznacza CLEAR, a alarm nie oznacza automatycznie Safety Lock.
 
+### ALM-101 — alarm state foundation — częściowo ACCEPTED
+
+F4.4 ustala minimalną mechanikę jednego alarmu: Domain/project posiada typed alarm ID,
+definiuje condition i wybiera niezmienną per-instancja latched policy; Core nie definiuje
+globalnego katalogu ani nie interpretuje ID. `AlarmState<AlarmId>` przechowuje osobno
+`conditionActive`, `alarmActive`, `acknowledged` i `latched`, udostępnia snapshot wartościowy
+oraz mały wynik przejścia. Nowa instancja jest nieaktywna i niepotwierdzona. Powtarzany
+sample condition jest idempotentny. ACK dotyczy bieżącej aktywacji, nie usuwa alarmu ani
+condition. Non-latched alarm gaśnie po ustaniu condition i resetuje ACK. Latched alarm
+pozostaje aktywny po ustaniu condition; jawny clear działa tylko przy nieaktywnym condition
+i resetuje ACK. Ponowne wystąpienie condition przed clear resetuje stare ACK. Wiele alarmów
+to niezależne, statycznie skomponowane instancje bez registry. CURRENT state jest volatile.
+
+Pozostają otwarte: persistence latch/ACK przez restart, registry/enumeration, reason metadata,
+severity descriptor, timestamps, counters/history, application ACK authorization, transport
+representation, Health/Safety mapping oraz Alarm/Event integration. Foundation nie emituje
+events i nie zapisuje Health/Safety; ALM-101 nie jest w całości zamknięte.
+
 ### HW-001 — trzy poziomy hardware
 Rozdzielamy generic technical abstractions, concrete hardware drivers i domain hardware interfaces. BoardProfile należy do projektu.
 
@@ -2002,7 +2020,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 - CMD-102 — idempotency i deduplication;
 - EVT-101 (pozostały zakres) — pełny envelope, payload representation, timestamps, categories, priority, queue/backpressure, serialization, fan-out i wire format;
 - EVT-102 — snapshot schema oraz relacja snapshot/HTTP/realtime;
-- ALM-101 — wspólny API alarmów i zakres capability;
+- ALM-101 (pozostały zakres) — persistence, registry/enumeration, metadata/severity/history, ACK authorization, transport, Health/Safety mapping i Alarm/Event integration;
 - SAF-101 — dokładne reason IDs, priority/metadata oraz szerszy publiczny Action Lock API (poza częściowo zaakceptowaną F3.4 foundation);
 - MNT-101 — kontrakt przygotowania domeny do maintenance;
 - DIAG-101 — lista providerów/capability diagnostycznych;

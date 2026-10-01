@@ -119,6 +119,11 @@ metadata stamping należy do Application-side processing, a concurrent/ISR issua
 poza kontraktem. Realtime może później używać zmiany runtime ID/gap jako sygnałów spójności;
 snapshot pozostaje autorytatywny, bez replay/resync w F4.3. EVT-101 i EVT-102 pozostają otwarte.
 
+**CURRENT F4.4 — alarm state foundation:** `AlarmState<AlarmId>` przechowuje ulotny stan
+pojedynczego alarmu z typed ID należącym do Domain. Rozróżnia condition od aktywności alarmu,
+ACK od clear i opcjonalny latch wybrany przy konstrukcji. Nie mapuje alarmu na Health/Safety
+i nie emituje events; persistence, transport i pozostały zakres ALM-101 są nadal otwarte.
+
 ```cpp
 #include <AquaCore/System/SystemService.h>
 
@@ -708,7 +713,7 @@ Brak zewnętrznych bibliotek — Core pozostaje lekki.
 - **MQTT Module** — Message broker integration
 - **Core OTA** — Shared firmware update orchestration, signing and rollback
 - **Home Assistant Integration** — Discovery and entity mapping
-- **Alarm/Safety** — Shared contracts are documented, but no Core module exists yet
+- **Alarm/Safety** — alarm state foundation i Action Lock foundation są CURRENT; pełny framework pozostaje planowany
 
 Doser W1.5 ma lokalne OTA jako **CURRENT**. Nie jest to implementacja wspólnego Core OTA,
 które pozostaje **TARGET/FUTURE**.
@@ -721,7 +726,7 @@ które pozostaje **TARGET/FUTURE**.
 - MQTT module
 - shared Core OTA
 - Home Assistant integration
-- Alarm/Safety Core modules
+- pełne Alarm/Safety Core modules
 - Generic TimezoneProvider (Europe/Warsaw is hardcoded dla teraz)
 
 **Znane ograniczenia:**
