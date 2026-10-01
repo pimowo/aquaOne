@@ -95,6 +95,13 @@ dla `SystemRecovery`: per-command safety exceptions, handler/result i konkretne
 workflow (w tym restart/config repair) wymagają dalszego kontraktu. Autonomous
 Domain control nadal pozostaje poza external command pipeline.
 
+**CURRENT F4.1 — typed semantic event emission:** `AquaCore::Events::EventSink<Event>`
+ustanawia kierunek Domain → Application przez wymagany borrowed sink. Typ eventu należy do
+Domain; `emit(const Event&)` jest synchronicznym przekazaniem best-effort bez gwarancji
+dostarczenia. Composition Root posiada sink i może jawnie użyć `NullEventSink<Event>`.
+Foundation nie alokuje heap i nie definiuje globalnego envelope, metadata RuntimeIdentity,
+sequence ani transportu. EVT-101 i EVT-102 pozostają otwarte w pozostałym zakresie.
+
 ```cpp
 #include <AquaCore/System/SystemService.h>
 

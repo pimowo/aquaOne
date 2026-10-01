@@ -177,8 +177,9 @@ ominięcia policy lub Safety.
 Semantic events płyną z Domain przez wąski, jawnie wstrzyknięty `DomainEventSink` albo
 równoważny non-owning callback contract do adaptera aplikacyjnego.
 Sink i jego context muszą żyć co najmniej tak długo, jak emitujący moduł może ich używać. Domain nie przejmuje ownership, nie dopuszcza dangling callback/context i nie wykonuje heap ownership transfer. Domain nie publikuje MQTT ani
-WebSocket i nie zna transportu. ARCH-101 ustala ten kierunek i ownership; EVT-101 rozstrzygnie
-dokładne sygnatury, typy zdarzeń, lifetime, delivery/buffering, envelope, priorytety i sequence.
+WebSocket i nie zna transportu. ARCH-101 ustala ten kierunek i ownership; F4.1 ustala
+typed sink, sygnaturę `emit(const Event&)` i borrowed lifetime. Pozostały zakres EVT-101
+obejmuje delivery/buffering, envelope, priorytety i sequence.
 Implementacja musi pozostać statyczna, bounded i bez dynamicznego event busa.
 
 Domain może wystawić `DomainHealthProvider` i `DomainSafetyProvider`, które zwracają bieżące
@@ -1732,6 +1733,19 @@ Snapshot jest autorytatywnym stanem. Realtime i Event informują o zmianach, ale
 ### EVT-002 — resync
 W V1 nie ma event replay. Po reconnect, reboot albo wykryciu niespójności klient wykonuje pełny resync.
 
+### EVT-101 — semantic event emission — częściowo ustalone w F4.1
+
+CURRENT F4.1 udostępnia `AquaCore::Events::EventSink<Event>`: typ semantic event należy do Domain,
+a Domain emituje go przez wymagany, pożyczany, transport-neutralny sink należący do
+Application/Composition Root. `emit(const Event&)` jest synchronicznym przekazaniem `void`
+bez gwarancji dostarczenia przez transport; event należy do wywołującego i jest ważny przez
+czas wywołania. Adapter musi skopiować dane, jeśli potrzebuje ich później. Jawny
+`NullEventSink<Event>` pozwala Composition Root odrzucać eventy. Nie ma globalnego busa.
+
+EVT-101 pozostaje DECISION REQUIRED dla globalnego envelope, RuntimeIdentity metadata,
+szerokości i overflow sequence, timestampów, kategorii, priorytetów, kolejek/backpressure,
+serializacji, fan-out i wire format. EVT-102 pozostaje DECISION REQUIRED.
+
 ### CFG-001 — rozdział konfiguracji
 CoreConfig, DomainConfig, DomainState, SystemState i RuntimeState są rozdzielone. RuntimeState nie jest persistent.
 
@@ -1966,7 +1980,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 - CFG-102 — zakres DomainState w backupie;
 - CMD-101 (pozostały zakres) — command envelope, source metadata, stable machine error code, async operation identity, request/correlation ID i wire representation;
 - CMD-102 — idempotency i deduplication;
-- EVT-101 — event envelope, priority i sequence format;
+- EVT-101 (pozostały zakres) — globalny envelope, RuntimeIdentity metadata, sequence width/overflow, timestamps, categories, priority, queue/backpressure, serialization, fan-out i wire format;
 - EVT-102 — snapshot schema oraz relacja snapshot/HTTP/realtime;
 - ALM-101 — wspólny API alarmów i zakres capability;
 - SAF-101 — dokładne reason IDs, priority/metadata oraz szerszy publiczny Action Lock API (poza częściowo zaakceptowaną F3.4 foundation);
