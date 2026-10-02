@@ -131,6 +131,13 @@ ale ACK nie przeżywa restartu, a Domain ponownie ocenia live condition. Clear w
 oceny i nie usuwa aktywnego condition. Application otrzymuje borrowed `AlarmControl<AlarmId>`
 do ACK/clear bez dostępu do ustawiania condition; Auth i transport pozostają poza tym API.
 
+**CURRENT F4.6 — alarm events i providers:** `AlarmEventEmitter<AlarmId>` przekazuje przez
+borrowed `EventSink` semantic event tylko dla istotnego przejścia; snapshot AlarmState pozostaje
+źródłem bieżącego stanu. Restore i duplicate input nie tworzą nowego occurrence. Application
+może później dodać EventMetadata. `AlarmHealthProvider` i `AlarmSafetyProvider` czytają
+aktualny alarm przez jawne project-owned policy callbacks; ACK, severity ani samo istnienie
+alarmu nie narzucają Health/Safety mapping. Nie ma globalnego alarm registry.
+
 ```cpp
 #include <AquaCore/System/SystemService.h>
 

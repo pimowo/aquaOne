@@ -1762,6 +1762,13 @@ serializowany kontekst Application;
 concurrent/ISR issuance nie jest zagwarantowana. Obserwacja reboot/gap nie implementuje
 resync ani replay.
 
+CURRENT F4.6 dodaje typed `AlarmEvent<AlarmId>` z rodzajem przejścia i snapshotem po zmianie.
+Application-side emitter przekazuje go synchronicznie przez borrowed `EventSink`; `NoChange`
+i pierwsza ocena condition odtworzonego latcha nie tworzą eventu, a restore nie udaje świeżej
+aktywacji. AlarmState nie zna EventSink. Event nie jest historią ani autorytatywnym stanem:
+po gap/reboot przyszły consumer musi odczytać pełny snapshot. Metadata stamping pozostaje
+po stronie Application, bez envelope, transportu i replay w F4.6.
+
 EVT-101 pozostaje DECISION REQUIRED dla pełnego envelope, payload representation,
 timestampów, kategorii, priorytetów, kolejek/backpressure, serializacji, fan-out i wire
 format. EVT-102 pozostaje DECISION REQUIRED.
@@ -2001,10 +2008,20 @@ durable bitu; ACK, recovery i reoccurrence pending latch nie wymagają zmiany te
 Storage write failure nie rollbackuje live alarmu; ryzyko po restarcie wymaga późniejszej
 diagnostyki/policy. Foundation nie zna StorageService, kluczy ani formatu rekordu.
 
+F4.6 rozdziela stan, semantic transition event i Health/Safety policy. Adapter emituje
+event tylko dla realnej zmiany; `NoChange` i restore nie tworzą occurrence. `AlarmHealthProvider`
+i `AlarmSafetyProvider` czytają aktualny snapshot w chwili pull przez jawne policy callbacki
+należące do projektu/Application. Callback może mapować wybrane `alarmActive` albo
+`conditionActive` na contribution; Core nie branchuje po AlarmId ani severity. ACK nie zmienia
+contribution automatycznie. Brak albo błędny wynik callbacka daje fail-safe FAULT/LOCKED.
+Wiele alarmów składa się statycznie, a RuntimeStateCoordinator nadal sam agreguje Health/Safety.
+AlarmState nie emituje eventów i nie zapisuje tych osi; Action Locks pozostają osobną policy.
+
 Pozostają otwarte: physical storage schema/keys/versioning, registry/enumeration, reason
 metadata, severity descriptor, timestamps, counters/history, application ACK authorization
-workflow, transport representation, Health/Safety mapping, Alarm/Event integration oraz
-bogatsza diagnostyka. Foundation nie emituje events i nie zapisuje Health/Safety;
+workflow, transport representation, dokładne project mappings i bogatsza diagnostyka.
+EVT-101 pozostaje częściowo otwarte, a EVT-102 nadal wymaga decyzji o snapshot/transport
+schema i resync; AlarmEvent jest tylko transition notification, nie historią.
 ALM-101 nie jest w całości zamknięte.
 
 ### HW-001 — trzy poziomy hardware
@@ -2039,7 +2056,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 - CMD-102 — idempotency i deduplication;
 - EVT-101 (pozostały zakres) — pełny envelope, payload representation, timestamps, categories, priority, queue/backpressure, serialization, fan-out i wire format;
 - EVT-102 — snapshot schema oraz relacja snapshot/HTTP/realtime;
-- ALM-101 (pozostały zakres) — physical storage schema/keys/versioning, registry/enumeration, metadata/severity/history, ACK authorization workflow, transport, Health/Safety mapping i Alarm/Event integration;
+- ALM-101 (pozostały zakres) — physical storage schema/keys/versioning, registry/enumeration, metadata/severity/history, ACK authorization workflow, transport, dokładne project mappings i bogatsza diagnostyka;
 - SAF-101 — dokładne reason IDs, priority/metadata oraz szerszy publiczny Action Lock API (poza częściowo zaakceptowaną F3.4 foundation);
 - MNT-101 — kontrakt przygotowania domeny do maintenance;
 - DIAG-101 — lista providerów/capability diagnostycznych;

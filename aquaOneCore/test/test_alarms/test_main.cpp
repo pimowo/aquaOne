@@ -9,6 +9,8 @@
 #include "AquaCore/Alarms/AlarmControl.h"
 #include "AquaCore/Alarms/AlarmState.h"
 
+void runAlarmIntegrationTests();
+
 namespace {
 
 using AquaCore::Alarms::AlarmControl;
@@ -317,6 +319,7 @@ void runTests() {
     RUN_TEST(testClearDoesNotRequireAck);
     RUN_TEST(testRestoreAfterControlAttemptIsRejected);
     RUN_TEST(testNonLatchedRestartStartsInactiveAndReevaluatesCondition);
+    runAlarmIntegrationTests();
 }
 
 } // namespace
