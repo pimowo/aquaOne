@@ -1987,8 +1987,8 @@ wartość stanu dają `InvalidState`, a nielegalny request daje `InvalidRequest`
 Guard przyjmuje tylko `OperationalState`, nie zapisuje stanu, nie wywołuje Domain i nie
 zmienia Health/Safety. `ApplicationRuntime` pozostaje CURRENT jedynym writerem
 `OperationalState`; F5.1 nie dodaje transition API ani drugiego writera. Maintenance nie
-jest utrwalane: nowa instancja runtime zaczyna od `BOOTING`. Obecne ścieżki komend
-`NormalDomain` i `SystemRecovery` nadal blokują `MAINTENANCE`.
+jest utrwalane: nowa instancja runtime zaczyna od `BOOTING`. Ścieżki `NormalDomain` i
+`SystemRecovery` nie są ścieżką Maintenance.
 
 F5.2 ustala jeden synchroniczny, borrowed `MaintenanceParticipant` dla project/Domain.
 Composition Root posiada concrete object i utrzymuje go co najmniej przez życie przyszłego
@@ -2029,9 +2029,27 @@ mapowanie `MAINTENANCE` na `FAULT + LOCKED`. Nie powstaje automatyczny restart;
 `ERROR` odrzuca następne Maintenance transitions, a recovery używa osobnej ścieżki
 `SystemRecovery` z SYS-105. Historyczny `StartupReport` pozostaje bez zmian.
 
-MNT-101 pozostaje PARTIALLY ACCEPTED. Otwarte są command policy, relacja z
-restart-required, autonomous processing boundary, ewentualna obsługa wielu participantów
-oraz Maintenance events/diagnostics.
+F5.4 dodaje `CommandClass::Maintenance` i typed `MaintenanceCommandKind`:
+`Enter`, `Operation`, `Exit`. Osobny `RuntimeMaintenanceCommandPolicyGate<Command>` czyta
+live `RuntimeStatus` przy każdym wywołaniu i fail-closed wymaga poprawnych status/class/kind
+resolverów, legalnej klasy `Maintenance`, legalnego rodzaju komendy oraz poprawnego stanu.
+Nielegalna klasa, kind, stan, brak zależności albo mismatch blokuje politykę przed Safety
+i handlerem. Istniejące `NormalDomain` i `SystemRecovery` gates pozostają przypisane do
+swoich klas i odrzucają Maintenance; Maintenance gate odrzuca obie pozostałe klasy.
+
+Polityka deleguje idempotency Enter/Exit do F5.3: pozwala na oba rodzaje przejścia w
+`RUNNING` i `MAINTENANCE`, gdzie semantyczne API `ApplicationRuntime` zwraca
+`AlreadyInTargetState` dla requestu w stanie docelowym. `Operation` jest dozwolona wyłącznie
+w `MAINTENANCE`; w `RUNNING`, `BOOTING` i `ERROR` jest blokowana. `ERROR` pozostaje osobną
+ścieżką `SystemRecovery`. Gate ocenia tylko OperationalState i nie czyta Health/Safety.
+Zezwolenie operacyjne nie omija ani nie definiuje dalszej Safety/Action Lock policy:
+CommandPipeline nadal wykonuje osobny Safety stage po pozytywnej policy.
+F5.4 ustanawia granicę klasyfikacji i policy, nie tworzy command handlera, konkretnej
+operacji, `DomainCommandResult` dla aplikacji ani event history.
+
+MNT-101 pozostaje PARTIALLY ACCEPTED. Otwarte są konkretne Maintenance operations,
+per-operation Safety/Action Lock policy, relacja z restart-required, autonomous processing
+boundary, ewentualna obsługa wielu participantów oraz Maintenance events/diagnostics.
 
 ### ALM-001 — rozdział pojęć alarmowych
 Warning, alarm, fault i safety lock są różne. ACK nie oznacza CLEAR, a alarm nie oznacza automatycznie Safety Lock.

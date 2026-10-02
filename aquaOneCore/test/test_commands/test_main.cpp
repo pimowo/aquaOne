@@ -12,6 +12,7 @@
 
 void runRuntimeCommandSafetyGateTests();
 void runRuntimeCommandPolicyGateTests();
+void runRuntimeMaintenanceCommandPolicyGateTests();
 
 namespace {
 
@@ -435,6 +436,7 @@ void runTests() {
     RUN_TEST(test_pipeline_does_not_mutate_input_command);
     runRuntimeCommandSafetyGateTests();
     runRuntimeCommandPolicyGateTests();
+    runRuntimeMaintenanceCommandPolicyGateTests();
 }
 
 } // namespace

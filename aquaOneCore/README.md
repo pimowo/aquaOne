@@ -143,7 +143,7 @@ alarmu nie narzucają Health/Safety mapping. Nie ma globalnego alarm registry.
 albo odmowę dla nielegalnego stanu/requestu. Nie zapisuje `OperationalState` ani nie
 zmienia Health/Safety. `ApplicationRuntime` pozostaje jedynym writerem stanu operacyjnego;
 F5.1 nie implementuje participanta ani workflow wejścia/wyjścia. MNT-101 jest
-PARTIALLY ACCEPTED, a obecne command paths nadal blokują `MAINTENANCE`.
+PARTIALLY ACCEPTED; `NormalDomain` i `SystemRecovery` nie są ścieżką Maintenance.
 
 **CURRENT F5.2 — Maintenance participant foundation:** jeden borrowed
 `MaintenanceParticipant` wykonuje synchroniczne `prepareEnter()` / `prepareExit()` i zwraca
@@ -156,7 +156,13 @@ synchroniczne `RUNNING ↔ MAINTENANCE` z jednym borrowed participantem. Tylko `
 zatwierdza stan docelowy; `Rejected` zachowuje stan źródłowy. `Failed` lub nielegalny
 wynik przechodzi do `ERROR`, a coordinator utrzymuje `FAULT + LOCKED` także po refresh.
 `ApplicationRuntime` pozostaje jedynym writerem `OperationalState`; nie ma automatycznego
-restartu. Command policy i autonomous processing boundary pozostają późniejszym zakresem.
+restartu. Concrete service commands i autonomous processing boundary są poza F5.3.
+
+**CURRENT F5.4 — Maintenance command policy foundation:** `CommandClass` ma klasę
+`Maintenance`, a osobny typed gate rozróżnia `Enter`, `Operation` i `Exit`. Enter/Exit
+przechodzą w `RUNNING` i `MAINTENANCE`, pozostawiając idempotency F5.3; `Operation` jest
+dozwolone wyłącznie w `MAINTENANCE`. Gate czyta live `OperationalState` i blokuje fail-closed.
+Safety policy pozostaje osobnym etapem, a konkretne operacje nie są jeszcze zaimplementowane.
 
 ```cpp
 #include <AquaCore/System/SystemService.h>
