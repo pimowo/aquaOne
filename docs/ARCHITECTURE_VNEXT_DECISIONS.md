@@ -1990,10 +1990,28 @@ zmienia Health/Safety. `ApplicationRuntime` pozostaje CURRENT jedynym writerem
 jest utrwalane: nowa instancja runtime zaczyna od `BOOTING`. Obecne ścieżki komend
 `NormalDomain` i `SystemRecovery` nadal blokują `MAINTENANCE`.
 
-MNT-101 pozostaje otwarte dla participant API, przygotowania i wznowienia Domain,
-odmowy przed skutkami ubocznymi, częściowej lub niepewnej awarii, fail-safe/ERROR
-escalation, wielu participantów, command policy, operacji Maintenance oraz relacji z
-restart-required. F5.1 nie wykonuje workflow i nie rozstrzyga tych skutków.
+F5.2 ustala jeden synchroniczny, borrowed `MaintenanceParticipant` dla project/Domain.
+Composition Root posiada concrete object i utrzymuje go co najmniej przez życie przyszłego
+orchestratora; Core go nie usuwa. `prepareEnter()` i `prepareExit()` wykonują potrzebne
+project-specific przygotowanie przed zwróceniem wyniku, bez async completion. `Prepared`
+potwierdza ukończenie wymaganych działań i gotowość do późniejszego commit target state
+przez lifecycle ownera; sam participant nie zapisuje `OperationalState`. `Rejected` jest
+oczekiwaną odmową: nie pozostawia nierozliczonych skutków przejścia, source mode nadal
+jest prawdziwy i bezpieczny do deklarowania, a sama odmowa nie wymaga fail-safe escalation.
+`Failed` oznacza brak gwarancji poprawności source lub target mode; przyszła orkiestracja
+nie może commitować target ani traktować wyniku jak `Rejected` i musi przejść ścieżką
+fail-safe bez deklarowania zwykłego source/target bez osobnego dowodu recovery. Concrete
+participant może lokalnie wycofać swoje skutki i zwrócić `Rejected`; Core nie oferuje
+rollback API. Nielegalny wynik callbacka przyszła orkiestracja musi traktować fail-safe.
+
+Participant nie otrzymuje `RuntimeStatus`, nie posiada lifecycle state i nie pisze Health/
+Safety. Intrinsic safety pozostaje aktywne podczas przygotowania; Core nie zna hardware
+ani szczegółów Domain. F5.1 `AlreadyInTargetState` kończy żądanie bez wywołania
+participanta. F5.2 nie definiuje listy participantów, wydarzeń, komend ani restartu.
+
+MNT-101 pozostaje otwarte dla dokładnej orkiestracji F5.3, mechanizmu fail-safe/ERROR i
+Health/Safety po `Failed`, obsługi nielegalnego wyniku, command policy, relacji z
+restart-required, wielu participantów oraz Maintenance events/diagnostics.
 
 ### ALM-001 — rozdział pojęć alarmowych
 Warning, alarm, fault i safety lock są różne. ACK nie oznacza CLEAR, a alarm nie oznacza automatycznie Safety Lock.
@@ -2079,7 +2097,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 - EVT-102 — snapshot schema oraz relacja snapshot/HTTP/realtime;
 - ALM-101 (pozostały zakres) — physical storage schema/keys/versioning, registry/enumeration, metadata/severity/history, ACK authorization workflow, transport, dokładne project mappings i bogatsza diagnostyka;
 - SAF-101 — dokładne reason IDs, priority/metadata oraz szerszy publiczny Action Lock API (poza częściowo zaakceptowaną F3.4 foundation);
-- MNT-101 (pozostały zakres) — participant API, przygotowanie/wznowienie domeny, failure semantics, command policy, wielu participantów i restart-required;
+- MNT-101 (pozostały zakres) — orkiestracja przejść, mechanizm fail-safe/ERROR po Failed, command policy, wielu participantów, restart-required i events/diagnostics;
 - DIAG-101 — lista providerów/capability diagnostycznych;
 - REG-101 — nazwy providerów, API registry i limity;
 - WEB-101 — public/auth policy endpointów;
