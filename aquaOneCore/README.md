@@ -395,7 +395,11 @@ auto snapshot = diagnostics.snapshot();
 service `DiagnosticProvider<Snapshot>` dostarcza caller-owned typed snapshot przez borrowed
 `read(out) const`. `Success` oznacza ważny bieżący snapshot; przy `Unavailable` output nie
 jest ważny. Jest to wyłącznie read-only projekcja, bez automatycznego mapowania na
-Health/Safety. Registry oraz konkretne Core/Domain providers pozostają przyszłym zakresem.
+Health/Safety. **CURRENT F6.2** dodaje niezależne, read-only Core projections live
+`RuntimeStatus`, ukończonego startup report, `RuntimeIdentity`, gotowej `DeviceIdentity`,
+`ConfigLifecycleStatus` i istniejącego `StorageStatus`. Providers czytają authoritative
+owners bez duplikowania mutable authority; runtime i config failure są poprawnymi odczytami.
+Registry oraz Domain providers nadal nie istnieją.
 
 **Zastosowanie:**
 - aquaOneLuma ✅

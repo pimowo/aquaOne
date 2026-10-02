@@ -2176,12 +2176,21 @@ jawnej policy. Snapshoty nie mogą ujawniać haseł, tokenów, kluczy prywatnych
 Wi-Fi credentials ani MQTT passwords. SSID/AP SSID nie są tym samym co sekret,
 lecz ich widoczność w transporcie pozostaje osobną decyzją projekcji.
 
-F6.1 nie zmienia CURRENT legacy `DiagnosticsService` ani jego `DiagnosticsSnapshot`.
-Nie dodaje providerów konkretnych Core facts, Domain migration, Registry,
-serializacji ani transportu. Foundation działa przy statycznej kompozycji bez
-wymaganego heap, `std::function`, RTTI i wyjątków. Pozostają otwarte: Core provider
-set, Registry/enumeration, descriptors/IDs, transport visibility, timestampy,
-bogatsze failure metadata oraz konwencje liczników.
+F6.1 ustanowiła provider contract, a F6.2 dodaje niezależne read-only Core projections
+live `RuntimeStatus`, ukończonego `StartupReport`, `RuntimeIdentity`, dostępnej
+`DeviceIdentity`, `ConfigLifecycleStatus` i istniejącego `StorageStatus`. Każdy provider
+pożycza authoritative owner i odczytuje jego bieżące facts; nie utrwala drugiej mutable
+kopii. `RuntimeStatus` jest odczytywany na żywo, a ukończony `StartupReport` pozostaje
+historyczny i immutable. Failed startup oraz runtime/config failure są danymi, których
+odczyt zwraca `Success`; `Unavailable` oznacza brak legalnego snapshotu, np. przed
+ukończeniem startupu albo przed inicjalizacją identity/systemu. Identity są udostępniane
+tylko z istniejących ownerów; config values i secrets nie należą do projekcji.
+Storage udostępnia istniejący status, bez dodawania „last result” cache. Sticky Maintenance
+failure pozostaje wewnętrzny, bo nie ma legalnego read-only API. Projekcje są bounded,
+caller-owned i nie dodają required heap. F6.2 nie zmienia legacy `DiagnosticsService`,
+nie dodaje Domain migration, Registry, IDs/descriptors, serializacji ani transportu.
+DIAG-101 pozostaje PARTIALLY ACCEPTED; otwarte są Registry/enumeration, transport visibility,
+timestampy, bogatsze failure metadata, konwencje liczników i richer hardware diagnostics.
 
 ## DECISION REQUIRED
 
@@ -2194,7 +2203,7 @@ bogatsze failure metadata oraz konwencje liczników.
 - ALM-101 (pozostały zakres) — physical storage schema/keys/versioning, registry/enumeration, metadata/severity/history, ACK authorization workflow, transport, dokładne project mappings i bogatsza diagnostyka;
 - SAF-101 — dokładne reason IDs, priority/metadata oraz szerszy publiczny Action Lock API (poza częściowo zaakceptowaną F3.4 foundation);
 - MNT-101 (pozostały zakres) — konkretne operations, per-operation Safety/Action Lock policy, wielu participantów, events/diagnostics i domain-specific HIL behavior;
-- DIAG-101 (pozostały zakres) — Core provider set, Registry/enumeration, descriptors/IDs, transport visibility, timestampy, richer failure metadata i konwencje liczników;
+- DIAG-101 (pozostały zakres) — dalsze Core facts poza projekcjami F6.2, Registry/enumeration, descriptors/IDs, transport visibility, timestampy, richer failure metadata i konwencje liczników;
 - REG-101 — nazwy providerów, API registry i limity;
 - WEB-101 — public/auth policy endpointów;
 - WEB-102 — API HTTP i kompatybilność z obecnym Web Core;

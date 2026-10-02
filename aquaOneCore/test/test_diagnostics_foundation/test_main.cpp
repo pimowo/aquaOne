@@ -8,6 +8,8 @@
 
 #include "AquaCore/Diagnostics/DiagnosticProvider.h"
 
+void runCoreDiagnosticProviderTests();
+
 using AquaCore::Diagnostics::DiagnosticProvider;
 using AquaCore::Diagnostics::DiagnosticReadResult;
 
@@ -127,6 +129,7 @@ void runTests() {
     RUN_TEST(testUnavailableDoesNotPublishOutput);
     RUN_TEST(testTypedProvidersAreIndependent);
     RUN_TEST(testInvalidResultAlsoLeavesNoValidSnapshot);
+    runCoreDiagnosticProviderTests();
 }
 
 #if defined(ARDUINO)

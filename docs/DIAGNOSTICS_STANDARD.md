@@ -1394,6 +1394,7 @@ Projekt domenowy odpowiada za:
 
 Diagnostyka ma być na tyle szczegółowa, aby znaleźć problem, ale na tyle lekka, aby sama nie stała się problemem.
 
-**Core CURRENT zapewnia stały legacy snapshot wybranych modułów technicznych oraz F6.1 typed
-provider foundation. Rejestr providerów, konkretne rozszerzalne projekcje Core/Domain i ich
-widoczność w transportach pozostają TARGET. Domena definiuje znaczenie swoich sensorów i aktuatorów.**
+**Core CURRENT zapewnia stały legacy snapshot wybranych modułów technicznych, F6.1 typed
+provider foundation oraz niezależne read-only Core projections F6.2. Registry, enumeracja,
+projekcje Domain i ich widoczność w transportach pozostają TARGET. Domena definiuje znaczenie
+swoich sensorów i aktuatorów.**
