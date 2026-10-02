@@ -20,8 +20,8 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 3. **FAZA 3 — Commands / Safety (CLOSED)**: wspólna ścieżka komend, policy i Action Locks.
 4. **FAZA 4 — Events / Alarms (CLOSED)**: dostarczono CURRENT foundation snapshotów, eventów i lifecycle alarmów.
 5. **FAZA 5 — Maintenance (CLOSED)**: dostarczono foundation legalnych i idempotentnych przejść `RUNNING ↔ MAINTENANCE`, synchronicznego borrowed participant oraz `ApplicationRuntime` orchestration; tylko `Prepared` zatwierdza stan docelowy, a `Failed` lub nielegalny wynik prowadzi do `ERROR` i sticky `FAULT + LOCKED`. Dostarczono też osobną Maintenance command policy, normal processing wyłącznie w `RUNNING` z intrinsic safety poza gate, ulotny stan Maintenance i granicę restart-required jako osobnego system concern.
-6. **FAZA 6 — Diagnostics / Registry (REQUIRED NEXT)**: provider/capability diagnostics i jawny registry.
-7. **FAZA 7 — Time / Network adaptation**: dopasowanie istniejących usług do kontraktów vNext.
+6. **FAZA 6 — Diagnostics / Registry (CLOSED)**: dostarczono typed diagnostics foundation i statyczny registry do enumeracji.
+7. **FAZA 7 — Time / Network adaptation (REQUIRED NEXT)**: dopasowanie istniejących usług do kontraktów vNext.
 8. **FAZA 8 — HTTP + WebSocket feasibility spike**: jeden backend/port, reconnect, resync, OTA i pomiary.
 9. **FAZA 9 — Production Web + Realtime**: implementacja dopiero po pozytywnym spike.
 10. **FAZA 10 — MQTT**: wspólna infrastruktura po ustaleniu Commands/Events.
@@ -35,14 +35,20 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 W repozytorium istnieją używane moduły System, Config/Storage, Logging, Diagnostics,
 Network, Web i Time. Web jest synchroniczną legacy foundation; obecny WebSocket nie istnieje.
 Doser, Luma i Hydro są klientami CURRENT do późniejszej oceny, a nie wzorcem Architecture
-vNext. Fundamenty Commands/Safety (Phase 3), Events/Alarms (Phase 4) i Maintenance
-(Phase 5) są dostępne CURRENT. Konkretne Maintenance operations, per-operation Safety i
-ActionLock policy, wielu participantów, Maintenance Events/Diagnostics, pełny RestartRequester/
-SYS-107 workflow oraz domain/HIL behavior pozostają TARGET/FUTURE. Pełne rozszerzenia Events,
+vNext. Fundamenty Commands/Safety (Phase 3), Events/Alarms (Phase 4), Maintenance (Phase 5)
+oraz Diagnostics/Registry (Phase 6) są dostępne CURRENT: typed `DiagnosticProvider<Snapshot>` z
+caller-owned snapshots i semantyką `Success` / `Unavailable`, read-only Core projections,
+Domain diagnostics boundary bez duplicate authority oraz statyczny `DiagnosticRegistry<Entry>`
+do deterministycznej enumeracji caller-owned immutable entries, bez runtime registration,
+service locatora ani heterogeneous provider dispatch. Konkretne Maintenance operations,
+per-operation Safety i ActionLock policy, wielu participantów, Maintenance Events/Diagnostics,
+pełny RestartRequester/SYS-107 workflow oraz domain/HIL behavior pozostają TARGET/FUTURE. Pełne rozszerzenia Events,
 w tym envelope, transport projection, reconnect/resync, serializacja i replay/history, oraz
 alarm registry, severity, physical persistence schema, history/counters, bogatsza diagnostyka
-i transport również pozostają TARGET/FUTURE. Realtime, Registry, MQTT, OTA i Backup/Restore
-pozostają TARGET/FUTURE.
+i transport również pozostają TARGET/FUTURE. Descriptor schema, stable/global diagnostic IDs,
+transport visibility/projection, timestamp conventions, richer diagnostic/failure metadata,
+hardware-specific diagnostics, migracja legacy `DiagnosticsService` i real Domain migration
+pozostają TARGET/FUTURE. Realtime, MQTT, OTA i Backup/Restore również pozostają TARGET/FUTURE.
 
 ## Zasady bramki
 
