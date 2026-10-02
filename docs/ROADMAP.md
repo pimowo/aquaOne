@@ -18,8 +18,8 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 1. **FAZA 1 — System / Lifecycle / Identity / Core↔Domain foundation (CLOSED)**: dostarczony system/runtime state model, startup plan/result/report, ApplicationRuntime startup foundation, recovery semantics, runtime Health/Safety ownership, restart request policy, RuntimeIdentity TARGET, DeviceIdentity TARGET, Core↔Domain TARGET boundary oraz native System test foundation. Zaakceptowane kontrakty TARGET nie oznaczają pełnej implementacji CURRENT.
 2. **FAZA 2 — Logging / Storage / Config (CLOSED)**: dostarczone logging, storage foundation i neutralny config lifecycle z recovery integration.
 3. **FAZA 3 — Commands / Safety (CLOSED)**: wspólna ścieżka komend, policy i Action Locks.
-4. **FAZA 4 — Events / Alarms (REQUIRED NEXT)**: snapshot, event contracts i lifecycle alarmów.
-5. **FAZA 5 — Maintenance**: wspólne workflow maintenance, restartu i przygotowania domeny.
+4. **FAZA 4 — Events / Alarms (CLOSED)**: dostarczono CURRENT foundation snapshotów, eventów i lifecycle alarmów.
+5. **FAZA 5 — Maintenance (REQUIRED NEXT)**: wspólne workflow maintenance, restartu i przygotowania domeny.
 6. **FAZA 6 — Diagnostics / Registry**: provider/capability diagnostics i jawny registry.
 7. **FAZA 7 — Time / Network adaptation**: dopasowanie istniejących usług do kontraktów vNext.
 8. **FAZA 8 — HTTP + WebSocket feasibility spike**: jeden backend/port, reconnect, resync, OTA i pomiary.
@@ -35,8 +35,11 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 W repozytorium istnieją używane moduły System, Config/Storage, Logging, Diagnostics,
 Network, Web i Time. Web jest synchroniczną legacy foundation; obecny WebSocket nie istnieje.
 Doser, Luma i Hydro są klientami CURRENT do późniejszej oceny, a nie wzorcem Architecture
-vNext. Wspólne Commands, Events, Alarms, Safety, Maintenance, Realtime, Registry, MQTT,
-OTA i Backup/Restore są jeszcze TARGET/FUTURE.
+vNext. Fundamenty Commands/Safety (Phase 3) i Events/Alarms (Phase 4) są dostępne CURRENT;
+pełne rozszerzenia, w tym event envelope, transport projection, reconnect/resync, serializacja,
+replay/history oraz alarm registry, severity, physical persistence schema, history/counters,
+bogatsza diagnostyka i transport, pozostają TARGET/FUTURE. Maintenance, Realtime, Registry,
+MQTT, OTA i Backup/Restore również pozostają TARGET/FUTURE.
 
 ## Zasady bramki
 
