@@ -15,6 +15,8 @@ using AquaCore::Time::UtcTimestamp;
 using AquaCore::Time::WallClock;
 using AquaCore::Time::WallClockReadResult;
 
+void runRtcWallClockTests();
+
 static_assert(std::is_abstract<MonotonicClock>::value,
     "MonotonicClock is a capability interface");
 static_assert(!std::has_virtual_destructor<MonotonicClock>::value,
@@ -219,6 +221,7 @@ void runTests() {
     RUN_TEST(testWallClockPreservesFull64BitValue);
     RUN_TEST(testWallClockMayMoveForward);
     RUN_TEST(testWallClockMayMoveBackward);
+    runRtcWallClockTests();
 #if defined(ARDUINO)
     RUN_TEST(testEsp32AdapterThroughBorrowedReference);
 #endif

@@ -581,6 +581,12 @@ value is usable; zero is a valid value on `Success`. Wall time may jump forward
 or backward, so `MonotonicClock` remains the capability for elapsed timing.
 RTC/NTP source arbitration and synchronization status remain open in TIME-101.
 
+F7.3 CURRENT adds `RtcWallClock`, a borrowed read-only projection of valid RTC
+UTC into `WallClock`. A valid RTC provides wall time offline; an uninitialized,
+unreadable, OSF/lost-power or invalid RTC yields `Unavailable`. Network and NTP
+are not required for the read. NTP remains an optional synchronizer, while
+local time and Europe/Warsaw DST remain a separate projection.
+
 Time module zawiera cztery komponenty: RtcService (DS3231), NtpService (synchronization),
 EuropeWarsawTimeService (UTC to local time conversion with DST) oraz ResilientTimeService
 (cache czasu, progi awarii i recovery RTC).

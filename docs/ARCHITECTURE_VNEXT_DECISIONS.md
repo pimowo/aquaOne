@@ -209,8 +209,8 @@ uprawnionemu adapterowi/workflow zgodnie z SYS-107 i nie jest obowiązkową zale
 
 F7.1 CURRENT foundation dodaje osobny `MonotonicClock`: 64-bitowe milisekundy,
 niemalejące w jednej runtime instance, bez trwałości między restartami. Nie reprezentuje
-daty ani UTC; korekty wall clock nie wpływają na jego odczyty. TIME-101 pozostaje
-DECISION REQUIRED dla polityki źródeł RTC/NTP/runtime.
+daty ani UTC; korekty wall clock nie wpływają na jego odczyty. Samo F7.1 nie
+rozstrzyga polityki źródeł RTC/NTP/runtime z TIME-101.
 
 F7.2 CURRENT foundation dodaje osobny `WallClock`: odczyt UTC w 64-bitowych sekundach
 od epoki Unix reprezentuje wartości nieujemne i ma jawny wynik `Success` albo
@@ -219,6 +219,21 @@ Sama wartość liczbowa, w tym zero, nie koduje dostępności. Wall clock może 
 w obie strony i nie służy do pomiaru czasu trwania ani retry; do tego służy
 `MonotonicClock`. TIME-101 nadal nie rozstrzyga tożsamości źródła, synchronizacji
 ani arbitrażu RTC/NTP.
+
+### TIME-101 — UTC wall-clock source boundary — PARTIALLY ACCEPTED
+
+`MonotonicClock` pozostaje osobną capability dla duration i runtime ordering.
+Consumer-facing `WallClock` wystawia wyłącznie UTC oraz jawną dostępność. F7.3 CURRENT
+dodaje read-only `RtcWallClock`: prawidłowy RTC jest legalnym offline source i daje
+`Success`, natomiast RTC niezainicjalizowany, niedostępny, z OSF/lost-power, błędem odczytu,
+niepoprawnym kalendarzem lub konwersją daje `Unavailable`. Brak Wi-Fi, Internetu lub NTP
+nie unieważnia prawidłowego RTC; NTP pozostaje opcjonalnym synchronizerem. Niedostępność
+RTC sama nie oznacza fatal startup, `FAULT`, Safety `LOCKED` ani restartu.
+
+UTC jest authority na tej granicy; `LocalTime` oraz Europe/Warsaw/DST pozostają późniejszą
+projekcją. Odczyt `RtcWallClock` nie zapisuje RTC, nie czyści OSF i nie uruchamia synchronizacji.
+Otwarte pozostają NTP → runtime/RTC synchronization, konflikty źródeł, drift/freshness,
+metadata synchronizacji oraz obserwowalność zmiany źródła; rozstrzygną je późniejsze kroki.
 
 Domain nie zależy od Network. Dane zewnętrzne trafiają przez adapter jako semantic input.
 Capability przekazywana Domain domyślnie nie ujawnia Wi-Fi/MQTT credentials, session tokens, auth secrets, private keys ani transport-specific credentials. Wyjątek wymaga osobnego, jawnego kontraktu dla rzeczywiście niezbędnego semantic inputu; capability nie może być boczną drogą do transport/session/auth internals.
