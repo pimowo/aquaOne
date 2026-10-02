@@ -48,12 +48,15 @@ Standard określa:
 
 Core 0.6.2 ma `DiagnosticsService` budujący stały snapshot techniczny z sekcji System, RTC,
 Storage oraz opcjonalnie NTP i Network. Doser ma osobny lokalny `DiagnosticsManager`.
+F6.1 dodaje osobny typed, borrowed `DiagnosticProvider<Snapshot>` z caller-owned output
+i wynikiem `Success` / `Unavailable`; nie zmienia legacy `DiagnosticsService`.
 
 ### Implementation: TARGET
 
-Dynamiczny rejestr providerów, health wszystkich modułów, ogólny mechanizm revision,
-freshness/stale, historia, MQTT, alarmy, Web, heap i diagnostyka domenowa opisane niżej są
-modelem docelowym. Nie są obecnym API Core.
+Rozszerzalny katalog providerów, health wszystkich modułów, ogólny mechanizm revision,
+freshness/stale, historia, MQTT, alarmy, Web i diagnostyka domenowa opisane niżej pozostają
+TARGET. Rejestr providerów będzie jawnie i statycznie składany bez wymaganego heap;
+szczegółowy API Registry pozostaje decyzją REG-101. Nie jest to obecne API Core.
 
 Granice odpowiedzialności:
 
@@ -236,7 +239,8 @@ alarms
 web
 ```
 
-Projekt domenowy może rejestrować dodatkowe moduły.
+Composition Root może jawnie uwzględnić dodatkowe moduły domenowe w przyszłym statycznym
+katalogu (REG-101).
 
 ---
 
@@ -1278,15 +1282,10 @@ ESP powinno pozostać lekkie.
 
 # 84. Rejestr modułów diagnostycznych
 
-Core powinien umożliwiać rejestrację health providerów.
-
-Przykład logiczny:
-
-```text
-registerHealthProvider(...)
-```
-
-Dzięki temu dashboard diagnostyczny nie jest zakodowany pod konkretne urządzenie.
+Docelowy katalog providerów diagnostycznych powinien być jawnie składany przez Composition
+Root z pożyczonych providerów. Nie oznacza to dynamicznej samorejestracji ani Registry
+służącego do wyszukiwania zależności. Dokładny API i limity pozostają REG-101; osobni
+`HealthProvider` / `SafetyProvider` zachowują własne kontrakty SYS-106.
 
 ---
 
@@ -1395,6 +1394,6 @@ Projekt domenowy odpowiada za:
 
 Diagnostyka ma być na tyle szczegółowa, aby znaleźć problem, ale na tyle lekka, aby sama nie stała się problemem.
 
-**Core CURRENT zapewnia stały snapshot wybranych modułów technicznych. Rozszerzalny health,
-rejestr providerów i diagnostyka domenowa pozostają TARGET. Domena definiuje znaczenie swoich
-sensorów i aktuatorów.**
+**Core CURRENT zapewnia stały legacy snapshot wybranych modułów technicznych oraz F6.1 typed
+provider foundation. Rejestr providerów, konkretne rozszerzalne projekcje Core/Domain i ich
+widoczność w transportach pozostają TARGET. Domena definiuje znaczenie swoich sensorów i aktuatorów.**

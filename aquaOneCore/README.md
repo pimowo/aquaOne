@@ -391,6 +391,12 @@ auto snapshot = diagnostics.snapshot();
 **API:**
 - `snapshot()` — Get current DiagnosticsSnapshot struct
 
+**CURRENT F6.1 — typed diagnostic provider foundation:** niezależny od powyższego legacy
+service `DiagnosticProvider<Snapshot>` dostarcza caller-owned typed snapshot przez borrowed
+`read(out) const`. `Success` oznacza ważny bieżący snapshot; przy `Unavailable` output nie
+jest ważny. Jest to wyłącznie read-only projekcja, bez automatycznego mapowania na
+Health/Safety. Registry oraz konkretne Core/Domain providers pozostają przyszłym zakresem.
+
 **Zastosowanie:**
 - aquaOneLuma ✅
 - aquaOneHydro ❌

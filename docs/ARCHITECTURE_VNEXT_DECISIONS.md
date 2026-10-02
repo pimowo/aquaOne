@@ -2155,6 +2155,34 @@ Sekrety nie mogą trafiać do status, diagnostics, logs, Realtime ani MQTT state
 ### DIAG-001 — rozdział diagnostyki
 CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze wspólnej infrastruktury.
 
+### DIAG-101 — typed diagnostic provider foundation — PARTIALLY ACCEPTED
+
+F6.1 dodaje neutralny `DiagnosticProvider<Snapshot>` z synchronicznym
+`read(Snapshot& out) const` i `DiagnosticReadResult::{Success, Unavailable}`.
+Snapshot jest typem należącym do konkretnego Core/Domain subsystemu, bez wspólnej klasy
+bazowej, generic key/value ani zależności od transportu. Caller posiada output storage;
+provider nie alokuje go, nie przejmuje własności i nie zatrzymuje referencji po powrocie.
+Concrete provider należy do Composition Root/project i jest pożyczany konsumentowi na
+cały okres użycia; nie jest usuwany przez bazowy pointer. `Success` oznacza ważny bieżący
+snapshot tylko dla tego odczytu. Przy `Unavailable` albo nielegalnym wyniku enum output
+nie jest ważny, niezależnie od jego zawartości; nie ma ukrytego „stale but valid”.
+Brak pointera do providera jest błędem kompozycji, nie wynikiem `Unavailable`.
+
+Diagnostic read jest wyłącznie read-only projekcją bieżących facts: nie steruje Domain,
+nie wykonuje komend, ACK/clear, zapisu config ani restartu i nie przejmuje authority
+`RuntimeStatus`, `AlarmState`, Events lub Logging. `Unavailable` nie mapuje się
+automatycznie na Health, Safety, Alarm ani command failure; wymagałoby to osobnej
+jawnej policy. Snapshoty nie mogą ujawniać haseł, tokenów, kluczy prywatnych,
+Wi-Fi credentials ani MQTT passwords. SSID/AP SSID nie są tym samym co sekret,
+lecz ich widoczność w transporcie pozostaje osobną decyzją projekcji.
+
+F6.1 nie zmienia CURRENT legacy `DiagnosticsService` ani jego `DiagnosticsSnapshot`.
+Nie dodaje providerów konkretnych Core facts, Domain migration, Registry,
+serializacji ani transportu. Foundation działa przy statycznej kompozycji bez
+wymaganego heap, `std::function`, RTTI i wyjątków. Pozostają otwarte: Core provider
+set, Registry/enumeration, descriptors/IDs, transport visibility, timestampy,
+bogatsze failure metadata oraz konwencje liczników.
+
 ## DECISION REQUIRED
 
 - Rozszerzenia identity poza IDN-101 v1 — BuildIdentity version grammar, HardwareIdentity platform/revision schema oraz future non-MAC DeviceId/source;
@@ -2166,7 +2194,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 - ALM-101 (pozostały zakres) — physical storage schema/keys/versioning, registry/enumeration, metadata/severity/history, ACK authorization workflow, transport, dokładne project mappings i bogatsza diagnostyka;
 - SAF-101 — dokładne reason IDs, priority/metadata oraz szerszy publiczny Action Lock API (poza częściowo zaakceptowaną F3.4 foundation);
 - MNT-101 (pozostały zakres) — konkretne operations, per-operation Safety/Action Lock policy, wielu participantów, events/diagnostics i domain-specific HIL behavior;
-- DIAG-101 — lista providerów/capability diagnostycznych;
+- DIAG-101 (pozostały zakres) — Core provider set, Registry/enumeration, descriptors/IDs, transport visibility, timestampy, richer failure metadata i konwencje liczników;
 - REG-101 — nazwy providerów, API registry i limity;
 - WEB-101 — public/auth policy endpointów;
 - WEB-102 — API HTTP i kompatybilność z obecnym Web Core;
