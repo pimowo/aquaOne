@@ -1291,6 +1291,8 @@ pointer/count zapewnia deterministyczną enumerację; nie wymaga heap, runtime r
 lookup zależności. `Entry` i ewentualne borrowed provider references definiuje projekt.
 Typed `DiagnosticProvider<Snapshot>` nadal wykonuje odczyt danych; Registry nie narzuca
 descriptor schema ani nie odczytuje różnych snapshotów przez wspólny interfejs.
+F6.5 potwierdza w testowej kompozycji, że Application enumeruje własne entries, a konkretne
+typed providers czyta osobno; Registry nie jest generic provider dispatcherem.
 Osobni `HealthProvider` / `SafetyProvider` zachowują własne kontrakty SYS-106.
 
 ---

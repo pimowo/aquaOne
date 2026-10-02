@@ -2176,6 +2176,9 @@ heterogeneous provider erasure, snapshot aggregation ani service locatora. Domai
 heap, RTTI, exceptions, mutexów ani platform API. Walidacja ewentualnych duplicate IDs należy
 do przyszłego project-owned descriptor contract, jeśli stable IDs zostaną przyjęte.
 Descriptor schema, stable IDs i transport projection pozostają poza REG-101 foundation.
+F6.5 potwierdza użycie bez nowego Core descriptor API: Application/project definiuje znaczenie
+`Entry` i ewentualny własny typed ID, a Registry tylko enumeruje. Jawnie skomponowane typed
+providers wykonują odczyty poza Registry; Registry nie jest provider dispatcherem.
 
 ### SEC-002 — ochrona sekretów
 Sekrety nie mogą trafiać do status, diagnostics, logs, Realtime ani MQTT state.
@@ -2223,6 +2226,8 @@ semantykę i concrete provider, który czyta live facts. Nie powstają wspólne 
 Domain base snapshot; counters mogą być bounded polami konkretnego typed snapshotu.
 F6.4 dodaje jedynie statyczną enumerację project-owned entries; nie odczytuje heterogenicznych
 snapshotów i nie rozstrzyga otwartego schema ani transport visibility.
+F6.5 pokazuje composition testowy: project-owned metadata nie jest diagnostic authority,
+a typed reads pozostają `DiagnosticProvider<Snapshot>`; descriptor/transport schema nadal są otwarte.
 
 ## DECISION REQUIRED
 

@@ -406,6 +406,9 @@ Dodano test-only fixture, bez migracji realnej domeny.
 **CURRENT F6.4** dodaje statyczny `DiagnosticRegistry<Entry>` z caller-owned entries i
 deterministyczną enumeracją. Nie ma lookup ani service locatora, runtime registration ani
 heterogeneous provider erasure; typed providers pozostają osobną granicą odczytu.
+**CURRENT F6.5** pokazuje testową kompozycję project-owned entries oraz oddzielnych typed
+Core/Domain providers. Registry tylko enumeruje metadata; odczyty odbywają się bezpośrednio
+przez providers, bez service locatora, type erasure i migracji realnej domeny.
 
 **Zastosowanie:**
 - aquaOneLuma ✅
