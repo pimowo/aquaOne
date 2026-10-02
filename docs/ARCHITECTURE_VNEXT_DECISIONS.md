@@ -1983,10 +1983,29 @@ pozostaje aktywny po ustaniu condition; jawny clear działa tylko przy nieaktywn
 i resetuje ACK. Ponowne wystąpienie condition przed clear resetuje stare ACK. Wiele alarmów
 to niezależne, statycznie skomponowane instancje bez registry. CURRENT state jest volatile.
 
-Pozostają otwarte: persistence latch/ACK przez restart, registry/enumeration, reason metadata,
-severity descriptor, timestamps, counters/history, application ACK authorization, transport
-representation, Health/Safety mapping oraz Alarm/Event integration. Foundation nie emituje
-events i nie zapisuje Health/Safety; ALM-101 nie jest w całości zamknięte.
+F4.5 ustala restart semantics: tylko `latchedPending` jest minimalną wartością do utrwalenia
+przez Application. Aktywny latched alarm eksportuje pending=true aż do jawnego clear;
+non-latched nie eksportuje pending. ACK, conditionActive, RuntimeStatus i historia nie są
+utrwalane. Po jednorazowym restore w nowym runtime pending latch jest aktywny i
+niepotwierdzony; Domain ponownie ocenia live condition. Pierwsza ocena jest wymagana przed
+clear, aby domyślne false nie udawało recovery sensora. Restore nie może nadpisać live
+state; pierwsza próba zużywa okno restore także przy niezgodnym pending=true dla
+non-latched instancji, bez częściowej zmiany stanu alarmu. Pierwsza pozytywna ocena
+odtworzonego latcha potwierdza condition bez udawania reoccurrence.
+
+Application otrzymuje wąskie borrowed `AlarmControl<AlarmId>` do ACK i clear, a Domain
+aktualizuje condition. Application policy rozstrzyga authorization przed wywołaniem
+primitive; Core wymusza zakaz clear przy aktywnym albo jeszcze nieocenionym condition.
+Application porównuje `AlarmPersistentState` przed i po operacji, żeby wykryć zmianę
+durable bitu; ACK, recovery i reoccurrence pending latch nie wymagają zmiany tego bitu.
+Storage write failure nie rollbackuje live alarmu; ryzyko po restarcie wymaga późniejszej
+diagnostyki/policy. Foundation nie zna StorageService, kluczy ani formatu rekordu.
+
+Pozostają otwarte: physical storage schema/keys/versioning, registry/enumeration, reason
+metadata, severity descriptor, timestamps, counters/history, application ACK authorization
+workflow, transport representation, Health/Safety mapping, Alarm/Event integration oraz
+bogatsza diagnostyka. Foundation nie emituje events i nie zapisuje Health/Safety;
+ALM-101 nie jest w całości zamknięte.
 
 ### HW-001 — trzy poziomy hardware
 Rozdzielamy generic technical abstractions, concrete hardware drivers i domain hardware interfaces. BoardProfile należy do projektu.
@@ -2020,7 +2039,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 - CMD-102 — idempotency i deduplication;
 - EVT-101 (pozostały zakres) — pełny envelope, payload representation, timestamps, categories, priority, queue/backpressure, serialization, fan-out i wire format;
 - EVT-102 — snapshot schema oraz relacja snapshot/HTTP/realtime;
-- ALM-101 (pozostały zakres) — persistence, registry/enumeration, metadata/severity/history, ACK authorization, transport, Health/Safety mapping i Alarm/Event integration;
+- ALM-101 (pozostały zakres) — physical storage schema/keys/versioning, registry/enumeration, metadata/severity/history, ACK authorization workflow, transport, Health/Safety mapping i Alarm/Event integration;
 - SAF-101 — dokładne reason IDs, priority/metadata oraz szerszy publiczny Action Lock API (poza częściowo zaakceptowaną F3.4 foundation);
 - MNT-101 — kontrakt przygotowania domeny do maintenance;
 - DIAG-101 — lista providerów/capability diagnostycznych;

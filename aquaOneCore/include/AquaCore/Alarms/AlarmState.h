@@ -12,7 +12,24 @@ enum class AlarmTransitionResult {
     ConditionRecovered,
     Acknowledged,
     LatchCleared,
-    Reoccurred
+    Reoccurred,
+    ConditionConfirmed
+};
+
+// The only cross-restart fact. The application owns storage and its mapping
+// from a record to a Domain alarm; condition and ACK are runtime-local.
+struct AlarmPersistentState {
+    explicit AlarmPersistentState(bool pending = false)
+        : latchedPending(pending) {}
+
+    bool latchedPending;
+};
+
+enum class AlarmRestoreResult {
+    Restored,
+    AlreadyAttempted,
+    LiveStarted,
+    IncompatibleState
 };
 
 template <typename AlarmId>
@@ -29,7 +46,8 @@ class AlarmState {
 public:
     AlarmState(AlarmId id, bool latched)
         : id_(id), latched_(latched), conditionActive_(false),
-          alarmActive_(false), acknowledged_(false) {}
+          alarmActive_(false), acknowledged_(false), conditionKnown_(false),
+          restoreAttempted_(false), liveStarted_(false) {}
 
     AlarmState(const AlarmState&) = delete;
     AlarmState& operator=(const AlarmState&) = delete;
@@ -38,7 +56,32 @@ public:
         return {id_, conditionActive_, alarmActive_, acknowledged_, latched_};
     }
 
+    AlarmPersistentState persistentState() const {
+        return AlarmPersistentState(latched_ && alarmActive_);
+    }
+
+    // Initialization only. The first attempt consumes this boundary even on
+    // failure; incompatible data never partially changes the live alarm.
+    AlarmRestoreResult restore(AlarmPersistentState state) {
+        if (restoreAttempted_) {
+            return AlarmRestoreResult::AlreadyAttempted;
+        }
+        restoreAttempted_ = true;
+        if (liveStarted_) {
+            return AlarmRestoreResult::LiveStarted;
+        }
+        if (!latched_ && state.latchedPending) {
+            return AlarmRestoreResult::IncompatibleState;
+        }
+        alarmActive_ = state.latchedPending;
+        acknowledged_ = false;
+        return AlarmRestoreResult::Restored;
+    }
+
     AlarmTransitionResult setCondition(bool active) {
+        liveStarted_ = true;
+        const bool wasKnown = conditionKnown_;
+        conditionKnown_ = true;
         if (active == conditionActive_) {
             return AlarmTransitionResult::NoChange;
         }
@@ -48,6 +91,9 @@ public:
             const bool reoccurred = alarmActive_;
             alarmActive_ = true;
             acknowledged_ = false;
+            if (reoccurred && !wasKnown) {
+                return AlarmTransitionResult::ConditionConfirmed;
+            }
             return reoccurred ? AlarmTransitionResult::Reoccurred
                              : AlarmTransitionResult::Activated;
         }
@@ -62,6 +108,7 @@ public:
     }
 
     AlarmTransitionResult acknowledge() {
+        liveStarted_ = true;
         if (!alarmActive_ || acknowledged_) {
             return AlarmTransitionResult::NoChange;
         }
@@ -70,7 +117,8 @@ public:
     }
 
     AlarmTransitionResult clearLatched() {
-        if (!latched_ || conditionActive_ || !alarmActive_) {
+        liveStarted_ = true;
+        if (!latched_ || !conditionKnown_ || conditionActive_ || !alarmActive_) {
             return AlarmTransitionResult::NoChange;
         }
         alarmActive_ = false;
@@ -84,6 +132,9 @@ private:
     bool conditionActive_;
     bool alarmActive_;
     bool acknowledged_;
+    bool conditionKnown_;
+    bool restoreAttempted_;
+    bool liveStarted_;
 };
 
 } // namespace Alarms

@@ -122,7 +122,14 @@ snapshot pozostaje autorytatywny, bez replay/resync w F4.3. EVT-101 i EVT-102 po
 **CURRENT F4.4 — alarm state foundation:** `AlarmState<AlarmId>` przechowuje ulotny stan
 pojedynczego alarmu z typed ID należącym do Domain. Rozróżnia condition od aktywności alarmu,
 ACK od clear i opcjonalny latch wybrany przy konstrukcji. Nie mapuje alarmu na Health/Safety
-i nie emituje events; persistence, transport i pozostały zakres ALM-101 są nadal otwarte.
+i nie emituje events; transport i pozostały zakres ALM-101 są nadal otwarte.
+
+**CURRENT F4.5 — alarm control i restart:** `AlarmPersistentState` zawiera tylko bit
+`latchedPending`. Application odpowiada za jego zapis i jedną próbę odtworzenia przed
+normalną pracą; Core Alarm nie posiada backendu Storage. Odtworzony latch jest aktywny,
+ale ACK nie przeżywa restartu, a Domain ponownie ocenia live condition. Clear wymaga takiej
+oceny i nie usuwa aktywnego condition. Application otrzymuje borrowed `AlarmControl<AlarmId>`
+do ACK/clear bez dostępu do ustawiania condition; Auth i transport pozostają poza tym API.
 
 ```cpp
 #include <AquaCore/System/SystemService.h>
