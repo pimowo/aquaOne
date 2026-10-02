@@ -139,7 +139,9 @@ Dokładny arbitraż Safety/Action Locks pozostaje SAF-101.
 
 Domain jest jedynym authoritative ownerem własnych `DomainState` i `DomainMode`; Core nie
 utrzymuje drugiej mutable kopii i nie zna wartości mode specyficznych dla produktu. Odczyt odbywa
-się przez read-only provider zwracający snapshot/value o typie należącym do projektu.
+się przez read-only `DiagnosticProvider<Snapshot>` zwracający snapshot/value o typie należącym
+do projektu. F6.3 potwierdza ten contract testowym Domain fixture; nie wprowadza nowego Core API
+ani nie migruje produkcyjnej domeny.
 Jest to self-contained immutable snapshot value albo ograniczony czasowo immutable read-only view. Dla view owner i lifetime są jawne, adapter nie zatrzymuje go poza gwarantowanym okresem, view nie staje się drugą authoritative kopią, a serializer nie może mutować stanu. Nie jest
 wystawiana mutable reference. Application adapter mapuje project-specific snapshot na HTTP,
 Realtime, MQTT, Panel lub diagnostics. Core nie wymaga `std::variant` obejmującego wszystkie
@@ -2191,6 +2193,9 @@ caller-owned i nie dodają required heap. F6.2 nie zmienia legacy `DiagnosticsSe
 nie dodaje Domain migration, Registry, IDs/descriptors, serializacji ani transportu.
 DIAG-101 pozostaje PARTIALLY ACCEPTED; otwarte są Registry/enumeration, transport visibility,
 timestampy, bogatsze failure metadata, konwencje liczników i richer hardware diagnostics.
+F6.3 potwierdza dla Domain/project ten sam generic contract: projekt posiada snapshot type,
+semantykę i concrete provider, który czyta live facts. Nie powstają wspólne `IDomain` ani
+Domain base snapshot; counters mogą być bounded polami konkretnego typed snapshotu.
 
 ## DECISION REQUIRED
 

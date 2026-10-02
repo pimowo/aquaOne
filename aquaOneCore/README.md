@@ -399,7 +399,10 @@ Health/Safety. **CURRENT F6.2** dodaje niezależne, read-only Core projections l
 `RuntimeStatus`, ukończonego startup report, `RuntimeIdentity`, gotowej `DeviceIdentity`,
 `ConfigLifecycleStatus` i istniejącego `StorageStatus`. Providers czytają authoritative
 owners bez duplikowania mutable authority; runtime i config failure są poprawnymi odczytami.
-Registry oraz Domain providers nadal nie istnieją.
+**CURRENT F6.3** potwierdza, że projekt domenowy używa tego samego
+`DiagnosticProvider<Snapshot>` i sam definiuje snapshot oraz znaczenie jego pól.
+Nie ma `IDomain` ani wspólnego Domain snapshotu; odczyt jest live i read-only.
+Dodano test-only fixture, bez migracji realnej domeny. Registry nadal nie istnieje.
 
 **Zastosowanie:**
 - aquaOneLuma ✅
