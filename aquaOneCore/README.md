@@ -567,6 +567,14 @@ Providery i własne trasy należy zarejestrować przed `web.begin()`.
 
 ### Time — ✅ READY
 
+F7.1 CURRENT foundation: `MonotonicClock` is a small, platform-neutral borrowed
+capability returning nondecreasing, runtime-local `uint64_t` milliseconds for
+timeouts, durations and retry. `Esp32MonotonicClock` uses the ESP32 monotonic
+timer. It is independent of wall clock, RTC, NTP and Network. Existing Time
+and Network callers still use their `millis()` / `nowMs` APIs until later
+integration; F7.1 does not change their behavior. `uint64_t` overflow is
+outside the practical range of a device runtime.
+
 Time module zawiera cztery komponenty: RtcService (DS3231), NtpService (synchronization),
 EuropeWarsawTimeService (UTC to local time conversion with DST) oraz ResilientTimeService
 (cache czasu, progi awarii i recovery RTC).

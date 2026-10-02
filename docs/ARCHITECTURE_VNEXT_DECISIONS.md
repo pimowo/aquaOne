@@ -207,6 +207,11 @@ otrzymuje całego TimeService ani loggera będącego toolboxem/service locatorem
 nie zatrzymuje logiki domenowej. `RestartRequester` jest explicit opt-in przekazywany tylko
 uprawnionemu adapterowi/workflow zgodnie z SYS-107 i nie jest obowiązkową zależnością Domain.
 
+F7.1 CURRENT foundation dodaje osobny `MonotonicClock`: 64-bitowe milisekundy,
+niemalejące w jednej runtime instance, bez trwałości między restartami. Nie reprezentuje
+daty ani UTC; korekty wall clock nie wpływają na jego odczyty. TIME-101 pozostaje
+DECISION REQUIRED dla ważności wall clock i polityki źródeł RTC/NTP/runtime.
+
 Domain nie zależy od Network. Dane zewnętrzne trafiają przez adapter jako semantic input.
 Capability przekazywana Domain domyślnie nie ujawnia Wi-Fi/MQTT credentials, session tokens, auth secrets, private keys ani transport-specific credentials. Wyjątek wymaga osobnego, jawnego kontraktu dla rzeczywiście niezbędnego semantic inputu; capability nie może być boczną drogą do transport/session/auth internals.
 Transport i UI układają się jako `Domain ↔ semantic contracts ↔ Application adapters ↔ Core
