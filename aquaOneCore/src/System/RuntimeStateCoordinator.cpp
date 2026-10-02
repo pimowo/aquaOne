@@ -50,7 +50,8 @@ RuntimeStateCoordinator::RuntimeStateCoordinator(
     safetyProviderCount_(safetyProviderCount),
     status_(nullptr),
     providerListsValid_(true),
-    active_(false) {
+    active_(false),
+    runtimeFailureLatched_(false) {
     if ((healthProviderCount_ == 0U) != (healthProviders_ == nullptr) ||
         (safetyProviderCount_ == 0U) != (safetyProviders_ == nullptr)) {
         providerListsValid_ = false;
@@ -89,11 +90,23 @@ RuntimeStateRefreshResult RuntimeStateCoordinator::refresh() {
     HealthState health = HealthState::FAULT;
     SafetyState safety = SafetyState::LOCKED;
     const bool valid = aggregate(health, safety);
+    if (runtimeFailureLatched_) {
+        health = HealthState::FAULT;
+        safety = SafetyState::LOCKED;
+    }
     status_->health = health;
     status_->safety = safety;
     return valid
         ? RuntimeStateRefreshResult::REFRESHED
         : RuntimeStateRefreshResult::INVALID_PROVIDER;
+}
+
+void RuntimeStateCoordinator::latchRuntimeFailure() {
+    // A runtime transition failure remains an active system fact until a new
+    // runtime instance. Only the coordinator writes Health/Safety after handoff.
+    runtimeFailureLatched_ = true;
+    status_->health = HealthState::FAULT;
+    status_->safety = SafetyState::LOCKED;
 }
 
 bool RuntimeStateCoordinator::activate(RuntimeStatus& status) {

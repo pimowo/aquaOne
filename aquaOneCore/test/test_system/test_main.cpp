@@ -194,6 +194,7 @@ void runApplicationRuntimeTests();
 void runRuntimeStateCoordinatorTests();
 void runMaintenanceTransitionTests();
 void runMaintenanceParticipantTests();
+void runMaintenanceRuntimeTests();
 
 void runTests() {
     RUN_TEST(test_device_identity_is_stored_correctly);
@@ -212,6 +213,7 @@ void runTests() {
     runRuntimeStateCoordinatorTests();
     runMaintenanceTransitionTests();
     runMaintenanceParticipantTests();
+    runMaintenanceRuntimeTests();
 }
 
 #if defined(ARDUINO)

@@ -1998,20 +1998,40 @@ potwierdza ukończenie wymaganych działań i gotowość do późniejszego commi
 przez lifecycle ownera; sam participant nie zapisuje `OperationalState`. `Rejected` jest
 oczekiwaną odmową: nie pozostawia nierozliczonych skutków przejścia, source mode nadal
 jest prawdziwy i bezpieczny do deklarowania, a sama odmowa nie wymaga fail-safe escalation.
-`Failed` oznacza brak gwarancji poprawności source lub target mode; przyszła orkiestracja
+`Failed` oznacza brak gwarancji poprawności source lub target mode; orkiestracja
 nie może commitować target ani traktować wyniku jak `Rejected` i musi przejść ścieżką
 fail-safe bez deklarowania zwykłego source/target bez osobnego dowodu recovery. Concrete
 participant może lokalnie wycofać swoje skutki i zwrócić `Rejected`; Core nie oferuje
-rollback API. Nielegalny wynik callbacka przyszła orkiestracja musi traktować fail-safe.
+rollback API. Nielegalny wynik callbacka orkiestracja musi traktować fail-safe.
 
 Participant nie otrzymuje `RuntimeStatus`, nie posiada lifecycle state i nie pisze Health/
 Safety. Intrinsic safety pozostaje aktywne podczas przygotowania; Core nie zna hardware
 ani szczegółów Domain. F5.1 `AlreadyInTargetState` kończy żądanie bez wywołania
 participanta. F5.2 nie definiuje listy participantów, wydarzeń, komend ani restartu.
 
-MNT-101 pozostaje otwarte dla dokładnej orkiestracji F5.3, mechanizmu fail-safe/ERROR i
-Health/Safety po `Failed`, obsługi nielegalnego wyniku, command policy, relacji z
-restart-required, wielu participantów oraz Maintenance events/diagnostics.
+F5.3 łączy guard z jednym borrowed participantem przez semantyczne API
+`ApplicationRuntime::requestMaintenanceTransition()` w serializowanym kontekście aplikacji.
+Nie obsługuje równoległych ani reentrant żądań i nie wolno wywoływać go z ISR. Przejście
+wymaga wcześniejszego successful handoff Health/Safety do `RuntimeStateCoordinator`.
+Guard działa przed participantem: `AlreadyInTargetState`, `InvalidState` i `InvalidRequest`
+nie wywołują participanta ani nie zmieniają live statusu. Po `Allowed` wywoływane jest
+synchroniczne `prepareEnter()` lub `prepareExit()`. Wyłącznie `Prepared` pozwala
+`ApplicationRuntime`, jedynemu writerowi `OperationalState`, zatwierdzić odpowiednio
+`MAINTENANCE` albo `RUNNING`; `Rejected` zachowuje source state i Health/Safety.
+
+`Failed` lub nielegalna wartość wyniku participanta oznacza nieokreślony stan przejścia:
+target nie jest zatwierdzany, `ApplicationRuntime` zapisuje `ERROR`, a aktywny coordinator
+jako jedyny writer Health/Safety utrwala mały sticky runtime failure fact i publikuje
+`FAULT + LOCKED`. Każdy późniejszy `refresh()` zachowuje tę parę, nawet gdy zwykli
+providerzy zgłaszają `OK + CLEAR`. Fact obowiązuje do końca instancji runtime; nie ma
+normalnego clear API. Jest to skutek nieokreślonej awarii przejścia, a nie ogólne
+mapowanie `MAINTENANCE` na `FAULT + LOCKED`. Nie powstaje automatyczny restart;
+`ERROR` odrzuca następne Maintenance transitions, a recovery używa osobnej ścieżki
+`SystemRecovery` z SYS-105. Historyczny `StartupReport` pozostaje bez zmian.
+
+MNT-101 pozostaje PARTIALLY ACCEPTED. Otwarte są command policy, relacja z
+restart-required, autonomous processing boundary, ewentualna obsługa wielu participantów
+oraz Maintenance events/diagnostics.
 
 ### ALM-001 — rozdział pojęć alarmowych
 Warning, alarm, fault i safety lock są różne. ACK nie oznacza CLEAR, a alarm nie oznacza automatycznie Safety Lock.
@@ -2097,7 +2117,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 - EVT-102 — snapshot schema oraz relacja snapshot/HTTP/realtime;
 - ALM-101 (pozostały zakres) — physical storage schema/keys/versioning, registry/enumeration, metadata/severity/history, ACK authorization workflow, transport, dokładne project mappings i bogatsza diagnostyka;
 - SAF-101 — dokładne reason IDs, priority/metadata oraz szerszy publiczny Action Lock API (poza częściowo zaakceptowaną F3.4 foundation);
-- MNT-101 (pozostały zakres) — orkiestracja przejść, mechanizm fail-safe/ERROR po Failed, command policy, wielu participantów, restart-required i events/diagnostics;
+- MNT-101 (pozostały zakres) — command policy, autonomous processing boundary, wielu participantów, restart-required i events/diagnostics;
 - DIAG-101 — lista providerów/capability diagnostycznych;
 - REG-101 — nazwy providerów, API registry i limity;
 - WEB-101 — public/auth policy endpointów;

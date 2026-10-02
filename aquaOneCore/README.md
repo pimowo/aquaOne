@@ -148,8 +148,15 @@ PARTIALLY ACCEPTED, a obecne command paths nadal blokują `MAINTENANCE`.
 **CURRENT F5.2 — Maintenance participant foundation:** jeden borrowed
 `MaintenanceParticipant` wykonuje synchroniczne `prepareEnter()` / `prepareExit()` i zwraca
 `Prepared`, `Rejected` albo `Failed`. `Rejected` gwarantuje nadal prawidłowy source mode
-bez nierozliczonych skutków; `Failed` wymaga przyszłej fail-safe orchestration. Participant
+bez nierozliczonych skutków; `Failed` jest obsługiwany fail-safe przez F5.3. Participant
 nie zapisuje `OperationalState`; wykonanie przejścia pozostaje poza F5.2.
+
+**CURRENT F5.3 — Maintenance runtime orchestration:** `ApplicationRuntime` obsługuje
+synchroniczne `RUNNING ↔ MAINTENANCE` z jednym borrowed participantem. Tylko `Prepared`
+zatwierdza stan docelowy; `Rejected` zachowuje stan źródłowy. `Failed` lub nielegalny
+wynik przechodzi do `ERROR`, a coordinator utrzymuje `FAULT + LOCKED` także po refresh.
+`ApplicationRuntime` pozostaje jedynym writerem `OperationalState`; nie ma automatycznego
+restartu. Command policy i autonomous processing boundary pozostają późniejszym zakresem.
 
 ```cpp
 #include <AquaCore/System/SystemService.h>

@@ -19,6 +19,17 @@ enum class MaintenanceTransitionDecision : uint8_t {
     InvalidRequest
 };
 
+// Result of the runtime transition, distinct from participant preparation.
+enum class MaintenanceTransitionOutcome : uint8_t {
+    Completed,
+    AlreadyInTargetState,
+    Rejected,
+    Failed,
+    InvalidState,
+    InvalidRequest,
+    InvalidParticipantResult
+};
+
 // Legality of starting a transition only. This pure guard does not perform
 // preparation, change OperationalState, or establish that the target was reached.
 inline MaintenanceTransitionDecision evaluateMaintenanceTransition(

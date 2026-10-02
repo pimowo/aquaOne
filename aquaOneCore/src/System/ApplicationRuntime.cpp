@@ -103,7 +103,7 @@ ApplicationRuntime::ApplicationRuntime(
         status_
     ),
     startInProgress_(false),
-    runtimeStateHandedOff_(false) {
+    runtimeStateCoordinator_(nullptr) {
 }
 
 const StartupReport& ApplicationRuntime::start() {
@@ -147,7 +147,7 @@ const StartupReport& ApplicationRuntime::startupReport() const {
 bool ApplicationRuntime::handoffRuntimeState(
     RuntimeStateCoordinator& coordinator
 ) {
-    if (runtimeStateHandedOff_ ||
+    if (runtimeStateCoordinator_ != nullptr ||
         !report_.isComplete() ||
         report_.hasFatalFailure() ||
         status_.operational != OperationalState::RUNNING ||
@@ -162,12 +162,57 @@ bool ApplicationRuntime::handoffRuntimeState(
         status_.safety = SafetyState::LOCKED;
         return false;
     }
-    runtimeStateHandedOff_ = true;
+    runtimeStateCoordinator_ = &coordinator;
     return true;
 }
 
 bool ApplicationRuntime::runtimeStateHandedOff() const {
-    return runtimeStateHandedOff_;
+    return runtimeStateCoordinator_ != nullptr;
+}
+
+Maintenance::MaintenanceTransitionOutcome ApplicationRuntime::requestMaintenanceTransition(
+    Maintenance::MaintenanceTransitionRequest request,
+    Maintenance::MaintenanceParticipant& participant
+) {
+    using Maintenance::MaintenanceTransitionDecision;
+    using Maintenance::MaintenanceTransitionOutcome;
+    using Maintenance::MaintenanceParticipantResult;
+
+    const MaintenanceTransitionDecision decision =
+        Maintenance::evaluateMaintenanceTransition(status_.operational, request);
+    if (decision == MaintenanceTransitionDecision::InvalidRequest) {
+        return MaintenanceTransitionOutcome::InvalidRequest;
+    }
+    if (decision == MaintenanceTransitionDecision::InvalidState ||
+        runtimeStateCoordinator_ == nullptr) {
+        return MaintenanceTransitionOutcome::InvalidState;
+    }
+    if (decision == MaintenanceTransitionDecision::AlreadyInTargetState) {
+        return MaintenanceTransitionOutcome::AlreadyInTargetState;
+    }
+
+    const MaintenanceParticipantResult result =
+        request == Maintenance::MaintenanceTransitionRequest::Enter
+            ? participant.prepareEnter()
+            : participant.prepareExit();
+    switch (result) {
+        case MaintenanceParticipantResult::Prepared:
+            status_.operational =
+                request == Maintenance::MaintenanceTransitionRequest::Enter
+                    ? OperationalState::MAINTENANCE
+                    : OperationalState::RUNNING;
+            return MaintenanceTransitionOutcome::Completed;
+        case MaintenanceParticipantResult::Rejected:
+            return MaintenanceTransitionOutcome::Rejected;
+        case MaintenanceParticipantResult::Failed:
+            runtimeStateCoordinator_->latchRuntimeFailure();
+            status_.operational = OperationalState::ERROR;
+            return MaintenanceTransitionOutcome::Failed;
+        default:
+            runtimeStateCoordinator_->latchRuntimeFailure();
+            status_.operational = OperationalState::ERROR;
+            return MaintenanceTransitionOutcome::InvalidParticipantResult;
+    }
 }
 
 bool ApplicationRuntime::validateEarlySafeOutputs() {

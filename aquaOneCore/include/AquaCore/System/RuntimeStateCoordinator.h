@@ -56,6 +56,7 @@ public:
 
 private:
     bool activate(RuntimeStatus& status);
+    void latchRuntimeFailure();
     bool aggregate(
         HealthState& health,
         SafetyState& safety
@@ -68,6 +69,7 @@ private:
     RuntimeStatus* status_;
     bool providerListsValid_;
     bool active_;
+    bool runtimeFailureLatched_;
 
     friend class ApplicationRuntime;
 };

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "AquaCore/Maintenance/MaintenanceParticipant.h"
+#include "AquaCore/Maintenance/MaintenanceTransition.h"
 #include "AquaCore/System/Startup.h"
 
 namespace AquaCore {
@@ -26,6 +28,12 @@ public:
     const StartupReport& startupReport() const;
     bool handoffRuntimeState(RuntimeStateCoordinator& coordinator);
     bool runtimeStateHandedOff() const;
+    // Serialized application context only; no concurrent or reentrant requests.
+    // The participant is borrowed for this synchronous call.
+    Maintenance::MaintenanceTransitionOutcome requestMaintenanceTransition(
+        Maintenance::MaintenanceTransitionRequest request,
+        Maintenance::MaintenanceParticipant& participant
+    );
 
 private:
     bool validateEarlySafeOutputs();
@@ -58,7 +66,8 @@ private:
     RuntimeStatus status_;
     StartupReport report_;
     bool startInProgress_;
-    bool runtimeStateHandedOff_;
+    // Borrowed after successful handoff; the coordinator must outlive runtime use.
+    RuntimeStateCoordinator* runtimeStateCoordinator_;
 };
 
 } // namespace System
