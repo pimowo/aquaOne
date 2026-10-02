@@ -210,7 +210,15 @@ uprawnionemu adapterowi/workflow zgodnie z SYS-107 i nie jest obowiązkową zale
 F7.1 CURRENT foundation dodaje osobny `MonotonicClock`: 64-bitowe milisekundy,
 niemalejące w jednej runtime instance, bez trwałości między restartami. Nie reprezentuje
 daty ani UTC; korekty wall clock nie wpływają na jego odczyty. TIME-101 pozostaje
-DECISION REQUIRED dla ważności wall clock i polityki źródeł RTC/NTP/runtime.
+DECISION REQUIRED dla polityki źródeł RTC/NTP/runtime.
+
+F7.2 CURRENT foundation dodaje osobny `WallClock`: odczyt UTC w 64-bitowych sekundach
+od epoki Unix reprezentuje wartości nieujemne i ma jawny wynik `Success` albo
+`Unavailable`; adapter konwertujący signed epoch musi go wcześniej zweryfikować.
+Sama wartość liczbowa, w tym zero, nie koduje dostępności. Wall clock może skakać
+w obie strony i nie służy do pomiaru czasu trwania ani retry; do tego służy
+`MonotonicClock`. TIME-101 nadal nie rozstrzyga tożsamości źródła, synchronizacji
+ani arbitrażu RTC/NTP.
 
 Domain nie zależy od Network. Dane zewnętrzne trafiają przez adapter jako semantic input.
 Capability przekazywana Domain domyślnie nie ujawnia Wi-Fi/MQTT credentials, session tokens, auth secrets, private keys ani transport-specific credentials. Wyjątek wymaga osobnego, jawnego kontraktu dla rzeczywiście niezbędnego semantic inputu; capability nie może być boczną drogą do transport/session/auth internals.

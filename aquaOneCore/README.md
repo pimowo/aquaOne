@@ -575,6 +575,12 @@ and Network callers still use their `millis()` / `nowMs` APIs until later
 integration; F7.1 does not change their behavior. `uint64_t` overflow is
 outside the practical range of a device runtime.
 
+F7.2 CURRENT foundation adds a borrowed `WallClock` UTC capability. Its
+`Success` / `Unavailable` read result determines whether the 64-bit Unix-second
+value is usable; zero is a valid value on `Success`. Wall time may jump forward
+or backward, so `MonotonicClock` remains the capability for elapsed timing.
+RTC/NTP source arbitration and synchronization status remain open in TIME-101.
+
 Time module zawiera cztery komponenty: RtcService (DS3231), NtpService (synchronization),
 EuropeWarsawTimeService (UTC to local time conversion with DST) oraz ResilientTimeService
 (cache czasu, progi awarii i recovery RTC).
