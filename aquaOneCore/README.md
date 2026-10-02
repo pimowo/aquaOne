@@ -164,6 +164,14 @@ przechodzą w `RUNNING` i `MAINTENANCE`, pozostawiając idempotency F5.3; `Opera
 dozwolone wyłącznie w `MAINTENANCE`. Gate czyta live `OperationalState` i blokuje fail-closed.
 Safety policy pozostaje osobnym etapem, a konkretne operacje nie są jeszcze zaimplementowane.
 
+**CURRENT F5.5 — normal processing boundary:** `evaluateNormalProcessing()` dopuszcza
+normalne autonomous Domain processing tylko w `RUNNING`; w `MAINTENANCE`, `BOOTING`
+i `ERROR` je blokuje. Application/Composition Root używa tego guardu przed normalnym
+processing, bez globalnego pause flag. Intrinsic Domain/hardware safety nie może być
+przez niego blokowana i działa według własnej semantyki również w Maintenance.
+Restart-required należy do osobnego system mechanism z SYS-107; Maintenance nie wykonuje
+restartu, a jej `OperationalState` jest ulotny i nie służy jako marker recovery po reboot.
+
 ```cpp
 #include <AquaCore/System/SystemService.h>
 

@@ -2047,9 +2047,39 @@ CommandPipeline nadal wykonuje osobny Safety stage po pozytywnej policy.
 F5.4 ustanawia granicę klasyfikacji i policy, nie tworzy command handlera, konkretnej
 operacji, `DomainCommandResult` dla aplikacji ani event history.
 
+F5.5 dodaje czysty `evaluateNormalProcessing(OperationalState)`, używany przez
+Application/Composition Root przed wywołaniem normalnego autonomous Domain processing.
+`RUNNING` daje `Allowed`; `MAINTENANCE`, `BOOTING`, `ERROR` oraz nielegalna wartość
+stanu dają `Blocked`. Źródłem prawdy pozostaje live `RuntimeStatus.operational`:
+po zatwierdzonym Enter normal processing jest wstrzymane, a po zatwierdzonym Exit
+może wrócić bez osobnego pause/resume flag. `Rejected` zachowuje source mode;
+fail-safe `ERROR` z F5.3 naturalnie blokuje normal processing. Guard nie posiada
+stanu ani callbacków, nie wywołuje Domain i nie czyta Health, Safety ani Action Locks.
+`FAULT` i `LOCKED` nie tworzą tu globalnej reguły blokowania; konkretna Domain może
+mieć własne dodatkowe ograniczenia bezpieczeństwa. Maintenance nie ustawia przez to
+automatycznie Health ani Safety. NormalDomain commands w `MAINTENANCE` blokuje
+osobna command policy, a Maintenance operations mają odrębną ścieżkę, dostępną
+według F5.4 tylko w `MAINTENANCE`; Action Locks pozostają granularne dla działań.
+
+Intrinsic Domain/hardware safety **nie podlega** normal-processing gate ani warunkowi
+`OperationalState == RUNNING`. Pozostaje aktywna w `MAINTENANCE` i zgodnie z lokalną
+semantyką Domain również w `ERROR`. `prepareEnter()` jest jedynie przygotowaniem
+przejścia, nie trwałym globalnym pause flag; nie zastępuje też intrinsic safety.
+
+Maintenance nie posiada mechanizmu restartu. Jeśli project/operation wymaga restartu
+zamiast live resume, `prepareExit()` może zwrócić `Rejected` tylko gdy `MAINTENANCE`
+nadal jest prawdziwym source mode i nie ma nierozliczonych skutków. Application/system
+policy może osobno uznać restart za wymagany; przyszły `RestartRequester` z SYS-107
+pozostaje poza generic Maintenance contract, a Maintenance operation i `prepareExit()`
+nie wykonują automatycznie restartu, nie czyszczą requestu i nie udają rebootu.
+Po prawdziwym reboot runtime zaczyna od `BOOTING`, nie odziedziczonego `MAINTENANCE`.
+Power loss podczas Maintenance nie pozwala wznowić operacji na podstawie samego
+`OperationalState`: jest on ulotny, nie stanowi trwałego transaction marker; konkretna
+operacja wymagająca recovery potrzebuje własnego durable workflow poza F5.5.
+
 MNT-101 pozostaje PARTIALLY ACCEPTED. Otwarte są konkretne Maintenance operations,
-per-operation Safety/Action Lock policy, relacja z restart-required, autonomous processing
-boundary, ewentualna obsługa wielu participantów oraz Maintenance events/diagnostics.
+per-operation Safety/Action Lock policy, ewentualna obsługa wielu participantów,
+Maintenance events/diagnostics oraz domain-specific HIL behavior.
 
 ### ALM-001 — rozdział pojęć alarmowych
 Warning, alarm, fault i safety lock są różne. ACK nie oznacza CLEAR, a alarm nie oznacza automatycznie Safety Lock.
@@ -2135,7 +2165,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 - EVT-102 — snapshot schema oraz relacja snapshot/HTTP/realtime;
 - ALM-101 (pozostały zakres) — physical storage schema/keys/versioning, registry/enumeration, metadata/severity/history, ACK authorization workflow, transport, dokładne project mappings i bogatsza diagnostyka;
 - SAF-101 — dokładne reason IDs, priority/metadata oraz szerszy publiczny Action Lock API (poza częściowo zaakceptowaną F3.4 foundation);
-- MNT-101 (pozostały zakres) — command policy, autonomous processing boundary, wielu participantów, restart-required i events/diagnostics;
+- MNT-101 (pozostały zakres) — konkretne operations, per-operation Safety/Action Lock policy, wielu participantów, events/diagnostics i domain-specific HIL behavior;
 - DIAG-101 — lista providerów/capability diagnostycznych;
 - REG-101 — nazwy providerów, API registry i limity;
 - WEB-101 — public/auth policy endpointów;

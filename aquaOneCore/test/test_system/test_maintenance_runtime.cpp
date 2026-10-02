@@ -1,5 +1,6 @@
 #include <unity.h>
 
+#include "AquaCore/Maintenance/NormalProcessing.h"
 #include "AquaCore/System/ApplicationRuntime.h"
 #include "AquaCore/System/RuntimeStateCoordinator.h"
 
@@ -102,6 +103,9 @@ void assertOutcome(Outcome expected, Outcome actual) {
 void testPreparedEnterAndExitCommitOnlyAfterPreparation() {
     Fixture fixture;
     fixture.startAndHandoff();
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Maintenance::NormalProcessingDecision::Allowed),
+        static_cast<int>(Maintenance::evaluateNormalProcessing(
+            fixture.runtime.status().operational)));
     fixture.health.state = System::HealthState::DEGRADED;
     fixture.safety.state = System::SafetyState::LOCKED;
     fixture.coordinator.refresh();
@@ -112,6 +116,9 @@ void testPreparedEnterAndExitCommitOnlyAfterPreparation() {
                           static_cast<int>(fixture.participant.observed));
     fixture.assertLive(System::OperationalState::MAINTENANCE,
         System::HealthState::DEGRADED, System::SafetyState::LOCKED);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Maintenance::NormalProcessingDecision::Blocked),
+        static_cast<int>(Maintenance::evaluateNormalProcessing(
+            fixture.runtime.status().operational)));
     TEST_ASSERT_EQUAL_UINT(1U, fixture.participant.enterCalls);
     TEST_ASSERT_EQUAL_UINT(0U, fixture.participant.exitCalls);
 
@@ -121,6 +128,9 @@ void testPreparedEnterAndExitCommitOnlyAfterPreparation() {
                           static_cast<int>(fixture.participant.observed));
     fixture.assertLive(System::OperationalState::RUNNING,
         System::HealthState::DEGRADED, System::SafetyState::LOCKED);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Maintenance::NormalProcessingDecision::Allowed),
+        static_cast<int>(Maintenance::evaluateNormalProcessing(
+            fixture.runtime.status().operational)));
     TEST_ASSERT_EQUAL_UINT(1U, fixture.participant.enterCalls);
     TEST_ASSERT_EQUAL_UINT(1U, fixture.participant.exitCalls);
 }
@@ -215,6 +225,9 @@ void testRejectedEnterAndExitPreserveSourceAndHealthSafety() {
 void assertFailurePersists(Fixture& fixture) {
     fixture.assertLive(System::OperationalState::ERROR,
         System::HealthState::FAULT, System::SafetyState::LOCKED);
+    TEST_ASSERT_EQUAL_INT(static_cast<int>(Maintenance::NormalProcessingDecision::Blocked),
+        static_cast<int>(Maintenance::evaluateNormalProcessing(
+            fixture.runtime.status().operational)));
     TEST_ASSERT_TRUE(fixture.runtime.runtimeStateHandedOff());
     TEST_ASSERT_EQUAL_INT(static_cast<int>(System::RuntimeStateRefreshResult::REFRESHED),
                           static_cast<int>(fixture.coordinator.refresh()));
