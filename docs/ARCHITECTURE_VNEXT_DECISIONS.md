@@ -218,9 +218,9 @@ WEB-001 i dokładny UI/config schema pozostają bez zmian.
 #### Registry, errors i testability
 
 Domain nie rejestruje się globalnie. Composition Root jawnie składa lifecycle/processing
-endpointy, handlery, providerów, sinki i capability. Registry może w przyszłości statycznie
-katalogować metadata lub providerów dla ich konsumentów, ale Domain nie używa go do discovery ani
-dependency resolution. Dokładny Registry API pozostaje REG-101.
+endpointy, handlery, providerów, sinki i capability. F6.4 REG-101 dodaje statyczną enumerację
+project-owned diagnostic entries dla Application/introspection; Domain nie używa Registry do
+discovery ani dependency resolution. Schema entry i transportowe projekcje pozostają przyszłe.
 
 Nie ma exceptions ani jednego globalnego error enum. Startup używa domenowego init result
 mapowanego przez adapter na `StartupStepResult`; command boundary ma własny semantic result;
@@ -2150,7 +2150,32 @@ Jedno urządzenie ma jeden fizyczny transport Web. HTTP i Realtime docelowo wsp�
 Auth odpowiada za uprawnienie, Safety za możliwość wykonania akcji w danym stanie. Domain nie zna haseł, sesji ani handshake transportu.
 
 ### REG-001 — Feature Registration
-Capability/providers są rejestrowane jawnie podczas startup. Registry nie jest service locatorem. Provider nie może utrzymywać konkurencyjnej kopii Domain State.
+Capability/providers są jawnie składane w Composition Root podczas startup. Registry nie jest service locatorem ani mechanizmem runtime registration. Provider nie może utrzymywać konkurencyjnej kopii Domain State.
+
+### REG-101 — Static Diagnostic Registry — ACCEPTED
+
+F6.4 dodaje CURRENT foundation `DiagnosticRegistry<Entry>` jako Application-side boundary do
+introspection i deterministycznej enumeracji. Composition Root jawnie składa tablicę entries,
+a Registry przechowuje wyłącznie niezmienny `const Entry*` i `size_t count`; caller jest ownerem
+storage, nie mutuje tablicy po composition i zapewnia lifetime co najmniej tak długi jak
+Registry i użycie zwróconych wskaźników. Registry nie kopiuje ani nie usuwa entries. Jeśli
+project-owned entry zawiera provider pointer/reference, jest on borrowed, a jego lifetime
+pozostaje odpowiedzialnością projektu.
+
+`nullptr` z count 0 jest poprawnym pustym Registry; non-null pointer z count 0 też jest
+poprawny. `nullptr` z count > 0 jest invalid composition wykrywalnym przez `isValid()`.
+Invalid Registry raportuje `size() == 0` i nie udostępnia entries. `size()` oraz
+`entryAt(index)` zapewniają tylko read-only ordered enumeration; indeks poza zakresem zwraca
+`nullptr`. Kolejność jest kolejnością tablicy Composition Root i nie zmienia się po konstrukcji.
+
+Core nie narzuca pól `Entry`, nie zna typów Domain ani `DiagnosticProvider<Snapshot>` w tym
+kontenerze. Typed provider pozostaje osobną granicą odczytu. V1 nie wprowadza globalnego
+`DiagnosticId`, lookup po ID/string/type, `get<T>()`, `resolve()`, dynamic registration,
+heterogeneous provider erasure, snapshot aggregation ani service locatora. Domain nie otrzymuje
+`Registry&` i nadal dostaje własne dependencies jawnie. Static pointer/count view nie wymaga
+heap, RTTI, exceptions, mutexów ani platform API. Walidacja ewentualnych duplicate IDs należy
+do przyszłego project-owned descriptor contract, jeśli stable IDs zostaną przyjęte.
+Descriptor schema, stable IDs i transport projection pozostają poza REG-101 foundation.
 
 ### SEC-002 — ochrona sekretów
 Sekrety nie mogą trafiać do status, diagnostics, logs, Realtime ani MQTT state.
@@ -2191,11 +2216,13 @@ Storage udostępnia istniejący status, bez dodawania „last result” cache. S
 failure pozostaje wewnętrzny, bo nie ma legalnego read-only API. Projekcje są bounded,
 caller-owned i nie dodają required heap. F6.2 nie zmienia legacy `DiagnosticsService`,
 nie dodaje Domain migration, Registry, IDs/descriptors, serializacji ani transportu.
-DIAG-101 pozostaje PARTIALLY ACCEPTED; otwarte są Registry/enumeration, transport visibility,
+DIAG-101 pozostaje PARTIALLY ACCEPTED; otwarte są descriptor schema/stable IDs, transport visibility,
 timestampy, bogatsze failure metadata, konwencje liczników i richer hardware diagnostics.
 F6.3 potwierdza dla Domain/project ten sam generic contract: projekt posiada snapshot type,
 semantykę i concrete provider, który czyta live facts. Nie powstają wspólne `IDomain` ani
 Domain base snapshot; counters mogą być bounded polami konkretnego typed snapshotu.
+F6.4 dodaje jedynie statyczną enumerację project-owned entries; nie odczytuje heterogenicznych
+snapshotów i nie rozstrzyga otwartego schema ani transport visibility.
 
 ## DECISION REQUIRED
 
@@ -2208,8 +2235,7 @@ Domain base snapshot; counters mogą być bounded polami konkretnego typed snaps
 - ALM-101 (pozostały zakres) — physical storage schema/keys/versioning, registry/enumeration, metadata/severity/history, ACK authorization workflow, transport, dokładne project mappings i bogatsza diagnostyka;
 - SAF-101 — dokładne reason IDs, priority/metadata oraz szerszy publiczny Action Lock API (poza częściowo zaakceptowaną F3.4 foundation);
 - MNT-101 (pozostały zakres) — konkretne operations, per-operation Safety/Action Lock policy, wielu participantów, events/diagnostics i domain-specific HIL behavior;
-- DIAG-101 (pozostały zakres) — dalsze Core facts poza projekcjami F6.2, Registry/enumeration, descriptors/IDs, transport visibility, timestampy, richer failure metadata i konwencje liczników;
-- REG-101 — nazwy providerów, API registry i limity;
+- DIAG-101 (pozostały zakres) — dalsze Core facts poza projekcjami F6.2, descriptors/IDs, transport visibility, timestampy, richer failure metadata i konwencje liczników;
 - WEB-101 — public/auth policy endpointów;
 - WEB-102 — API HTTP i kompatybilność z obecnym Web Core;
 - RT-101 — protokół realtime, auth, heartbeat i reconnect;

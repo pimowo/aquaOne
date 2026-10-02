@@ -50,13 +50,16 @@ Core 0.6.2 ma `DiagnosticsService` budujący stały snapshot techniczny z sekcji
 Storage oraz opcjonalnie NTP i Network. Doser ma osobny lokalny `DiagnosticsManager`.
 F6.1 dodaje osobny typed, borrowed `DiagnosticProvider<Snapshot>` z caller-owned output
 i wynikiem `Success` / `Unavailable`; nie zmienia legacy `DiagnosticsService`.
+F6.2 dodaje read-only Core projections, a F6.3 potwierdza project-owned Domain snapshot
+przez test-only fixture. F6.4 dodaje statyczny `DiagnosticRegistry<Entry>` do enumeracji
+caller-owned entries w Application; nie odczytuje on heterogenicznych snapshotów.
 
 ### Implementation: TARGET
 
-Rozszerzalny katalog providerów, health wszystkich modułów, ogólny mechanizm revision,
-freshness/stale, historia, MQTT, alarmy, Web i diagnostyka domenowa opisane niżej pozostają
-TARGET. Rejestr providerów będzie jawnie i statycznie składany bez wymaganego heap;
-szczegółowy API Registry pozostaje decyzją REG-101. Nie jest to obecne API Core.
+Descriptor schema, stable IDs, projekcje dla transportów, health wszystkich modułów, ogólny
+mechanizm revision, freshness/stale, historia, MQTT, alarmy, Web i diagnostyka realnych domen
+opisana niżej pozostają TARGET. F6.4 rozstrzyga statyczną foundation Registry w REG-101;
+nie definiuje przyszłego descriptor schema ani transportowej widoczności.
 
 Granice odpowiedzialności:
 
@@ -1282,10 +1285,13 @@ ESP powinno pozostać lekkie.
 
 # 84. Rejestr modułów diagnostycznych
 
-Docelowy katalog providerów diagnostycznych powinien być jawnie składany przez Composition
-Root z pożyczonych providerów. Nie oznacza to dynamicznej samorejestracji ani Registry
-służącego do wyszukiwania zależności. Dokładny API i limity pozostają REG-101; osobni
-`HealthProvider` / `SafetyProvider` zachowują własne kontrakty SYS-106.
+CURRENT F6.4 `DiagnosticRegistry<Entry>` jest jawnie i statycznie składanym przez Composition
+Root, read-only katalogiem caller-owned entries dla Application/introspection. Jego niezmienny
+pointer/count zapewnia deterministyczną enumerację; nie wymaga heap, runtime registration ani
+lookup zależności. `Entry` i ewentualne borrowed provider references definiuje projekt.
+Typed `DiagnosticProvider<Snapshot>` nadal wykonuje odczyt danych; Registry nie narzuca
+descriptor schema ani nie odczytuje różnych snapshotów przez wspólny interfejs.
+Osobni `HealthProvider` / `SafetyProvider` zachowują własne kontrakty SYS-106.
 
 ---
 
@@ -1398,5 +1404,6 @@ Diagnostyka ma być na tyle szczegółowa, aby znaleźć problem, ale na tyle le
 provider foundation oraz niezależne read-only Core projections F6.2. Domain/project może
 definiować własny typed snapshot i semantics używając tego samego `DiagnosticProvider<T>`;
 nie wymaga wspólnej Domain base ani transportowych pól. F6.3 potwierdza to test-only fixture,
-bez migracji realnej domeny. Registry, enumeracja i transport visibility pozostają TARGET.
+bez migracji realnej domeny. F6.4 dodaje CURRENT static Registry foundation i enumerację
+project-owned entries; descriptor schema i transport visibility pozostają TARGET.
 Domena definiuje znaczenie swoich sensorów i aktuatorów.**

@@ -402,7 +402,10 @@ owners bez duplikowania mutable authority; runtime i config failure są poprawny
 **CURRENT F6.3** potwierdza, że projekt domenowy używa tego samego
 `DiagnosticProvider<Snapshot>` i sam definiuje snapshot oraz znaczenie jego pól.
 Nie ma `IDomain` ani wspólnego Domain snapshotu; odczyt jest live i read-only.
-Dodano test-only fixture, bez migracji realnej domeny. Registry nadal nie istnieje.
+Dodano test-only fixture, bez migracji realnej domeny.
+**CURRENT F6.4** dodaje statyczny `DiagnosticRegistry<Entry>` z caller-owned entries i
+deterministyczną enumeracją. Nie ma lookup ani service locatora, runtime registration ani
+heterogeneous provider erasure; typed providers pozostają osobną granicą odczytu.
 
 **Zastosowanie:**
 - aquaOneLuma ✅

@@ -10,6 +10,7 @@
 
 void runCoreDiagnosticProviderTests();
 void runDomainDiagnosticProviderTests();
+void runDiagnosticRegistryTests();
 
 using AquaCore::Diagnostics::DiagnosticProvider;
 using AquaCore::Diagnostics::DiagnosticReadResult;
@@ -132,6 +133,7 @@ void runTests() {
     RUN_TEST(testInvalidResultAlsoLeavesNoValidSnapshot);
     runCoreDiagnosticProviderTests();
     runDomainDiagnosticProviderTests();
+    runDiagnosticRegistryTests();
 }
 
 #if defined(ARDUINO)
