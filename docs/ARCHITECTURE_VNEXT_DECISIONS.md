@@ -1974,6 +1974,27 @@ enumeracja diagnostyczna i finalny szerszy API pozostają otwarte. Safety-critic
 Safety contribution należy do policy/provider boundary; ActionLockCoordinator nie zapisuje
 SafetyState. Niesafety-critical lock nie implikuje globalnego safety lock.
 
+### MNT-101 — Maintenance transition foundation — PARTIALLY ACCEPTED
+
+F5.1 ustala `MAINTENANCE` jako ulotny runtime `OperationalState`. Legalny zamiar przejścia
+to `RUNNING → MAINTENANCE` (Enter) albo `MAINTENANCE → RUNNING` (Exit). Czysty
+`evaluateMaintenanceTransition(current, request)` zwraca `Allowed` wyłącznie wtedy, gdy
+można rozpocząć procedurę; nie potwierdza osiągnięcia stanu docelowego. Enter w
+`MAINTENANCE` i Exit w `RUNNING` zwracają `AlreadyInTargetState`: to idempotentny no-op
+bez participanta, zapisu stanu, eventu ani eskalacji błędu. `BOOTING`, `ERROR` i nielegalna
+wartość stanu dają `InvalidState`, a nielegalny request daje `InvalidRequest`.
+
+Guard przyjmuje tylko `OperationalState`, nie zapisuje stanu, nie wywołuje Domain i nie
+zmienia Health/Safety. `ApplicationRuntime` pozostaje CURRENT jedynym writerem
+`OperationalState`; F5.1 nie dodaje transition API ani drugiego writera. Maintenance nie
+jest utrwalane: nowa instancja runtime zaczyna od `BOOTING`. Obecne ścieżki komend
+`NormalDomain` i `SystemRecovery` nadal blokują `MAINTENANCE`.
+
+MNT-101 pozostaje otwarte dla participant API, przygotowania i wznowienia Domain,
+odmowy przed skutkami ubocznymi, częściowej lub niepewnej awarii, fail-safe/ERROR
+escalation, wielu participantów, command policy, operacji Maintenance oraz relacji z
+restart-required. F5.1 nie wykonuje workflow i nie rozstrzyga tych skutków.
+
 ### ALM-001 — rozdział pojęć alarmowych
 Warning, alarm, fault i safety lock są różne. ACK nie oznacza CLEAR, a alarm nie oznacza automatycznie Safety Lock.
 
@@ -2058,7 +2079,7 @@ CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze
 - EVT-102 — snapshot schema oraz relacja snapshot/HTTP/realtime;
 - ALM-101 (pozostały zakres) — physical storage schema/keys/versioning, registry/enumeration, metadata/severity/history, ACK authorization workflow, transport, dokładne project mappings i bogatsza diagnostyka;
 - SAF-101 — dokładne reason IDs, priority/metadata oraz szerszy publiczny Action Lock API (poza częściowo zaakceptowaną F3.4 foundation);
-- MNT-101 — kontrakt przygotowania domeny do maintenance;
+- MNT-101 (pozostały zakres) — participant API, przygotowanie/wznowienie domeny, failure semantics, command policy, wielu participantów i restart-required;
 - DIAG-101 — lista providerów/capability diagnostycznych;
 - REG-101 — nazwy providerów, API registry i limity;
 - WEB-101 — public/auth policy endpointów;

@@ -138,6 +138,13 @@ może później dodać EventMetadata. `AlarmHealthProvider` i `AlarmSafetyProvid
 aktualny alarm przez jawne project-owned policy callbacks; ACK, severity ani samo istnienie
 alarmu nie narzucają Health/Safety mapping. Nie ma globalnego alarm registry.
 
+**CURRENT F5.1 — Maintenance transition foundation:** czysty guard sprawdza zamiar
+`RUNNING ↔ MAINTENANCE`, zwraca jawne `Allowed`, idempotentne `AlreadyInTargetState`
+albo odmowę dla nielegalnego stanu/requestu. Nie zapisuje `OperationalState` ani nie
+zmienia Health/Safety. `ApplicationRuntime` pozostaje jedynym writerem stanu operacyjnego;
+participant i workflow wejścia/wyjścia nie są jeszcze zaimplementowane. MNT-101 jest
+PARTIALLY ACCEPTED, a obecne command paths nadal blokują `MAINTENANCE`.
+
 ```cpp
 #include <AquaCore/System/SystemService.h>
 
