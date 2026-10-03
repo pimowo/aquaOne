@@ -596,7 +596,8 @@ F7.2 CURRENT foundation adds a borrowed `WallClock` UTC capability. Its
 `Success` / `Unavailable` read result determines whether the 64-bit Unix-second
 value is usable; zero is a valid value on `Success`. Wall time may jump forward
 or backward, so `MonotonicClock` remains the capability for elapsed timing.
-RTC/NTP source arbitration and synchronization status remain open in TIME-101.
+F7.2 itself left RTC/NTP source policy open; F7.6 defines the v1 RTC-backed
+WallClock and optional NTP synchronization contract below.
 
 F7.3 CURRENT adds `RtcWallClock`, a borrowed read-only projection of valid RTC
 UTC into `WallClock`. A valid RTC provides wall time offline; an uninitialized,
@@ -645,22 +646,34 @@ if (rtc.begin()) {
 
 NTP synchronization via esp_sntp (non-blocking, async).
 
+F7.6 CURRENT composes `NtpService(rtc, backend, monotonicClock)` with
+`NetworkNtpSync(ntp, network)`. After `ntp.begin()`, call `network.update()` and then
+`ntpSync.update()` in runtime processing, including Maintenance. Only live Network
+Connected starts an attempt; it does not guarantee NTP success. Timeout and periodic
+retry use the 64-bit monotonic clock. A successful UTC fetch updates and verifies RTC
+before `lastSyncSucceeded()` becomes true; `lastFetchSucceeded()` remains separate.
+`RtcWallClock` reads that RTC as the only consumer-facing UTC source. A valid RTC stays
+usable offline or after an NTP fetch failure that did not write RTC; an invalid RTC can
+recover after a successful NTP write. Failed or partial RTC writes have no rollback
+guarantee. NTP does not block startup or contribute Health/Safety. Local time and DST
+remain a separate projection. Legacy `uint32_t nowMs` overloads remain for Luma and Doser;
+their rollover adapter requires an observation at least once per full 32-bit `millis()`
+cycle. The borrowed 64-bit clock has no such limit.
+
 ```cpp
 #include <AquaCore/Time/NtpService.h>
+#include <AquaCore/Time/Esp32MonotonicClock.h>
+#include <AquaCore/Time/NetworkNtpSync.h>
 
-AquaCore::Time::NtpService ntp(rtcService, ntpBackend);
+AquaCore::Time::Esp32MonotonicClock monotonicClock;
+AquaCore::Time::NtpService ntp(rtcService, ntpBackend, monotonicClock);
+AquaCore::Time::NetworkNtpSync ntpSync(ntp, network);
 
-const uint32_t startedAtMs = millis();
-if (ntp.begin(startedAtMs)) {  // Initialize state; does not start a sync.
-    ntp.requestSync(network.isConnected(), startedAtMs);
-}
+ntp.begin();  // Initialize only; startup does not wait for NTP.
 
 // In loop():
-network.update(millis());  // Update WiFi state
-const uint32_t nowMs = millis();
-const bool wifiAvailable = network.isConnected();
-ntp.requestPeriodicSync(wifiAvailable, nowMs);
-ntp.update(wifiAvailable, nowMs);
+network.update();
+ntpSync.update();
 
 if (ntp.lastSyncSucceeded()) {
     Serial.println("NTP: Synchronized!");

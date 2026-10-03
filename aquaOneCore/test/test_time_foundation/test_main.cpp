@@ -16,6 +16,7 @@ using AquaCore::Time::WallClock;
 using AquaCore::Time::WallClockReadResult;
 
 void runRtcWallClockTests();
+void runNtpIntegrationTests();
 
 static_assert(std::is_abstract<MonotonicClock>::value,
     "MonotonicClock is a capability interface");
@@ -222,6 +223,7 @@ void runTests() {
     RUN_TEST(testWallClockMayMoveForward);
     RUN_TEST(testWallClockMayMoveBackward);
     runRtcWallClockTests();
+    runNtpIntegrationTests();
 #if defined(ARDUINO)
     RUN_TEST(testEsp32AdapterThroughBorrowedReference);
 #endif

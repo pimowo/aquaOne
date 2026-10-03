@@ -217,10 +217,10 @@ od epoki Unix reprezentuje wartości nieujemne i ma jawny wynik `Success` albo
 `Unavailable`; adapter konwertujący signed epoch musi go wcześniej zweryfikować.
 Sama wartość liczbowa, w tym zero, nie koduje dostępności. Wall clock może skakać
 w obie strony i nie służy do pomiaru czasu trwania ani retry; do tego służy
-`MonotonicClock`. TIME-101 nadal nie rozstrzyga tożsamości źródła, synchronizacji
-ani arbitrażu RTC/NTP.
+`MonotonicClock`. Samo F7.2 nie rozstrzygało tożsamości źródła, synchronizacji
+ani arbitrażu RTC/NTP; model v1 rozstrzyga TIME-101 poniżej.
 
-### TIME-101 — UTC wall-clock source boundary — PARTIALLY ACCEPTED
+### TIME-101 — UTC wall-clock source boundary — ACCEPTED — TARGET
 
 `MonotonicClock` pozostaje osobną capability dla duration i runtime ordering.
 Consumer-facing `WallClock` wystawia wyłącznie UTC oraz jawną dostępność. F7.3 CURRENT
@@ -232,8 +232,22 @@ RTC sama nie oznacza fatal startup, `FAULT`, Safety `LOCKED` ani restartu.
 
 UTC jest authority na tej granicy; `LocalTime` oraz Europe/Warsaw/DST pozostają późniejszą
 projekcją. Odczyt `RtcWallClock` nie zapisuje RTC, nie czyści OSF i nie uruchamia synchronizacji.
-Otwarte pozostają NTP → runtime/RTC synchronization, konflikty źródeł, drift/freshness,
-metadata synchronizacji oraz obserwowalność zmiany źródła; rozstrzygną je późniejsze kroki.
+F7.6 CURRENT łączy optional NTP z live stanem Network i RTC. `NetworkState::Connected`
+pozwala podjąć próbę, ale nie gwarantuje osiągalności NTP. Próba i retry są nieblokujące,
+mierzone 64-bitowym `MonotonicClock`; legacy `uint32_t millis()` w Luma i Doser korzysta z
+lokalnego adaptera rollover, który wymaga obserwacji co najmniej raz na pełny cykl licznika.
+Poprawny UTC w zakresie RTC aktualizuje DS3231 przez `RtcService::setUtc()`, który
+weryfikuje zapis. Dopiero wtedy wynik oznacza udaną synchronizację; samo pobranie UTC jest
+osobnym faktem. `RtcWallClock` czyta ten sam RTC przy kolejnym odczycie, bez drugiego mutable
+źródła wall time. Poprawny RTC pozostaje dostępny offline i po błędzie pobrania NTP bez
+zapisu RTC; częściowy zapis lub błąd weryfikacji nie daje gwarancji rollbacku poprzedniej
+wartości. Niepoprawny RTC może odzyskać dostępność po udanym zapisie. Korekta NTP może
+przesunąć UTC w obie strony,
+bez wpływu na monotonic clock. NTP nie blokuje startupu, nie ustawia Health/Safety ani
+OperationalState; infrastructure processing może działać także w Maintenance. Konflikt
+źródeł w baseline rozstrzyga skuteczna korekta NTP zapisująca RTC, bez voting i progów drift.
+TIME-101 jest ACCEPTED dla v1 foundation. Drift policy, bogatsze freshness/source metadata,
+sync events i advanced source quality pozostają future scope.
 
 Domain nie zależy od Network. Dane zewnętrzne trafiają przez adapter jako semantic input.
 Capability przekazywana Domain domyślnie nie ujawnia Wi-Fi/MQTT credentials, session tokens, auth secrets, private keys ani transport-specific credentials. Wyjątek wymaga osobnego, jawnego kontraktu dla rzeczywiście niezbędnego semantic inputu; capability nie może być boczną drogą do transport/session/auth internals.
@@ -2309,7 +2323,7 @@ ani globalnego Safety lock. Po reconnect i refresh Health może wrócić do OK, 
 `StartupReport` pozostaje historyczny. Network update jest infrastrukturą i może pracować
 także w Maintenance; nie przechodzi przez NormalProcessing gate. NET-101 pozostaje
 PARTIALLY ACCEPTED: AP fallback, static IP/DNS, bogatsza policy backoff, events/diagnostics
-i Internet reachability pozostają otwarte. TIME-101 pozostaje PARTIALLY ACCEPTED.
+i Internet reachability pozostają otwarte.
 
 ## DECISION REQUIRED
 

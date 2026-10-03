@@ -3,7 +3,9 @@
 #include <cstring>
 #include <time.h>
 
+#if defined(ARDUINO)
 #include <esp_sntp.h>
+#endif
 
 namespace AquaCore {
 namespace Time {
@@ -36,6 +38,7 @@ bool copyServerName(
 
 } // namespace
 
+#if defined(ARDUINO)
 bool EspNtpBackend::start(
     const char* const servers[NTP_MAX_SERVERS],
     uint8_t serverCount
@@ -97,7 +100,7 @@ NtpBackendResult EspNtpBackend::poll(
 
     time_t epoch = 0;
 
-    if (time(&epoch) < 0) {
+    if (time(&epoch) < static_cast<time_t>(0)) {
         return NtpBackendResult::Failure;
     }
 
@@ -107,9 +110,12 @@ NtpBackendResult EspNtpBackend::poll(
         return NtpBackendResult::Failure;
     }
 
-    utc.year = static_cast<uint16_t>(
-        utcTime.tm_year + 1900
-    );
+    const int64_t year = static_cast<int64_t>(utcTime.tm_year) + 1900LL;
+    if (year < 2000LL || year > 2199LL) {
+        return NtpBackendResult::Failure;
+    }
+
+    utc.year = static_cast<uint16_t>(year);
     utc.month = static_cast<uint8_t>(
         utcTime.tm_mon + 1
     );
@@ -126,13 +132,43 @@ void EspNtpBackend::stop() {
         esp_sntp_stop();
     }
 }
+#endif
+
+void NtpService::LegacyMillisClock::observe(uint32_t nowMs) {
+    if (!hasObservation_) {
+        nowMs_ = nowMs;
+        hasObservation_ = true;
+    } else {
+        nowMs_ += static_cast<uint32_t>(nowMs - lastMs_);
+    }
+    lastMs_ = nowMs;
+}
+
+uint64_t NtpService::LegacyMillisClock::expanded(uint32_t nowMs) const {
+    return hasObservation_
+        ? nowMs_ + static_cast<uint32_t>(nowMs - lastMs_)
+        : static_cast<uint64_t>(nowMs);
+}
 
 NtpService::NtpService(
     RtcService& rtc,
     NtpBackend& backend
 ) :
     rtc_(rtc),
-    backend_(backend) {
+    backend_(backend),
+    clock_(legacyClock_),
+    legacyTiming_(true) {
+}
+
+NtpService::NtpService(
+    RtcService& rtc,
+    NtpBackend& backend,
+    const MonotonicClock& clock
+) :
+    rtc_(rtc),
+    backend_(backend),
+    clock_(clock),
+    legacyTiming_(false) {
 }
 
 NtpConfig NtpService::defaultConfig() {
@@ -153,6 +189,16 @@ bool NtpService::begin(uint32_t nowMs) {
 bool NtpService::begin(
     const NtpConfig& config,
     uint32_t nowMs
+) {
+    if (legacyTiming_) {
+        legacyClock_.observe(nowMs);
+    }
+    return beginAt(config, clock_.nowMilliseconds());
+}
+
+bool NtpService::beginAt(
+    const NtpConfig& config,
+    uint64_t nowMs
 ) {
     if (syncInProgress_) {
         backend_.stop();
@@ -210,6 +256,20 @@ bool NtpService::requestSync(
     bool wifiAvailable,
     uint32_t nowMs
 ) {
+    if (legacyTiming_) {
+        legacyClock_.observe(nowMs);
+    }
+    return requestSyncAt(wifiAvailable, clock_.nowMilliseconds());
+}
+
+bool NtpService::requestSync(bool wifiAvailable) {
+    return requestSyncAt(wifiAvailable, clock_.nowMilliseconds());
+}
+
+bool NtpService::requestSyncAt(
+    bool wifiAvailable,
+    uint64_t nowMs
+) {
     if (!initialized_ || syncInProgress_) {
         return false;
     }
@@ -251,16 +311,38 @@ bool NtpService::requestPeriodicSync(
     bool wifiAvailable,
     uint32_t nowMs
 ) {
-    if (!isPeriodicSyncDue(nowMs)) {
+    if (legacyTiming_) {
+        legacyClock_.observe(nowMs);
+    }
+    return requestPeriodicSync(wifiAvailable);
+}
+
+bool NtpService::requestPeriodicSync(bool wifiAvailable) {
+    const uint64_t nowMs = clock_.nowMilliseconds();
+    if (!isPeriodicSyncDueAt(nowMs)) {
         return false;
     }
 
-    return requestSync(wifiAvailable, nowMs);
+    return requestSyncAt(wifiAvailable, nowMs);
 }
 
 void NtpService::update(
     bool wifiAvailable,
     uint32_t nowMs
+) {
+    if (legacyTiming_) {
+        legacyClock_.observe(nowMs);
+    }
+    update(wifiAvailable);
+}
+
+void NtpService::update(bool wifiAvailable) {
+    updateAt(wifiAvailable, clock_.nowMilliseconds());
+}
+
+void NtpService::updateAt(
+    bool wifiAvailable,
+    uint64_t nowMs
 ) {
     if (!syncInProgress_) {
         return;
@@ -348,6 +430,14 @@ bool NtpService::takeReceivedUtc(UtcDateTime& output) {
 bool NtpService::isPeriodicSyncDue(
     uint32_t nowMs
 ) const {
+    return isPeriodicSyncDueAt(timeAt(nowMs));
+}
+
+bool NtpService::isPeriodicSyncDue() const {
+    return isPeriodicSyncDueAt(clock_.nowMilliseconds());
+}
+
+bool NtpService::isPeriodicSyncDueAt(uint64_t nowMs) const {
     return
         initialized_ &&
         !syncInProgress_ &&
@@ -358,19 +448,36 @@ bool NtpService::lastSuccessfulSyncAgeMs(
     uint32_t nowMs,
     uint32_t& ageMs
 ) const {
+    uint64_t fullAge = 0U;
+    if (!hasSuccessfulSync_) {
+        ageMs = 0U;
+        return false;
+    }
+    fullAge = timeAt(nowMs) - lastSuccessfulSyncMs_;
+    ageMs = static_cast<uint32_t>(fullAge);
+    return true;
+}
+
+bool NtpService::lastSuccessfulSyncAgeMs(uint64_t& ageMs) const {
     if (!hasSuccessfulSync_) {
         ageMs = 0U;
         return false;
     }
 
-    ageMs = nowMs - lastSuccessfulSyncMs_;
+    ageMs = clock_.nowMilliseconds() - lastSuccessfulSyncMs_;
     return true;
+}
+
+uint64_t NtpService::timeAt(uint32_t nowMs) const {
+    return legacyTiming_
+        ? legacyClock_.expanded(nowMs)
+        : clock_.nowMilliseconds();
 }
 
 void NtpService::finishAttempt(
     bool fetchSucceeded,
     bool rtcUpdated,
-    uint32_t nowMs
+    uint64_t nowMs
 ) {
     backend_.stop();
 

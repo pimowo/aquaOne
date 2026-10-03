@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "AquaCore/Time/RtcService.h"
+#include "AquaCore/Time/MonotonicClock.h"
 #include "AquaCore/Time/TimeConstants.h"
 #include "AquaCore/Time/TimeTypes.h"
 
@@ -59,9 +60,22 @@ public:
         RtcService& rtc,
         NtpBackend& backend
     );
+    // Borrowed clock is authoritative for the vNext overloads without nowMs.
+    NtpService(
+        RtcService& rtc,
+        NtpBackend& backend,
+        const MonotonicClock& clock
+    );
+    NtpService(const NtpService&) = delete;
+    NtpService& operator=(const NtpService&) = delete;
+    NtpService(NtpService&&) = delete;
+    NtpService& operator=(NtpService&&) = delete;
 
     static NtpConfig defaultConfig();
 
+    // Legacy nowMs methods feed a per-instance millis() rollover extension.
+    // It cannot detect a gap of one full uint32_t cycle between observations.
+    // With the injected clock, nowMs is ignored.
     bool begin(uint32_t nowMs = 0U);
 
     bool begin(
@@ -73,16 +87,19 @@ public:
         bool wifiAvailable,
         uint32_t nowMs
     );
+    bool requestSync(bool wifiAvailable);
 
     bool requestPeriodicSync(
         bool wifiAvailable,
         uint32_t nowMs
     );
+    bool requestPeriodicSync(bool wifiAvailable);
 
     void update(
         bool wifiAvailable,
         uint32_t nowMs
     );
+    void update(bool wifiAvailable);
 
     bool isInitialized() const;
     bool isSyncInProgress() const;
@@ -91,15 +108,32 @@ public:
     bool lastFetchSucceeded() const;
     bool takeReceivedUtc(UtcDateTime& output);
     bool isPeriodicSyncDue(uint32_t nowMs) const;
+    bool isPeriodicSyncDue() const;
 
     bool lastSuccessfulSyncAgeMs(
         uint32_t nowMs,
         uint32_t& ageMs
     ) const;
+    bool lastSuccessfulSyncAgeMs(uint64_t& ageMs) const;
 
 private:
+    class LegacyMillisClock final : public MonotonicClock {
+    public:
+        uint64_t nowMilliseconds() const override { return nowMs_; }
+        void observe(uint32_t nowMs);
+        uint64_t expanded(uint32_t nowMs) const;
+
+    private:
+        uint64_t nowMs_ = 0U;
+        uint32_t lastMs_ = 0U;
+        bool hasObservation_ = false;
+    };
+
     RtcService& rtc_;
     NtpBackend& backend_;
+    LegacyMillisClock legacyClock_ {};
+    const MonotonicClock& clock_;
+    bool legacyTiming_;
 
     char serverNames_[NTP_MAX_SERVERS]
         [NTP_SERVER_NAME_CAPACITY] {};
@@ -108,9 +142,9 @@ private:
     uint32_t timeoutMs_ = NTP_SYNC_TIMEOUT_MS;
     uint32_t syncIntervalMs_ = NTP_SYNC_INTERVAL_MS;
 
-    uint32_t attemptStartedMs_ = 0U;
-    uint32_t periodicAnchorMs_ = 0U;
-    uint32_t lastSuccessfulSyncMs_ = 0U;
+    uint64_t attemptStartedMs_ = 0U;
+    uint64_t periodicAnchorMs_ = 0U;
+    uint64_t lastSuccessfulSyncMs_ = 0U;
 
     UtcDateTime lastReceivedUtc_ {};
     bool newUtcPending_ = false;
@@ -126,8 +160,13 @@ private:
     void finishAttempt(
         bool fetchSucceeded,
         bool rtcUpdated,
-        uint32_t nowMs
+        uint64_t nowMs
     );
+    uint64_t timeAt(uint32_t nowMs) const;
+    bool beginAt(const NtpConfig& config, uint64_t nowMs);
+    bool requestSyncAt(bool wifiAvailable, uint64_t nowMs);
+    bool isPeriodicSyncDueAt(uint64_t nowMs) const;
+    void updateAt(bool wifiAvailable, uint64_t nowMs);
 };
 
 } // namespace Time
