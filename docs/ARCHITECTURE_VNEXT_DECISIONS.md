@@ -2188,6 +2188,15 @@ no-op, bez rozgałęzień po `device_type`.
 ### WEB-001 — jeden transport
 Jedno urządzenie ma jeden fizyczny transport Web. HTTP i Realtime docelowo współdzielą backend i port.
 
+### WEB-103 — F8.1 wspólny HTTP + WebSocket transport — DECISION REQUIRED
+
+Audyt F8.1 potwierdza jeden owner i port 80 dla istniejącego HTTP, ale obecny Arduino
+`WebServer` obsługuje jednego aktywnego klienta i nie wystawia WebSocket API. Wymagane
+równoległe HTTP+WS na jednym fizycznym serwerze/porcie nie jest wykonalne sensownie na
+tym backendzie. Nie wybrano zamiennika ani nie zmieniono WEB-001; wynik, ograniczenia
+`handleClient()`/POST oraz brak pomiarów HTTP+WS zapisano w
+`WEB_TRANSPORT_SPIKE_F8_1.md`. Wybór backendu i kontrakty Phase 9 pozostają otwarte.
+
 ### SEC-001 — Auth i Safety
 Auth odpowiada za uprawnienie, Safety za możliwość wykonania akcji w danym stanie. Domain nie zna haseł, sesji ani handshake transportu.
 
@@ -2340,6 +2349,7 @@ i Internet reachability pozostają otwarte.
 - DIAG-101 (pozostały zakres) — dalsze Core facts poza projekcjami F6.2, descriptors/IDs, transport visibility, timestampy, richer failure metadata i konwencje liczników;
 - WEB-101 — public/auth policy endpointów;
 - WEB-102 — API HTTP i kompatybilność z obecnym Web Core;
+- WEB-103 — backend dla wspólnego HTTP+WS na jednym porcie oraz jego pomiary;
 - RT-101 — protokół realtime, auth, heartbeat i reconnect;
 - MQTT-101 — zakres wspólnej infrastruktury MQTT;
 - SEC-101 — auth HTTP/WebSocket oraz model sekretów;
