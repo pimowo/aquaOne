@@ -2257,6 +2257,43 @@ snapshotów i nie rozstrzyga otwartego schema ani transport visibility.
 F6.5 pokazuje composition testowy: project-owned metadata nie jest diagnostic authority,
 a typed reads pozostają `DiagnosticProvider<Snapshot>`; descriptor/transport schema nadal są otwarte.
 
+### NET-101 — granica stanu Network i adaptera — PARTIALLY ACCEPTED
+
+F7.4 formalizuje istniejące CURRENT `NetworkService`, `NetworkState` i pożyczony
+`NetworkBackend`; nie dodaje drugiego modelu statusu ani nowej publicznej capability.
+`Disabled` jest legalnym stanem konfiguracji i nie uruchamia STA/AP ani reconnect.
+`Idle` oznacza brak aktywnej próby STA, w tym konfigurację AP-only. `Connecting` oznacza,
+że STA zostało uruchomione lub próbuje nawiązać połączenie. `Connected` oznacza wyłącznie,
+że backend zgłasza połączenie STA; obecny backend ESP32 mapuje tu
+`WiFi.status() == WL_CONNECTED`, bez osobnego testu Internetu ani niezerowego IP.
+`Disconnected` opisuje utratę STA, a `Error` błąd subsystemu Network. Żaden z tych stanów
+sam nie ustawia `OperationalState::ERROR`, Safety `LOCKED` ani nie zatrzymuje autonomicznej
+pracy Domain. Legacy `DiagnosticsService` może przedstawić Network jako read-only Warning;
+nie zapisuje przez to Runtime Health ani Safety.
+
+STA i AP są oddzielnymi osiami: stan STA nie włącza ani nie wyłącza AP, a aktywny AP nie
+oznacza STA Connected ani dostępności Internetu. Nie ma globalnego AP fallback; start AP
+wynika z `NetworkConfig`. Network jest opcjonalną infrastrukturą; autonomiczna Domain nie
+otrzymuje `NetworkService` jako ogólnej zależności, a Maintenance automatycznie nie wyłącza
+Network. Credentials są wejściem z Config, lecz nie są zwracane przez status/gettery Network
+ani typed diagnostic snapshot; widoczność SSID i AP SSID w transporcie wymaga osobnej policy.
+
+Neutralne typy publiczne i `NetworkService` nie importują Arduino Wi-Fi API. Wywołania Wi-Fi
+i mapowanie ESP eventów należą do `Esp32NetworkBackend`; pożyczony backend musi żyć dłużej
+niż service. Statyczny `activeInstance_` jest ograniczonym bridge dla callbacków C-style ESP32,
+a nie singletonem Core; obecny adapter obsługuje jedną aktywną instancję backendu. Native
+proof z fake backendem pokrywa neutralny kontrakt stanu. Istniejące interwały reconnect,
+fast retry i timeout pozostają CURRENT; F7.4 nie dodaje policy reconnect ani startup
+participanta. Network Connected może być warunkiem rozpoczęcia próby NTP, ale nie gwarantuje
+dostępności NTP, DNS, Internetu, MQTT ani Web. Otwarte pozostają target reconnect/backoff,
+integracja optional startup/recovery, AP fallback, static IP/DNS, testy Internet reachability
+oraz projekcja Network events/diagnostics.
+
+`NetworkBackend::applyRadioPolicy()` obecnie zwraca `bool`, lecz `NetworkService::begin()`
+nie wykorzystuje tego wyniku, a bieżący backend ESP32 zawsze zwraca `true`. To legacy
+kontrakt bez używanej semantyki failure; jego doprecyzowanie lub usunięcie pozostaje cleanupem
+na później i nie blokuje NET-101 CURRENT foundation.
+
 ## DECISION REQUIRED
 
 - Rozszerzenia identity poza IDN-101 v1 — BuildIdentity version grammar, HardwareIdentity platform/revision schema oraz future non-MAC DeviceId/source;

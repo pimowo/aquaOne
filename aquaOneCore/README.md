@@ -451,8 +451,16 @@ if (network.begin(config)) {
 
 **State machine:**
 - `Disabled`, `Idle`, `Connecting`, `Connected`, `Disconnected`, `Error`
-- Auto-retry with backoff
+- `Disabled` is a legal optional configuration; `Idle` includes AP-only with no STA attempt.
+- `Connected` reflects the backend's STA-connected report (`WL_CONNECTED` on ESP32), not Internet, DNS, NTP, MQTT, or Web availability.
+- AP state is separate from STA state; AP startup is configuration-driven, with no automatic STA-loss fallback.
 - Tracks connection uptime, reconnect count, RSSI
+
+F7.4 CURRENT formalizes this platform-neutral state/API and the ESP32 backend boundary.
+Network remains optional for autonomous Domain operation; Network failure does not itself
+set Runtime Health/Safety or stop Domain processing. The current interval/fast-retry and
+timeout behavior remains in place; optional startup/recovery integration is later work.
+`NetworkService` borrows its backend, and its status getters do not expose passwords.
 
 **AP (Access Point) mode:**
 ```cpp
