@@ -2188,7 +2188,7 @@ no-op, bez rozgałęzień po `device_type`.
 ### WEB-001 — jeden transport
 Jedno urządzenie ma jeden fizyczny transport Web. HTTP i Realtime docelowo współdzielą backend i port.
 
-### WEB-103 — F8.1 wspólny HTTP + WebSocket transport — DECISION REQUIRED
+### WEB-103 — wspólny HTTP + WebSocket transport — DECISION REQUIRED
 
 Audyt F8.1 potwierdza jeden owner i port 80 dla istniejącego HTTP, ale obecny Arduino
 `WebServer` obsługuje jednego aktywnego klienta i nie wystawia WebSocket API. Wymagane
@@ -2196,6 +2196,17 @@ równoległe HTTP+WS na jednym fizycznym serwerze/porcie nie jest wykonalne sens
 tym backendzie. Nie wybrano zamiennika ani nie zmieniono WEB-001; wynik, ograniczenia
 `handleClient()`/POST oraz brak pomiarów HTTP+WS zapisano w
 `WEB_TRANSPORT_SPIKE_F8_1.md`. Wybór backendu i kontrakty Phase 9 pozostają otwarte.
+
+F8.2 potwierdza compile/link na CURRENT Arduino-ESP32 2.0.17 dla dwóch izolowanych
+kandydatów: utrzymywanych `ESP32Async/ESPAsyncWebServer@3.6.0` z
+`ESP32Async/AsyncTCP@3.3.2` oraz wbudowanego ESP-IDF 4.4.7 `esp_http_server` z aktywnym
+`CONFIG_HTTPD_WS_SUPPORT`. Oba proofy używają jednego servera/listenera na porcie 80,
+tego samego HTTP snapshotu i endpointu WS; produkcyjny Web nie został zmieniony.
+Buildy i porównanie pamięci przeszły, lecz HIL nie był dostępny. Równoległy GET przy
+aktywnym WS, wielu klientów, reconnect/resync, runtime heap, network loss i slow-client
+behavior pozostają niezmierzone. Wynik F8.2 to **CANDIDATES COMPILE — HIL REQUIRED**;
+szczegóły i procedura F8.3 są w `WEB_TRANSPORT_SPIKE_F8_2.md`. WEB-103 pozostaje
+DECISION REQUIRED i żaden backend nie jest jeszcze zaakceptowany do Phase 9.
 
 ### SEC-001 — Auth i Safety
 Auth odpowiada za uprawnienie, Safety za możliwość wykonania akcji w danym stanie. Domain nie zna haseł, sesji ani handshake transportu.
