@@ -424,9 +424,11 @@ WiFi STA (Station) + AP (Access Point) modes.
 ```cpp
 #include <AquaCore/Network/Esp32NetworkBackend.h>
 #include <AquaCore/Network/NetworkService.h>
+#include <AquaCore/Time/Esp32MonotonicClock.h>
 
 AquaCore::Network::Esp32NetworkBackend backend;
-AquaCore::Network::NetworkService network(backend);
+AquaCore::Time::Esp32MonotonicClock clock;
+AquaCore::Network::NetworkService network(backend, clock);
 
 AquaCore::Network::NetworkConfig config;
 config.staEnabled = true;
@@ -438,7 +440,7 @@ config.reconnectIntervalMs = 10000;
 
 if (network.begin(config)) {
     // In loop():
-    network.update(millis());
+    network.update();
     
     if (network.isConnected()) {
         const AquaCore::Network::IpAddress ip = network.ipAddress();
@@ -458,8 +460,13 @@ if (network.begin(config)) {
 
 F7.4 CURRENT formalizes this platform-neutral state/API and the ESP32 backend boundary.
 Network remains optional for autonomous Domain operation; Network failure does not itself
-set Runtime Health/Safety or stop Domain processing. The current interval/fast-retry and
-timeout behavior remains in place; optional startup/recovery integration is later work.
+set Runtime Health/Safety or stop Domain processing. F7.5 CURRENT uses the borrowed
+`MonotonicClock` for 64-bit retry, fast retry, timeout, and connection uptime while retaining
+the existing intervals. The optional `NetworkStartup` participant runs in `NETWORK_INIT`:
+disabled STA/AP returns Disabled without degradation, while an initialization failure can
+leave startup RUNNING + DEGRADED. `NetworkHealthProvider` reads live state, so recovery can
+restore Health OK; it never contributes a Safety lock. Network Connected still does not
+guarantee Internet reachability.
 `NetworkService` borrows its backend, and its status getters do not expose passwords.
 
 **AP (Access Point) mode:**
@@ -472,12 +479,14 @@ snprintf(config.apPassword, sizeof(config.apPassword), "%s", "setup123");
 
 **API:**
 - `begin(NetworkConfig)` — Initialize
-- `update(nowMs)` — Process state machine (call in loop)
+- `update()` — Process state machine using the borrowed monotonic clock
+- `update(uint32_t nowMs)` — Compatibility adapter for existing `millis()` callers; required with the legacy constructor
 - `isConnected()` — Is STA mode connected?
 - `state()` — Current NetworkState enum
 - `ipAddress()` — Current IP
 - `rssi()` — Signal strength (dBm)
-- `connectionUptimeMs(nowMs)` — How long connected
+- `connectionUptimeMs()` — 64-bit duration since connection
+- `connectionUptimeMs(uint32_t nowMs)` — Compatibility view
 - `reconnectCount()` — How many reconnects
 
 **Zastosowanie:**

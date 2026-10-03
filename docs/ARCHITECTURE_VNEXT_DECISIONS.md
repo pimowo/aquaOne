@@ -2289,10 +2289,27 @@ dostępności NTP, DNS, Internetu, MQTT ani Web. Otwarte pozostają target recon
 integracja optional startup/recovery, AP fallback, static IP/DNS, testy Internet reachability
 oraz projekcja Network events/diagnostics.
 
-`NetworkBackend::applyRadioPolicy()` obecnie zwraca `bool`, lecz `NetworkService::begin()`
-nie wykorzystuje tego wyniku, a bieżący backend ESP32 zawsze zwraca `true`. To legacy
-kontrakt bez używanej semantyki failure; jego doprecyzowanie lub usunięcie pozostaje cleanupem
-na później i nie blokuje NET-101 CURRENT foundation.
+F7.5 CURRENT używa pożyczonego `MonotonicClock` jako jedynej osi dla retry, fast retry,
+connect timeout i connection uptime; wewnętrzne znaczniki są 64-bitowe. Dotychczasowe
+interwały pozostają bez zmian. Cienki adapter `update(uint32_t nowMs)` zachowuje działające
+call sites w Luma, Hydro, Doser i legacy tests; rozszerza `millis()` do 64 bitów i wywołuje
+ten sam wewnętrzny `update()`, bez osobnej logiki retry. Nowa kompozycja pożycza clock jawnie.
+
+`NetworkBackend::applyRadioPolicy() == false` jest teraz błędem inicjalizacji:
+`NetworkService::begin()` zwraca `false` i ustawia Network `Error`. Każdy false z `begin()`
+pozostawia live Network `Error` do jawnego ponownego `begin()`, dzięki czemu optional startup
+failure ma aktywną przyczynę DEGRADED podczas SYS-106 handoff. Sukces `begin()` oznacza
+uruchomienie subsystemu, nie STA Connected. `NetworkStartup` jest pożyczonym optional
+participantem fazy `NETWORK_INIT`: wyłączone STA/AP daje `Disabled`, poprawne uruchomienie
+daje `Success`, a błąd inicjalizacji daje `Failed`. Nie czeka na association.
+
+`NetworkHealthProvider` odczytuje live `NetworkService` przy każdym pull: Disabled, Idle,
+Connecting i Connected dają OK; Disconnected i Error dają DEGRADED. Nie dodaje SafetyProvider
+ani globalnego Safety lock. Po reconnect i refresh Health może wrócić do OK, podczas gdy
+`StartupReport` pozostaje historyczny. Network update jest infrastrukturą i może pracować
+także w Maintenance; nie przechodzi przez NormalProcessing gate. NET-101 pozostaje
+PARTIALLY ACCEPTED: AP fallback, static IP/DNS, bogatsza policy backoff, events/diagnostics
+i Internet reachability pozostają otwarte. TIME-101 pozostaje PARTIALLY ACCEPTED.
 
 ## DECISION REQUIRED
 

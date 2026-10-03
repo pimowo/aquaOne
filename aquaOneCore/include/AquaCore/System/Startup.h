@@ -5,6 +5,12 @@
 
 #include "AquaCore/System/SystemState.h"
 
+// Arduino ESP32 defines DISABLED as a GPIO interrupt macro. The startup
+// outcome is a public enum value and must remain usable in the same unit.
+#ifdef DISABLED
+#undef DISABLED
+#endif
+
 namespace AquaCore {
 namespace System {
 
