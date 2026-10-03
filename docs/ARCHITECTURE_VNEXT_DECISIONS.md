@@ -2300,14 +2300,15 @@ proof z fake backendem pokrywa neutralny kontrakt stanu. Istniejące interwały 
 fast retry i timeout pozostają CURRENT; F7.4 nie dodaje policy reconnect ani startup
 participanta. Network Connected może być warunkiem rozpoczęcia próby NTP, ale nie gwarantuje
 dostępności NTP, DNS, Internetu, MQTT ani Web. Otwarte pozostają target reconnect/backoff,
-integracja optional startup/recovery, AP fallback, static IP/DNS, testy Internet reachability
+AP fallback, static IP/DNS, testy Internet reachability
 oraz projekcja Network events/diagnostics.
 
 F7.5 CURRENT używa pożyczonego `MonotonicClock` jako jedynej osi dla retry, fast retry,
 connect timeout i connection uptime; wewnętrzne znaczniki są 64-bitowe. Dotychczasowe
 interwały pozostają bez zmian. Cienki adapter `update(uint32_t nowMs)` zachowuje działające
 call sites w Luma, Hydro, Doser i legacy tests; rozszerza `millis()` do 64 bitów i wywołuje
-ten sam wewnętrzny `update()`, bez osobnej logiki retry. Nowa kompozycja pożycza clock jawnie.
+ten sam wewnętrzny `update()`, bez osobnej logiki retry. Adapter wymaga obserwacji co najmniej
+raz na pełny cykl `uint32_t`; nowa kompozycja pożycza clock jawnie i nie ma tego ograniczenia.
 
 `NetworkBackend::applyRadioPolicy() == false` jest teraz błędem inicjalizacji:
 `NetworkService::begin()` zwraca `false` i ustawia Network `Error`. Każdy false z `begin()`

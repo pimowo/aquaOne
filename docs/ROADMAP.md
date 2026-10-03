@@ -21,8 +21,8 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 4. **FAZA 4 — Events / Alarms (CLOSED)**: dostarczono CURRENT foundation snapshotów, eventów i lifecycle alarmów.
 5. **FAZA 5 — Maintenance (CLOSED)**: dostarczono foundation legalnych i idempotentnych przejść `RUNNING ↔ MAINTENANCE`, synchronicznego borrowed participant oraz `ApplicationRuntime` orchestration; tylko `Prepared` zatwierdza stan docelowy, a `Failed` lub nielegalny wynik prowadzi do `ERROR` i sticky `FAULT + LOCKED`. Dostarczono też osobną Maintenance command policy, normal processing wyłącznie w `RUNNING` z intrinsic safety poza gate, ulotny stan Maintenance i granicę restart-required jako osobnego system concern.
 6. **FAZA 6 — Diagnostics / Registry (CLOSED)**: dostarczono typed diagnostics foundation i statyczny registry do enumeracji.
-7. **FAZA 7 — Time / Network adaptation (REQUIRED NEXT)**: dopasowanie istniejących usług do kontraktów vNext.
-8. **FAZA 8 — HTTP + WebSocket feasibility spike**: jeden backend/port, reconnect, resync, OTA i pomiary.
+7. **FAZA 7 — Time / Network adaptation (CLOSED)**: dostarczono CURRENT monotonic i wall clock foundation, RTC jako offline UTC source, opcjonalną synchronizację NTP oraz optional Network startup, runtime i live Health.
+8. **FAZA 8 — HTTP + WebSocket feasibility spike (REQUIRED NEXT)**: jeden backend/port, reconnect, resync, OTA i pomiary.
 9. **FAZA 9 — Production Web + Realtime**: implementacja dopiero po pozytywnym spike.
 10. **FAZA 10 — MQTT**: wspólna infrastruktura po ustaleniu Commands/Events.
 11. **FAZA 11 — OTA / Backup / Restore / Factory Reset**: wspólne workflow i recovery.
@@ -49,6 +49,16 @@ i transport również pozostają TARGET/FUTURE. Descriptor schema, stable/global
 transport visibility/projection, timestamp conventions, richer diagnostic/failure metadata,
 hardware-specific diagnostics, migracja legacy `DiagnosticsService` i real Domain migration
 pozostają TARGET/FUTURE. Realtime, MQTT, OTA i Backup/Restore również pozostają TARGET/FUTURE.
+
+Phase 7 CURRENT rozdziela monotonic timing od UTC `WallClock`: prawidłowy RTC działa offline,
+NTP tylko opcjonalnie synchronizuje RTC, a Network pozostaje opcjonalną infrastrukturą bez
+automatycznego wpływu na Safety lub autonomiczną pracę Domain. NET-101 pozostaje PARTIALLY
+ACCEPTED: AP fallback, static IP/DNS, bogatszy reconnect/backoff, Network events/diagnostics
+i Internet reachability są późniejszym zakresem, który nie blokuje zamknięcia Phase 7.
+Znany dług legacy: `test_network` ma nieaktualną fixture `StorageService`, adaptery czasu
+`uint32_t millis()` wymagają obserwacji co najmniej raz na pełny cykl licznika, a ESP32
+`Esp32NetworkBackend::activeInstance_` obsługuje jedną aktywną instancję. Semantyka
+`applyRadioPolicy() == false` została rozstrzygnięta w F7.5.
 
 ## Zasady bramki
 
