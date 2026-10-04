@@ -2219,10 +2219,86 @@ przejście do Application, bez bezpośredniego wywoływania Domain lub hardware.
 Pełny HTTP snapshot jest źródłem stanu, WS powiadamia o zmianach, a po reconnect
 następuje pełny HTTP resync. Docelowa polityka ograniczeń body/ramki, kolejek,
 drop/disconnect i slow client, wire protocol, API/schema, Auth oraz TLS nie są
-ustalone przez WEB-103. WEB-101, WEB-102, RT-101 i SEC-101 pozostają otwarte.
+ustalone przez WEB-103. WEB-102 i RT-101 mają częściowo zaakceptowane foundation,
+z pozostałym zakresem otwartym; WEB-101 i SEC-101 pozostają DECISION REQUIRED.
 Szczegółowe porównanie, pomiary i ograniczenia zawiera
 `WEB_TRANSPORT_SPIKE_F8_3C_COMPARISON.md`. F8.4 zamyka Phase 8; Phase 9 jest
 następnym etapem implementacji, bez zmiany statusu produkcyjnego Web.
+
+### WEB-102 — HTTP composition i Application boundary — PARTIALLY ACCEPTED — TARGET
+
+F9.1 wybiera statyczną, ograniczoną kompozycję tras w Application/Composition Root.
+Jeden application-owned adapter `esp_http_server` posiada fizyczny serwer i rejestruje
+HTTP oraz WS na tym samym listenerze/porcie; v1 zamraża rejestrację przed startem.
+Composition Root posiada stabilne tablice descriptorów, route strings i contexts
+przez cały okres działania callbacków. Odrębne, wąskie HTTP i Realtime capabilities
+mogą mieć tego samego konkretnego ownera; Domain nie posiada żadnego z nich.
+CURRENT `WebService` i
+`Esp32WebBackend` nie są implementacją tej granicy.
+
+F9.1 wybiera hybrydowy cross-task Application boundary: GET czyta niezmienną dla
+transportu, bezpiecznie opublikowaną, typowaną projekcję/snapshot. Transport
+posiada bounded kopię do końca serializacji albo chroniony lease na immutable
+publication; writer nie może ponownie użyć slotu do końca odczytu. Sam
+double-buffer bez ochrony lifetime nie wystarcza. Action POST
+przechodzi przez ograniczoną kolejkę do serializowanego Application command path.
+HTTPD callback nie czyta mutable Domain state bez synchronizacji, nie wykonuje
+Domain/hardware I/O i nie czeka bez limitu. Application obsługuje systemową
+validation, przyszłe Auth/policy, Safety/Action Locks i `CommandPipeline`; wynik
+semantyczny dopiero adapter Application/Web serializuje do HTTP. Pełny HTTP snapshot
+jest źródłem odtworzenia stanu klienta; v1 używa kilku typed/resource snapshots,
+nie jednej obowiązkowej kopii całego urządzenia. Transport nie posiada drugiego
+authoritative Domain state. Bridge full/timeout daje błąd transportowy, bez
+automatycznego Core ERROR, Safety LOCKED lub restartu. Request przekraczający
+task boundary jest zweryfikowaną, bounded wartością bez pożyczonych pointerów
+HTTPD. Bounded response bridge ma stabilny slot/mailbox z ochroną przed późnym
+completion po timeout; timeout nie anuluje już przyjętej komendy.
+
+Optional Web init failure mapowany na startup DEGRADED wymaga jawnego live Web
+HealthProvider z condition niezależnym od `StartupReport`; pozostaje on aktywny
+podczas SYS-106 handoff do potwierdzonego recovery. Bez tego contribution
+handoff jest odrzucany; ApplicationRuntime zachowuje write authority i ustawia
+live ERROR + FAULT + LOCKED zgodnie z SYS-106, bez zmiany historycznego
+`StartupReport`. Już uruchomiony Web może pozostać dostępny po przejściu do ERROR.
+Gdy fatal startup zatrzymał się przed `INTERFACES_INIT`, Web recovery wymaga
+osobno skomponowanej bezpiecznej ścieżki startu zgodnie z SYS-105; nie zakłada
+się uruchomionego transportu ani ponowienia zwykłych participantów.
+
+Każdy endpoint ma bounded body policy, upload ma streaming path; limit 256 B ze
+spike nie jest standardem. Snapshot i wynik wymagają jawnej polityki widoczności,
+bez automatycznego ujawniania sekretów. Finalne route/path names, schema, wire
+representation, HTTP status mapping, limity, Auth i compatibility/migration details
+pozostają DECISION REQUIRED. `WEB-102` nie jest w pełni ACCEPTED.
+
+### RT-101 — Realtime notification boundary — PARTIALLY ACCEPTED — TARGET
+
+F9.1 ustala v1 WS przede wszystkim jako server-to-client notifications. Incoming
+frames są ograniczone do protocol control/heartbeat oraz ewentualnej przyszłej
+obsługi Auth/session; Domain commands używają HTTP action path. Publikacja z
+Application/tasków innych niż HTTPD przechodzi przez legalny, bounded server work
+queue/async send boundary. WS nie posiada authoritative state; per-client socket,
+connection i queue state są techniczne i ograniczone. Slow client nie blokuje
+Domain ani wszystkich klientów; nie ma unbounded queues.
+
+Powiadomienia mają `RuntimeIdentity` i osobny, ciągły per-runtime Realtime stream
+sequence nadawany po filtrowaniu/syntezie; `EventMetadata`/`EventSequence` mogą
+pozostać metadanymi źródłowego eventu, lecz nie zastępują stream sequence.
+Application wiąże każdą pełną wersję HTTP snapshotu z runtime identity i stream
+watermark N w tej samej serializowanej kolejności publikacji. Klient najpierw
+subskrybuje WS i zapisuje pozycję S, potem pobiera snapshot o tym samym runtime
+identity i N >= S; opóźniony snapshot z N < S trzeba odświeżyć lub odrzucić.
+Klient przechowuje bounded overlap, pomija
+powiadomienia <= N i używa kolejnych > N. Overflow, zmiana runtime identity,
+wykryta luka albo niekoherentny zestaw snapshotów wymaga pełnego HTTP resync.
+Nie ma obowiązkowego replay historii. V1 gwarantuje kolejność w obrębie strumienia
+WS, bez globalnego porządku pomiędzy HTTP, WS i przyszłym MQTT. Kontrakt wykrywania luk musi
+uwzględnić ewentualne przyszłe filtrowane subskrypcje;
+dokładny wire envelope pozostaje otwarty.
+
+Wire protocol, heartbeat, capacities, drop/disconnect/resync threshold, auth/session
+i szczegółowa backpressure policy pozostają DECISION REQUIRED. `RT-101` nie jest
+w pełni ACCEPTED. Szczegóły audytu, porównanie modeli i plan Phase 9 zapisuje
+`WEB_REALTIME_F9_1_DESIGN.md`. WEB-101 i SEC-101 pozostają DECISION REQUIRED.
 
 ### SEC-001 — Auth i Safety
 Auth odpowiada za uprawnienie, Safety za możliwość wykonania akcji w danym stanie. Domain nie zna haseł, sesji ani handshake transportu.
@@ -2375,8 +2451,8 @@ i Internet reachability pozostają otwarte.
 - MNT-101 (pozostały zakres) — konkretne operations, per-operation Safety/Action Lock policy, wielu participantów, events/diagnostics i domain-specific HIL behavior;
 - DIAG-101 (pozostały zakres) — dalsze Core facts poza projekcjami F6.2, descriptors/IDs, transport visibility, timestampy, richer failure metadata i konwencje liczników;
 - WEB-101 — public/auth policy endpointów;
-- WEB-102 — API HTTP i kompatybilność z obecnym Web Core;
-- RT-101 — protokół realtime, auth, heartbeat i reconnect;
+- WEB-102 (pozostały zakres) — finalne API/schema HTTP, route compatibility, response mapping i limity poza F9.1 foundation;
+- RT-101 (pozostały zakres) — wire envelope, heartbeat, capacity, backpressure, auth/session i dokładny reconnect/snapshot binding poza F9.1 foundation;
 - MQTT-101 — zakres wspólnej infrastruktury MQTT;
 - SEC-101 — auth HTTP/WebSocket oraz model sekretów;
 - HW-101 — polityka wspólnych driverów i dokładne kontrakty capability;
