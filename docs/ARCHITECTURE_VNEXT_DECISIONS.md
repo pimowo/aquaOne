@@ -2221,8 +2221,8 @@ następuje pełny HTTP resync. Docelowa polityka ograniczeń body/ramki, kolejek
 drop/disconnect i slow client, wire protocol, API/schema, Auth oraz TLS nie są
 ustalone przez WEB-103. WEB-101, WEB-102, RT-101 i SEC-101 pozostają otwarte.
 Szczegółowe porównanie, pomiary i ograniczenia zawiera
-`WEB_TRANSPORT_SPIKE_F8_3C_COMPARISON.md`. Phase 8 wymaga jeszcze osobnego
-final audit/closure; F8.3C nie rozpoczyna Phase 9.
+`WEB_TRANSPORT_SPIKE_F8_3C_COMPARISON.md`. F8.4 zamyka Phase 8; Phase 9 jest
+następnym etapem implementacji, bez zmiany statusu produkcyjnego Web.
 
 ### SEC-001 — Auth i Safety
 Auth odpowiada za uprawnienie, Safety za możliwość wykonania akcji w danym stanie. Domain nie zna haseł, sesji ani handshake transportu.

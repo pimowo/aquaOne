@@ -501,6 +501,11 @@ snprintf(config.apPassword, sizeof(config.apPassword), "%s", "setup123");
 
 HTTP server with routing, provider pattern.
 
+**CURRENT:** `Esp32WebBackend` uses the legacy Arduino `WebServer` for HTTP.
+**TARGET (WEB-103):** native ESP-IDF `esp_http_server` on Arduino-ESP32 is
+selected for HTTP + WebSocket. Production migration is Phase 9; it is not yet
+implemented here.
+
 ```cpp
 #include <AquaCore/Web/Esp32WebBackend.h>
 #include <AquaCore/Web/WebService.h>

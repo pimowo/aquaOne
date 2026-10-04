@@ -22,8 +22,8 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 5. **FAZA 5 — Maintenance (CLOSED)**: dostarczono foundation legalnych i idempotentnych przejść `RUNNING ↔ MAINTENANCE`, synchronicznego borrowed participant oraz `ApplicationRuntime` orchestration; tylko `Prepared` zatwierdza stan docelowy, a `Failed` lub nielegalny wynik prowadzi do `ERROR` i sticky `FAULT + LOCKED`. Dostarczono też osobną Maintenance command policy, normal processing wyłącznie w `RUNNING` z intrinsic safety poza gate, ulotny stan Maintenance i granicę restart-required jako osobnego system concern.
 6. **FAZA 6 — Diagnostics / Registry (CLOSED)**: dostarczono typed diagnostics foundation i statyczny registry do enumeracji.
 7. **FAZA 7 — Time / Network adaptation (CLOSED)**: dostarczono CURRENT monotonic i wall clock foundation, RTC jako offline UTC source, opcjonalną synchronizację NTP oraz optional Network startup, runtime i live Health.
-8. **FAZA 8 — HTTP + WebSocket feasibility spike (REQUIRED NEXT)**: jeden backend/port, reconnect, resync, OTA i pomiary.
-9. **FAZA 9 — Production Web + Realtime**: implementacja dopiero po pozytywnym spike.
+8. **FAZA 8 — HTTP + WebSocket feasibility spike (CLOSED)**: F8.1–F8.3C zamknęły feasibility i wybrały `esp_http_server` jako WEB-103 ACCEPTED — TARGET dla przebadanej bazy; production Web nie został zmigrowany.
+9. **FAZA 9 — Production Web + Realtime (REQUIRED NEXT)**: zaprojektowanie i migracja produkcyjnego Web na wybrany target oraz implementacja Realtime.
 10. **FAZA 10 — MQTT**: wspólna infrastruktura po ustaleniu Commands/Events.
 11. **FAZA 11 — OTA / Backup / Restore / Factory Reset**: wspólne workflow i recovery.
 12. **FAZA 12 — UI Shell**: wspólny shell/design system po stabilizacji kontraktów.
