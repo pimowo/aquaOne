@@ -506,6 +506,16 @@ HTTP server with routing, provider pattern.
 selected for HTTP + WebSocket. Production migration is Phase 9; it is not yet
 implemented here.
 
+**CURRENT F9.2 foundation:** `EspIdfWebTransport` is an application-owned
+`esp_http_server` transport alongside the legacy backend. It has fixed, bounded
+GET/POST registration frozen before start, one HTTPD handle/port, a single 404
+handler, and begin/stop/restart lifecycle. Callbacks run in the HTTPD server
+task. F9.2 accepts bodyless routes only; snapshot publication, serialized
+actions, upload/Auth and Realtime semantics are later Phase 9 work. Products
+still use `Esp32WebBackend` and the Arduino `WebServer`.
+Legacy body/upload behavior, including `maxBodyLength == 0`, requires an
+explicit compatibility decision during F9.7/WEB-102 migration.
+
 ```cpp
 #include <AquaCore/Web/Esp32WebBackend.h>
 #include <AquaCore/Web/WebService.h>

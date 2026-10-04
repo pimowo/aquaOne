@@ -2300,6 +2300,15 @@ i szczegółowa backpressure policy pozostają DECISION REQUIRED. `RT-101` nie j
 w pełni ACCEPTED. Szczegóły audytu, porównanie modeli i plan Phase 9 zapisuje
 `WEB_REALTIME_F9_1_DESIGN.md`. WEB-101 i SEC-101 pozostają DECISION REQUIRED.
 
+F9.2 dodaje CURRENT `EspIdfWebTransport` jako osobny, application-owned
+transport foundation oparty na jednym `httpd_handle_t`. Jawna tablica tras
+GET/POST ma stałą pojemność i jest zamrażana po udanym `begin`; jeden callback
+404 i borrowed contexts mają stabilny lifetime do zakończenia callbacków.
+HTTPD dispatch działa w tasku serwera, a legacy `Esp32WebBackend`/produkcyjne
+kompozycje pozostają bez zmian. F9.2 nie publikuje snapshotów, nie uruchamia
+Application command bridge, nie obsługuje body/upload/Auth ani WS semantics.
+WEB-102 i RT-101 pozostają PARTIALLY ACCEPTED — TARGET.
+
 ### SEC-001 — Auth i Safety
 Auth odpowiada za uprawnienie, Safety za możliwość wykonania akcji w danym stanie. Domain nie zna haseł, sesji ani handshake transportu.
 
