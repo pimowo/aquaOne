@@ -2208,6 +2208,15 @@ behavior pozostają niezmierzone. Wynik F8.2 to **CANDIDATES COMPILE — HIL REQ
 szczegóły i procedura F8.3 są w `WEB_TRANSPORT_SPIKE_F8_2.md`. WEB-103 pozostaje
 DECISION REQUIRED i żaden backend nie jest jeszcze zaakceptowany do Phase 9.
 
+F8.3A daje **IDF HIL PASS** dla izolowanego `esp_http_server` na ESP32-S3 w trybie
+STA. Sprzęt potwierdził HTTP i 1/2 persistent WS na jednym porcie, równoległe GET,
+sync/async event delivery, reconnect z pełnym HTTP resync, badany przypadek
+wolnego klienta, bounded POST/WS frame fixture, network loss/recovery po stronie
+ESP i krótki 61-sekundowy run z odczytami heap. Zakres oraz ograniczenia tych
+pomiarów opisuje `WEB_TRANSPORT_SPIKE_F8_3A_IDF_HIL.md`. F8.3B Async HIL nadal
+jest wymagane do porównania kandydatów. WEB-103 pozostaje **DECISION REQUIRED**;
+F8.3A nie wybiera backendu ani finalnej polityki transportu/realtime.
+
 ### SEC-001 — Auth i Safety
 Auth odpowiada za uprawnienie, Safety za możliwość wykonania akcji w danym stanie. Domain nie zna haseł, sesji ani handshake transportu.
 
