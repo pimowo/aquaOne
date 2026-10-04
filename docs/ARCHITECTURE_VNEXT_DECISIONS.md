@@ -2213,9 +2213,20 @@ STA. Sprzęt potwierdził HTTP i 1/2 persistent WS na jednym porcie, równoległ
 sync/async event delivery, reconnect z pełnym HTTP resync, badany przypadek
 wolnego klienta, bounded POST/WS frame fixture, network loss/recovery po stronie
 ESP i krótki 61-sekundowy run z odczytami heap. Zakres oraz ograniczenia tych
-pomiarów opisuje `WEB_TRANSPORT_SPIKE_F8_3A_IDF_HIL.md`. F8.3B Async HIL nadal
-jest wymagane do porównania kandydatów. WEB-103 pozostaje **DECISION REQUIRED**;
-F8.3A nie wybiera backendu ani finalnej polityki transportu/realtime.
+pomiarów opisuje `WEB_TRANSPORT_SPIKE_F8_3A_IDF_HIL.md`. F8.3B zbudowało i
+wgrało `ESPAsyncWebServer 3.6.0` + `AsyncTCP 3.3.2` na ten sam ESP32-S3.
+HTTP+1/2 WS, bounded POST/ramki, powiadomienie i snapshot resync, ESP-only
+recovery, slow client przy 32 eventach oraz 60-sekundowy soak przeszły badane
+scenariusze. W pierwotnym rozszerzonym teardownie wystąpiła heap corruption
+w ścieżce lwIP `tcp_close` wywołanej z AsyncTCP, a urządzenie zrestartowało
+się. Review wykryło brak odpowiedzi klienta na serwerowy WS CLOSE 1009;
+po poprawie harnessu 20 pojedynczych i 20 podwójnych clean close oraz
+poprawiony przebieg funkcjonalny nie odtworzyły panicu. Jest to **ONE
+OBSERVED PANIC — NOT REPRODUCED**, a wcześniejszy **ASYNC HIL FAIL** nie jest
+potwierdzony dla legalnego teardownu. Szczegóły, pomiary i ograniczenia
+zapisano w `WEB_TRANSPORT_SPIKE_F8_3B_ASYNC_HIL.md`.
+WEB-103 pozostaje **DECISION REQUIRED** do porównania F8.3C; ani F8.3A, ani
+F8.3B nie akceptuje backendu lub finalnej polityki transportu/realtime.
 
 ### SEC-001 — Auth i Safety
 Auth odpowiada za uprawnienie, Safety za możliwość wykonania akcji w danym stanie. Domain nie zna haseł, sesji ani handshake transportu.
