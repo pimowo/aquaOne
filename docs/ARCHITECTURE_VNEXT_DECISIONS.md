@@ -2188,45 +2188,41 @@ no-op, bez rozgałęzień po `device_type`.
 ### WEB-001 — jeden transport
 Jedno urządzenie ma jeden fizyczny transport Web. HTTP i Realtime docelowo współdzielą backend i port.
 
-### WEB-103 — wspólny HTTP + WebSocket transport — DECISION REQUIRED
+### WEB-103 — wspólny HTTP + WebSocket transport — ACCEPTED — TARGET
 
-Audyt F8.1 potwierdza jeden owner i port 80 dla istniejącego HTTP, ale obecny Arduino
-`WebServer` obsługuje jednego aktywnego klienta i nie wystawia WebSocket API. Wymagane
-równoległe HTTP+WS na jednym fizycznym serwerze/porcie nie jest wykonalne sensownie na
-tym backendzie. Nie wybrano zamiennika ani nie zmieniono WEB-001; wynik, ograniczenia
-`handleClient()`/POST oraz brak pomiarów HTTP+WS zapisano w
-`WEB_TRANSPORT_SPIKE_F8_1.md`. Wybór backendu i kontrakty Phase 9 pozostają otwarte.
+Docelowym backendem v1 dla jednego fizycznego Web listenera i portu HTTP+WS
+jest natywny ESP-IDF `esp_http_server` używany z Arduino-ESP32. Decyzja dotyczy
+przebadanej bazy ESP32-S3, Arduino-ESP32 2.0.17 / ESP-IDF 4.4.7 i nie oznacza
+implementacji produkcyjnego Web. CURRENT Arduino `WebServer` może pozostać
+legacy HTTP do migracji w Phase 9, lecz F8.1 uznało go za **NOT FEASIBLE WITH
+CURRENT STACK** dla WEB-001: nie zapewnia równoległego HTTP+WS na jednym
+listenerze/porcie.
 
-F8.2 potwierdza compile/link na CURRENT Arduino-ESP32 2.0.17 dla dwóch izolowanych
-kandydatów: utrzymywanych `ESP32Async/ESPAsyncWebServer@3.6.0` z
-`ESP32Async/AsyncTCP@3.3.2` oraz wbudowanego ESP-IDF 4.4.7 `esp_http_server` z aktywnym
-`CONFIG_HTTPD_WS_SUPPORT`. Oba proofy używają jednego servera/listenera na porcie 80,
-tego samego HTTP snapshotu i endpointu WS; produkcyjny Web nie został zmieniony.
-Buildy i porównanie pamięci przeszły, lecz HIL nie był dostępny. Równoległy GET przy
-aktywnym WS, wielu klientów, reconnect/resync, runtime heap, network loss i slow-client
-behavior pozostają niezmierzone. Wynik F8.2 to **CANDIDATES COMPILE — HIL REQUIRED**;
-szczegóły i procedura F8.3 są w `WEB_TRANSPORT_SPIKE_F8_2.md`. WEB-103 pozostaje
-DECISION REQUIRED i żaden backend nie jest jeszcze zaakceptowany do Phase 9.
+F8.2 potwierdziło compile/link obu kandydatów. F8.3A dało **IDF HIL PASS**:
+jeden port 80 obsługiwał HTTP i 1/2 trwałe WS, równoległe GET, reconnect i
+pełny HTTP resync, badany slow client, ograniczone POST/ramki, ESP-only network
+recovery oraz 61-sekundowy przebieg bez zaobserwowanego panicu/rebootu.
+F8.3B potwierdziło szeroki zakres funkcjonalny `ESPAsyncWebServer 3.6.0` z
+`AsyncTCP 3.3.2`, ale jego wynik to **ASYNC HIL INCONCLUSIVE**: wystąpił jeden
+rzeczywisty heap panic w teardownie, którego nie odtworzyły poprawione legalne
+próby close. Przyczyna nie jest ustalona; nie jest to potwierdzony defekt
+AsyncTCP ani lwIP. IDF ma wyższy poziom potwierdzonego lifecycle evidence dla
+badanej bazy, mniejszy zmierzony footprint konkretnego F8.2 spike i nie dodaje
+zewnętrznych bibliotek transportowych. Oba kandydaty spełniły funkcjonalny
+model, lecz te różnice uzasadniają wybór IDF dla v1 TARGET. Async pozostaje
+ocenioną alternatywą, możliwą do ponownej ewaluacji po zmianie platformy lub
+uzyskaniu nowych dowodów.
 
-F8.3A daje **IDF HIL PASS** dla izolowanego `esp_http_server` na ESP32-S3 w trybie
-STA. Sprzęt potwierdził HTTP i 1/2 persistent WS na jednym porcie, równoległe GET,
-sync/async event delivery, reconnect z pełnym HTTP resync, badany przypadek
-wolnego klienta, bounded POST/WS frame fixture, network loss/recovery po stronie
-ESP i krótki 61-sekundowy run z odczytami heap. Zakres oraz ograniczenia tych
-pomiarów opisuje `WEB_TRANSPORT_SPIKE_F8_3A_IDF_HIL.md`. F8.3B zbudowało i
-wgrało `ESPAsyncWebServer 3.6.0` + `AsyncTCP 3.3.2` na ten sam ESP32-S3.
-HTTP+1/2 WS, bounded POST/ramki, powiadomienie i snapshot resync, ESP-only
-recovery, slow client przy 32 eventach oraz 60-sekundowy soak przeszły badane
-scenariusze. W pierwotnym rozszerzonym teardownie wystąpiła heap corruption
-w ścieżce lwIP `tcp_close` wywołanej z AsyncTCP, a urządzenie zrestartowało
-się. Review wykryło brak odpowiedzi klienta na serwerowy WS CLOSE 1009;
-po poprawie harnessu 20 pojedynczych i 20 podwójnych clean close oraz
-poprawiony przebieg funkcjonalny nie odtworzyły panicu. Jest to **ONE
-OBSERVED PANIC — NOT REPRODUCED**, a wcześniejszy **ASYNC HIL FAIL** nie jest
-potwierdzony dla legalnego teardownu. Szczegóły, pomiary i ograniczenia
-zapisano w `WEB_TRANSPORT_SPIKE_F8_3B_ASYNC_HIL.md`.
-WEB-103 pozostaje **DECISION REQUIRED** do porównania F8.3C; ani F8.3A, ani
-F8.3B nie akceptuje backendu lub finalnej polityki transportu/realtime.
+WEB-001 ma HIL proof dla IDF: jeden fizyczny listener/port z HTTP i trwałymi
+WS. Handlery działają w tasku serwera; Phase 9 musi dodać serializowane
+przejście do Application, bez bezpośredniego wywoływania Domain lub hardware.
+Pełny HTTP snapshot jest źródłem stanu, WS powiadamia o zmianach, a po reconnect
+następuje pełny HTTP resync. Docelowa polityka ograniczeń body/ramki, kolejek,
+drop/disconnect i slow client, wire protocol, API/schema, Auth oraz TLS nie są
+ustalone przez WEB-103. WEB-101, WEB-102, RT-101 i SEC-101 pozostają otwarte.
+Szczegółowe porównanie, pomiary i ograniczenia zawiera
+`WEB_TRANSPORT_SPIKE_F8_3C_COMPARISON.md`. Phase 8 wymaga jeszcze osobnego
+final audit/closure; F8.3C nie rozpoczyna Phase 9.
 
 ### SEC-001 — Auth i Safety
 Auth odpowiada za uprawnienie, Safety za możliwość wykonania akcji w danym stanie. Domain nie zna haseł, sesji ani handshake transportu.
@@ -2380,7 +2376,6 @@ i Internet reachability pozostają otwarte.
 - DIAG-101 (pozostały zakres) — dalsze Core facts poza projekcjami F6.2, descriptors/IDs, transport visibility, timestampy, richer failure metadata i konwencje liczników;
 - WEB-101 — public/auth policy endpointów;
 - WEB-102 — API HTTP i kompatybilność z obecnym Web Core;
-- WEB-103 — backend dla wspólnego HTTP+WS na jednym porcie oraz jego pomiary;
 - RT-101 — protokół realtime, auth, heartbeat i reconnect;
 - MQTT-101 — zakres wspólnej infrastruktury MQTT;
 - SEC-101 — auth HTTP/WebSocket oraz model sekretów;
@@ -2393,8 +2388,7 @@ Nie ustalamy tych wartości na podstawie istniejącego Dosera ani innego kodu le
 
 ## SPIKE REQUIRED
 
-- WEB/RT: HTTP + WebSocket na jednym porcie i jednym transporcie;
-- WEB/RT: HTTP podczas aktywnego WebSocket, reconnect, full resync, slow client i backpressure;
+- WEB/RT: długotrwały slow client, saturacja kolejek i docelowa polityka backpressure poza ograniczonym HIL F8.3;
 - WEB/RT: kompatybilność ESP32 i ESP32-S3, heap, flash i wpływ na main loop;
 - WEB/OTA: multipart OTA, abort, auth handshake oraz reconnect po restart/OTA;
 - RT: liczba klientów, heartbeat, kolejki, payload size i timing — wyłącznie z pomiarów;
