@@ -2330,6 +2330,20 @@ po timeout może podwoić efekt. Generation jest runtime-local `uint64_t`, nie
 jest durable request/operation ID. WS publication, operation IDs i finalne
 HTTP body/response schema pozostają poza F9.4 foundation.
 
+F9.5 dodaje CURRENT narrow Realtime foundation: jeden opcjonalny WS endpoint
+na tym samym `EspIdfWebTransport`/HTTPD handle, RuntimeIdentity i osobną
+Application-owned `RealtimeStreamSequence`. Application kopiuje bounded,
+gotowy frame do fixed work slot i używa `httpd_queue_work`; enumeration klientów
+i WS send dzieją się w HTTPD task. Accepted oznacza przejęcie copy przez
+bounded boundary, nie obecność klienta, wynik socket send ani delivery ACK.
+Fixed pool czterech slotów i payload 256 B są wyłącznie capacity implementacji
+F9.5, nie limitami protokołu. Publication i stop współdzielą lifecycle mutex;
+`httpd_stop()` działa bez trzymania go, a sloty są odzyskiwane po zakończeniu
+callbacków serwera. Incoming bounded frames są konsumowane i odrzucane bez
+wywołań Domain. EventSequence, final wire, Auth, commands przez WS,
+watermark/resync i finalna backpressure policy pozostają deferred. RT-101
+pozostaje PARTIALLY ACCEPTED — TARGET, WEB-102 bez zmiany.
+
 ### SEC-001 — Auth i Safety
 Auth odpowiada za uprawnienie, Safety za możliwość wykonania akcji w danym stanie. Domain nie zna haseł, sesji ani handshake transportu.
 

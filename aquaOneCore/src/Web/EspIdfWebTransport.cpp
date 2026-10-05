@@ -1,6 +1,7 @@
 #include "AquaCore/Web/EspIdfWebTransport.h"
 
 #include <limits.h>
+#include <string.h>
 
 namespace AquaCore {
 namespace Web {
@@ -97,16 +98,27 @@ esp_err_t bodyUnsupported(httpd_req_t* request) {
 
 } // namespace
 
+EspIdfWebTransport::EspIdfWebTransport()
+    : realtimeMutex_(xSemaphoreCreateMutexStatic(&realtimeMutexStorage_)) {}
+
 EspIdfWebTransport::~EspIdfWebTransport() {
     stop();
+    if (realtimeMutex_ != nullptr) {
+        vSemaphoreDelete(realtimeMutex_);
+        realtimeMutex_ = nullptr;
+    }
 }
 
 bool EspIdfWebTransport::addRoute(
     const char* path, HttpMethod method,
     HttpRouteHandler handler, void* context
 ) {
-    return server_ == nullptr &&
-        routes_.addRoute(path, method, handler, context);
+    if (server_ != nullptr ||
+        (realtimeConfigured_ && method == HttpMethod::Get && path != nullptr &&
+         strcmp(path, realtimePath_) == 0)) {
+        return false;
+    }
+    return routes_.addRoute(path, method, handler, context);
 }
 
 bool EspIdfWebTransport::setNotFoundHandler(
@@ -114,6 +126,77 @@ bool EspIdfWebTransport::setNotFoundHandler(
 ) {
     return server_ == nullptr &&
         routes_.setNotFoundHandler(handler, context);
+}
+
+bool EspIdfWebTransport::setRealtimeEndpoint(const char* path) {
+    if (server_ != nullptr || routes_.isFrozen() || realtimeConfigured_ ||
+        path == nullptr || path[0] != '/') {
+        return false;
+    }
+    size_t length = 0U;
+    while (path[length] != '\0') {
+        if (length == REALTIME_PATH_CAPACITY || path[length] <= ' ') {
+            return false;
+        }
+        ++length;
+    }
+    if (length == 0U) {
+        return false;
+    }
+    for (size_t i = 0U; i < routes_.size(); ++i) {
+        const HttpRouteRegistry::Route* route = routes_.routeAt(i);
+        if (route->method == HttpMethod::Get && strcmp(route->path, path) == 0) {
+            return false;
+        }
+    }
+    memcpy(realtimePath_, path, length + 1U);
+    realtimeConfigured_ = true;
+    return true;
+}
+
+RealtimePublicationResult EspIdfWebTransport::publishRealtime(
+    const RealtimeNotificationMetadata& metadata, RealtimeFrameType type,
+    const uint8_t* payload, size_t length
+) {
+    if (realtimeMutex_ == nullptr ||
+        xSemaphoreTake(realtimeMutex_, portMAX_DELAY) != pdTRUE) {
+        return RealtimePublicationResult::NotRunning;
+    }
+    if (!isRunning() || !realtimeConfigured_) {
+        xSemaphoreGive(realtimeMutex_);
+        return RealtimePublicationResult::NotRunning;
+    }
+    if (!metadata.isValid()) {
+        xSemaphoreGive(realtimeMutex_);
+        return RealtimePublicationResult::InvalidMetadata;
+    }
+    if ((payload == nullptr && length != 0U) ||
+        length > REALTIME_PAYLOAD_CAPACITY) {
+        xSemaphoreGive(realtimeMutex_);
+        return RealtimePublicationResult::PayloadTooLarge;
+    }
+    for (size_t i = 0U; i < REALTIME_WORK_CAPACITY; ++i) {
+        RealtimeWork& work = realtimeWork_[i];
+        bool expected = false;
+        if (work.inUse.compare_exchange_strong(expected, true)) {
+            work.owner = this;
+            work.metadata = metadata;
+            work.length = length;
+            work.type = type;
+            if (length != 0U) {
+                memcpy(work.payload, payload, length);
+            }
+            if (httpd_queue_work(server_, realtimeWork, &work) != ESP_OK) {
+                work.inUse.store(false);
+                xSemaphoreGive(realtimeMutex_);
+                return RealtimePublicationResult::QueueWorkFailure;
+            }
+            xSemaphoreGive(realtimeMutex_);
+            return RealtimePublicationResult::Accepted;
+        }
+    }
+    xSemaphoreGive(realtimeMutex_);
+    return RealtimePublicationResult::Busy;
 }
 
 bool EspIdfWebTransport::begin(uint16_t port) {
@@ -126,6 +209,7 @@ bool EspIdfWebTransport::begin(uint16_t port) {
 
     httpd_config_t config = HTTPD_DEFAULT_CONFIG();
     config.server_port = port;
+    config.max_open_sockets = static_cast<uint16_t>(REALTIME_CLIENT_CAPACITY);
     // 24 fixed HTTP routes plus one reserved URI slot for F9.5 WS on this
     // same handle. This is an implementation capacity, not a platform rule.
     config.max_uri_handlers = static_cast<uint16_t>(
@@ -152,6 +236,20 @@ bool EspIdfWebTransport::begin(uint16_t port) {
         }
     }
 
+    if (realtimeConfigured_) {
+        httpd_uri_t realtime {};
+        realtime.uri = realtimePath_;
+        realtime.method = HTTP_GET;
+        realtime.handler = realtimeDispatch;
+        realtime.user_ctx = this;
+        realtime.is_websocket = true;
+        realtime.handle_ws_control_frames = true;
+        if (httpd_register_uri_handler(server_, &realtime) != ESP_OK) {
+            stop();
+            return false;
+        }
+    }
+
     if (httpd_register_err_handler(
             server_, HTTPD_404_NOT_FOUND, notFound
         ) != ESP_OK) {
@@ -166,12 +264,90 @@ bool EspIdfWebTransport::begin(uint16_t port) {
 }
 
 void EspIdfWebTransport::stop() {
+    httpd_handle_t stopping = nullptr;
+    if (realtimeMutex_ != nullptr) {
+        xSemaphoreTake(realtimeMutex_, portMAX_DELAY);
+    }
     accepting_.store(false);
-    if (server_ != nullptr) {
-        httpd_stop(server_); // Waits for the HTTPD task to finish callbacks.
-        server_ = nullptr;
+    stopping = server_;
+    server_ = nullptr;
+    if (realtimeMutex_ != nullptr) {
+        xSemaphoreGive(realtimeMutex_);
+    }
+    if (stopping != nullptr) {
+        // httpd_stop waits for HTTPD callbacks, so it must run without the
+        // lifecycle mutex held.
+        httpd_stop(stopping);
+    }
+    if (realtimeMutex_ != nullptr) {
+        xSemaphoreTake(realtimeMutex_, portMAX_DELAY);
     }
     port_ = 0U;
+    for (size_t i = 0U; i < REALTIME_WORK_CAPACITY; ++i) {
+        realtimeWork_[i].inUse.store(false);
+    }
+    if (realtimeMutex_ != nullptr) {
+        xSemaphoreGive(realtimeMutex_);
+    }
+}
+
+esp_err_t EspIdfWebTransport::realtimeDispatch(httpd_req_t* request) {
+    if (request == nullptr) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (request->method == HTTP_GET) {
+        return ESP_OK;
+    }
+    httpd_ws_frame_t frame {};
+    if (httpd_ws_recv_frame(request, &frame, 0U) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    if (frame.len > REALTIME_PAYLOAD_CAPACITY) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    uint8_t ignored[REALTIME_PAYLOAD_CAPACITY] {};
+    frame.payload = ignored;
+    if (frame.len != 0U &&
+        httpd_ws_recv_frame(request, &frame, frame.len) != ESP_OK) {
+        return ESP_FAIL;
+    }
+    return ESP_ERR_NOT_SUPPORTED;
+}
+
+void EspIdfWebTransport::realtimeWork(void* argument) {
+    RealtimeWork* work = static_cast<RealtimeWork*>(argument);
+    if (work == nullptr || work->owner == nullptr) return;
+    EspIdfWebTransport& owner = *work->owner;
+    httpd_handle_t server = nullptr;
+    if (owner.realtimeMutex_ != nullptr &&
+        xSemaphoreTake(owner.realtimeMutex_, portMAX_DELAY) == pdTRUE) {
+        if (owner.accepting_.load() && owner.server_ != nullptr) {
+            server = owner.server_;
+        }
+        xSemaphoreGive(owner.realtimeMutex_);
+    }
+
+    if (server != nullptr) {
+        size_t count = REALTIME_CLIENT_CAPACITY;
+        int clients[REALTIME_CLIENT_CAPACITY] {};
+        if (httpd_get_client_list(server, &count, clients) == ESP_OK) {
+            httpd_ws_frame_t frame {};
+            frame.type = work->type == RealtimeFrameType::Text ?
+                HTTPD_WS_TYPE_TEXT : HTTPD_WS_TYPE_BINARY;
+            frame.payload = work->payload;
+            frame.len = work->length;
+            for (size_t i = 0U; i < count; ++i) {
+                if (httpd_ws_get_fd_info(server, clients[i]) == HTTPD_WS_CLIENT_WEBSOCKET) {
+                    (void)httpd_ws_send_frame_async(server, clients[i], &frame);
+                }
+            }
+        }
+    }
+    if (owner.realtimeMutex_ != nullptr &&
+        xSemaphoreTake(owner.realtimeMutex_, portMAX_DELAY) == pdTRUE) {
+        work->inUse.store(false);
+        xSemaphoreGive(owner.realtimeMutex_);
+    }
 }
 
 esp_err_t EspIdfWebTransport::dispatch(httpd_req_t* request) {

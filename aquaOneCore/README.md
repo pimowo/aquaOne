@@ -537,6 +537,18 @@ future idempotency. Generation is runtime-local `uint64_t`, not a durable ID.
 WS publication, operation IDs and final HTTP body/response schema remain
 outside this foundation.
 
+**CURRENT F9.5 foundation:** one optional WS endpoint belongs to the same
+`EspIdfWebTransport` HTTPD handle. Application assigns its own RuntimeIdentity
+and Realtime stream sequence, copies a bounded prepared frame into an owned
+work slot, then queues work for the HTTPD task. Acceptance means only that
+boundary accepted the copy, never client presence, socket success or delivery
+acknowledgement. The fixed four-slot pool and 256-byte payload are F9.5
+implementation capacities, not protocol limits. Publication and stop share a
+lifecycle mutex; stop releases it before blocking in `httpd_stop()` and reclaims
+slots only after server callbacks end. Incoming bounded frames are consumed and
+rejected without invoking Domain commands. EventSequence, wire envelope, Auth,
+snapshot watermark/resync and final backpressure policy remain deferred.
+
 ```cpp
 #include <AquaCore/Web/Esp32WebBackend.h>
 #include <AquaCore/Web/WebService.h>

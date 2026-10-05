@@ -3,8 +3,11 @@
 #include <atomic>
 
 #include <esp_http_server.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/semphr.h>
 
 #include "AquaCore/Web/HttpRouteRegistry.h"
+#include "AquaCore/Web/Realtime.h"
 
 namespace AquaCore {
 namespace Web {
@@ -17,7 +20,7 @@ namespace Web {
 // waits for that task to exit. Calls from the owner are serialized.
 class EspIdfWebTransport final {
 public:
-    EspIdfWebTransport() = default;
+    EspIdfWebTransport();
     ~EspIdfWebTransport();
     EspIdfWebTransport(const EspIdfWebTransport&) = delete;
     EspIdfWebTransport& operator=(const EspIdfWebTransport&) = delete;
@@ -26,22 +29,48 @@ public:
                   HttpRouteHandler handler, void* context = nullptr);
     bool setNotFoundHandler(HttpNotFoundHandler handler,
                             void* context = nullptr);
+    bool setRealtimeEndpoint(const char* path);
+    RealtimePublicationResult publishRealtime(
+        const RealtimeNotificationMetadata& metadata, RealtimeFrameType type,
+        const uint8_t* payload, size_t length
+    );
 
     // Same-port repeat is idempotent. Different-port repeat fails. Failed
     // starts leave no running server; stop allows retry with frozen routes.
     bool begin(uint16_t port);
     void stop();
-    bool isRunning() const { return accepting_.load() && server_ != nullptr; }
+    bool isRunning() const { return accepting_.load(); }
 
 private:
     static esp_err_t dispatch(httpd_req_t* request);
     static esp_err_t notFound(httpd_req_t* request, httpd_err_code_t error);
+    static esp_err_t realtimeDispatch(httpd_req_t* request);
+    static void realtimeWork(void* argument);
     static void keepBorrowedContext(void*);
 
     HttpRouteRegistry routes_;
+    static constexpr size_t REALTIME_PATH_CAPACITY = HttpRouteRegistry::MAX_PATH_LENGTH;
+    static constexpr size_t REALTIME_WORK_CAPACITY = 4U;
+    static constexpr size_t REALTIME_PAYLOAD_CAPACITY = 256U;
+    // HTTPD_DEFAULT_CONFIG() uses seven sockets on the supported ESP-IDF
+    // baseline. The stream sends to at most that fixed set per work item.
+    static constexpr size_t REALTIME_CLIENT_CAPACITY = 7U;
+    struct RealtimeWork {
+        EspIdfWebTransport* owner = nullptr;
+        RealtimeNotificationMetadata metadata {};
+        uint8_t payload[REALTIME_PAYLOAD_CAPACITY] {};
+        size_t length = 0U;
+        RealtimeFrameType type = RealtimeFrameType::Text;
+        std::atomic<bool> inUse {false};
+    };
+    char realtimePath_[REALTIME_PATH_CAPACITY + 1U] {};
+    bool realtimeConfigured_ = false;
+    RealtimeWork realtimeWork_[REALTIME_WORK_CAPACITY];
     httpd_handle_t server_ = nullptr;
     uint16_t port_ = 0U;
     std::atomic<bool> accepting_ {false};
+    StaticSemaphore_t realtimeMutexStorage_ {};
+    SemaphoreHandle_t realtimeMutex_ = nullptr;
 };
 
 } // namespace Web
