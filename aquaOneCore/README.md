@@ -524,6 +524,19 @@ an owner-held static FreeRTOS mutex. This projection is not Domain authority;
 watermark/resync and Realtime semantics are still later Phase 9 work. No product
 composition uses this foundation yet.
 
+**CURRENT F9.4 foundation:** `WebActionBridge<Command, Capacity>` accepts an
+owned, bounded typed command into a fixed FIFO and invokes the existing
+`CommandPipeline` only from the serialized Application context. Each accepted
+request has bridge-owned response storage and a local slot/generation token.
+Wait is bounded; timeout does not cancel an accepted command, and a late result
+is safely discarded after its waiter abandons it. `CommandExecutionResult`,
+including `OperationStarted`, is preserved. HTTP mapping, Auth and idempotency
+remain later WEB-102/CMD-101/CMD-102 work. Each accepted token must be consumed
+by one bounded wait or explicit abandon; retry after timeout is unsafe without
+future idempotency. Generation is runtime-local `uint64_t`, not a durable ID.
+WS publication, operation IDs and final HTTP body/response schema remain
+outside this foundation.
+
 ```cpp
 #include <AquaCore/Web/Esp32WebBackend.h>
 #include <AquaCore/Web/WebService.h>

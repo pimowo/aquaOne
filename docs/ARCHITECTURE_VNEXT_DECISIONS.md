@@ -2317,6 +2317,19 @@ nie staje się drugim authoritative Domain state. ESP32 używa statycznego mutex
 FreeRTOS; F9.3 nie ustanawia jeszcze watermark/resync ani Realtime semantics.
 WEB-102 pozostaje PARTIALLY ACCEPTED — TARGET, RT-101 bez zmiany.
 
+F9.4 dodaje CURRENT bounded bridge dla typed Command: producer kopiuje owned
+wartość do fixed FIFO, a Application wykonuje najwyżej jeden command przez
+istniejący `CommandPipeline` poza lockiem bridge. Response mailbox jest
+bridge-owned i chroniony tokenem slot+generation; bounded timeout nie anuluje
+zaakceptowanego commandu, a late completion po abandon jest bezpiecznie
+discardowany. `CommandExecutionResult`, w tym `OperationStarted`, pozostaje
+semantycznym wynikiem. F9.4 nie ustala HTTP mapping, Auth ani idempotency;
+WEB-102 pozostaje PARTIALLY ACCEPTED — TARGET, CMD-102 DECISION REQUIRED.
+Każdy accepted token wymaga jednego bounded wait albo explicit abandon; retry
+po timeout może podwoić efekt. Generation jest runtime-local `uint64_t`, nie
+jest durable request/operation ID. WS publication, operation IDs i finalne
+HTTP body/response schema pozostają poza F9.4 foundation.
+
 ### SEC-001 — Auth i Safety
 Auth odpowiada za uprawnienie, Safety za możliwość wykonania akcji w danym stanie. Domain nie zna haseł, sesji ani handshake transportu.
 
