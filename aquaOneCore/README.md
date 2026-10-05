@@ -516,6 +516,14 @@ still use `Esp32WebBackend` and the Arduino `WebServer`.
 Legacy body/upload behavior, including `maxBodyLength == 0`, requires an
 explicit compatibility decision during F9.7/WEB-102 migration.
 
+**CURRENT F9.3 foundation:** `PublishedSnapshot<T>` lets one Application writer
+publish a bounded, self-contained typed Web projection. Readers obtain their own
+copy under a borrowed synchronizer, then serialize after unlock; before the
+first publish and after invalidation, the resource is unavailable. ESP32 uses
+an owner-held static FreeRTOS mutex. This projection is not Domain authority;
+watermark/resync and Realtime semantics are still later Phase 9 work. No product
+composition uses this foundation yet.
+
 ```cpp
 #include <AquaCore/Web/Esp32WebBackend.h>
 #include <AquaCore/Web/WebService.h>

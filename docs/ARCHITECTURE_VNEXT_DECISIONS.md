@@ -2309,6 +2309,14 @@ kompozycje pozostają bez zmian. F9.2 nie publikuje snapshotów, nie uruchamia
 Application command bridge, nie obsługuje body/upload/Auth ani WS semantics.
 WEB-102 i RT-101 pozostają PARTIALLY ACCEPTED — TARGET.
 
+F9.3 dodaje CURRENT bounded-copy publication dla niezależnych typed Web
+projections: jeden logiczny Application writer, thread-safe copy-out read do
+caller-owned wartości oraz serializacja po zwolnieniu krótkiej blokady.
+Przed pierwszą publikacją i po invalidate wynik jest Unavailable. Publication
+nie staje się drugim authoritative Domain state. ESP32 używa statycznego mutexa
+FreeRTOS; F9.3 nie ustanawia jeszcze watermark/resync ani Realtime semantics.
+WEB-102 pozostaje PARTIALLY ACCEPTED — TARGET, RT-101 bez zmiany.
+
 ### SEC-001 — Auth i Safety
 Auth odpowiada za uprawnienie, Safety za możliwość wykonania akcji w danym stanie. Domain nie zna haseł, sesji ani handshake transportu.
 
