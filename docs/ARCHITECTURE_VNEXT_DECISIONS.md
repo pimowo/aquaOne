@@ -1815,7 +1815,18 @@ po stronie Application, bez envelope, transportu i replay w F4.6.
 
 EVT-101 pozostaje DECISION REQUIRED dla pełnego envelope, payload representation,
 timestampów, kategorii, priorytetów, kolejek/backpressure, serializacji, fan-out i wire
-format. EVT-102 pozostaje DECISION REQUIRED.
+format. F4.6 nie rozstrzyga EVT-102; wąski kierunek F9.6A opisano poniżej.
+
+### EVT-102 — HTTP snapshot i relacja do Realtime — PARTIALLY ACCEPTED — TARGET
+
+F9.6A ustala wyłącznie logiczny kontrakt: pełny, typowany HTTP resource snapshot
+jest źródłem recovery; każdy zasób ma `RuntimeIdentity` i watermark będący
+pozycją `RealtimeStreamSequence` albo jawnym stanem przed pierwszym powiadomieniem.
+Klient kończy resync dopiero po uzyskaniu dostępnego, spójnego zestawu zasobów
+o jednej tożsamości i równym watermarku, a następnie stosuje ciągłe powiadomienia
+WS powyżej tej pozycji. Nie ma obowiązkowego giant snapshotu ani replay historii.
+F9.6A jest design gate, bez implementacji. Typed Domain payload schema, transportowe
+field names i szczegóły serializacji pozostają otwarte; EVT-102 nie jest w pełni ACCEPTED.
 
 ### CFG-001 — rozdział konfiguracji
 CoreConfig, DomainConfig, DomainState, SystemState i RuntimeState są rozdzielone. RuntimeState nie jest persistent.
@@ -2171,8 +2182,9 @@ AlarmState nie emituje eventów i nie zapisuje tych osi; Action Locks pozostają
 Pozostają otwarte: physical storage schema/keys/versioning, registry/enumeration, reason
 metadata, severity descriptor, timestamps, counters/history, application ACK authorization
 workflow, transport representation, dokładne project mappings i bogatsza diagnostyka.
-EVT-101 pozostaje częściowo otwarte, a EVT-102 nadal wymaga decyzji o snapshot/transport
-schema i resync; AlarmEvent jest tylko transition notification, nie historią.
+EVT-101 pozostaje częściowo otwarte, a EVT-102 nadal wymaga Domain payload i transport
+schema poza wąskim kierunkiem resync F9.6A; AlarmEvent jest tylko transition notification,
+nie historią.
 ALM-101 nie jest w całości zamknięte.
 
 ### HW-001 — trzy poziomy hardware
@@ -2344,6 +2356,34 @@ wywołań Domain. EventSequence, final wire, Auth, commands przez WS,
 watermark/resync i finalna backpressure policy pozostają deferred. RT-101
 pozostaje PARTIALLY ACCEPTED — TARGET, WEB-102 bez zmiany.
 
+F9.6A wybiera TARGET dla powiązania HTTP snapshotu i WS: Application publikuje
+kompletny zestaw typed resource projections z jednym `RuntimeIdentity` i wspólną
+pozycją Realtime, zanim zgłosi normalne powiadomienie tej pozycji. Watermark
+przed pierwszym powiadomieniem jest jawnym stanem, nie legalną sekwencją 0.
+Jeden `RealtimeStreamPosition` reprezentuje `BeforeFirst` albo legalną sekwencję
+i jest używany przez snapshot, `StreamStart` i read-only `currentPosition()`.
+Tylko serialized Application owner czyta sequencer; HTTPD otrzymuje chronioną,
+niezmienną kopię pozycji. Composition jawnie deklaruje skończony full-resync set,
+a każdy jego zasób, również z niezmienionym payloadem, dostaje watermark każdej
+pozycji N jako jedna spójna wartość metadata+payload.
+`StreamStart` po ustanowieniu WS raportuje bieżącą pozycję bez zużycia numeru;
+klient przechodzi z `CONNECTING` do `LIVE` dopiero po skutecznym wysłaniu tego
+markera, buforuje bounded overlap, pobiera spójny zestaw HTTP i
+stosuje wyłącznie kolejne powiadomienia. Utrata publikacji, w tym ostatniej,
+ustawia sticky resync i prowadzi do rozłączenia klientów niezależnie od nowego
+Domain eventu; błąd wysyłki do jednego klienta dotyczy tylko jego sesji.
+Snapshot failure bez kolejnej zmiany jest naprawiany przez jawny republish
+aktualnych projekcji przy istniejącej pozycji, bez wydania nowej sekwencji.
+Jeśli kolejka sterująca nie pozwala zamknąć sesji, osobny lifecycle supervisor
+zatrzymuje/recyklinguje HTTPD. `httpd_sess_trigger_close()` w IDF 4.4.7 sam
+kolejkuje work, więc nie stanowi bezwarunkowego fallbacku. F9.6B implementuje
+kontrakt, F9.6C mierzy saturację, slow client i HIL na dostępnym classic ESP32,
+a F9.6D wykonuje review/checkpoint. Szczegóły zawiera
+`WEB_REALTIME_F9_6A_RESYNC_DESIGN.md`. Jest to wyłącznie design gate; CURRENT
+F9.5 nie ma jeszcze watermarku, StreamStart ani resync path. RT-101 pozostaje
+PARTIALLY ACCEPTED — TARGET; finalne wire spelling, heartbeat, liczbowe limity,
+progi i Auth/session pozostają otwarte.
+
 ### SEC-001 — Auth i Safety
 Auth odpowiada za uprawnienie, Safety za możliwość wykonania akcji w danym stanie. Domain nie zna haseł, sesji ani handshake transportu.
 
@@ -2489,7 +2529,7 @@ i Internet reachability pozostają otwarte.
 - CMD-101 (pozostały zakres) — command envelope, source metadata, stable machine error code, async operation identity, request/correlation ID i wire representation;
 - CMD-102 — idempotency i deduplication;
 - EVT-101 (pozostały zakres) — pełny envelope, payload representation, timestamps, categories, priority, queue/backpressure, serialization, fan-out i wire format;
-- EVT-102 — snapshot schema oraz relacja snapshot/HTTP/realtime;
+- EVT-102 (pozostały zakres) — typed Domain payload schema i finalna serializacja poza logiczną relacją HTTP snapshot/Realtime z F9.6A;
 - ALM-101 (pozostały zakres) — physical storage schema/keys/versioning, registry/enumeration, metadata/severity/history, ACK authorization workflow, transport, dokładne project mappings i bogatsza diagnostyka;
 - SAF-101 — dokładne reason IDs, priority/metadata oraz szerszy publiczny Action Lock API (poza częściowo zaakceptowaną F3.4 foundation);
 - MNT-101 (pozostały zakres) — konkretne operations, per-operation Safety/Action Lock policy, wielu participantów, events/diagnostics i domain-specific HIL behavior;
