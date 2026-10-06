@@ -518,8 +518,9 @@ declarations until TOOLCHAIN-2 aligns them with the accepted Core baseline.
 `esp_http_server` transport alongside the legacy backend. It has fixed, bounded
 GET/POST registration frozen before start, one HTTPD handle/port, a single 404
 handler, and begin/stop/restart lifecycle. Callbacks run in the HTTPD server
-task. F9.2 accepts bodyless routes only; snapshot publication, serialized
-actions, upload/Auth and Realtime semantics are later Phase 9 work. Products
+task. The original F9.2 surface accepted bodyless routes only; F9.7C now adds
+the bounded normal-body contract described below. Snapshot publication,
+serialized actions, upload/Auth and Realtime semantics are separate layers. Products
 still use `Esp32WebBackend` and the Arduino `WebServer`.
 Legacy body/upload behavior, including `maxBodyLength == 0`, requires an
 explicit compatibility decision during F9.7/WEB-102 migration.
@@ -541,8 +542,8 @@ its serialized tick. The transitional source adapters are the only layer that
 reads `SystemService` and `DiagnosticsService`. `WebStartup` is an optional
 `INTERFACES_INIT` participant and `WebHealthProvider` contributes live Web
 health through SYS-106. The native HTTP path has no transport polling. Products
-still use the legacy `WebService`/`Esp32WebBackend`; POST/body, Auth and product
-migration remain later Phase 9 work.
+still use the legacy `WebService`/`Esp32WebBackend`; Auth and product migration
+remain later Phase 9 work.
 
 **CURRENT F9.4 foundation:** `WebActionBridge<Command, Capacity>` accepts an
 owned, bounded typed command into a fixed FIFO and invokes the existing
@@ -550,12 +551,31 @@ owned, bounded typed command into a fixed FIFO and invokes the existing
 request has bridge-owned response storage and a local slot/generation token.
 Wait is bounded; timeout does not cancel an accepted command, and a late result
 is safely discarded after its waiter abandons it. `CommandExecutionResult`,
-including `OperationStarted`, is preserved. HTTP mapping, Auth and idempotency
-remain later WEB-102/CMD-101/CMD-102 work. Each accepted token must be consumed
+including `OperationStarted`, is preserved. Final route-specific HTTP mapping,
+Auth and idempotency remain later WEB-102/CMD-101/CMD-102 work. Each accepted token must be consumed
 by one bounded wait or explicit abandon; retry after timeout is unsafe without
 future idempotency. Generation is runtime-local `uint64_t`, not a durable ID.
 WS publication, operation IDs and final HTTP body/response schema remain
 outside this foundation.
+
+**CURRENT F9.7C foundation:** native `HttpRouteOptions::maxBodyLength` is an
+explicit per-route normal-body limit. Zero means bodyless, GET routes must use
+zero, and the current fixed transport capacity is 512 bytes; 512 is a bounded
+implementation capacity for the first small action cohort, not a platform or
+product-wide standard. `EspIdfWebTransport` receives partial body reads into
+owner-held fixed storage and exposes a callback-scoped, length-authoritative
+`HttpRouteRequest` view. Oversize bodies receive 413; incomplete/error receives
+400 and closes the session with unread bytes. Multipart/upload remains a
+separate future streaming path. A route must parse and copy a self-contained
+typed command before crossing tasks. `NativeActionBoundary` reuses
+`WebActionBridge`: queue-full/pre-acceptance infrastructure failure suggests
+503, completed results are preserved, and accepted timeout remains outcome
+unknown with candidate 202 and no cancellation or automatic retry. Application
+still calls `processOne()` from its serialized tick. `NativeWebService` accepts
+product routes only before its first `begin()` attempt and protects built-in
+paths. Products and legacy `WebRouteOptions` behavior remain unchanged; the
+final error envelope, compatibility statuses, Auth and product routes remain
+open under WEB-101/WEB-102.
 
 **CURRENT F9.5 foundation:** one optional WS endpoint belongs to the same
 `EspIdfWebTransport` HTTPD handle. Application assigns its own RuntimeIdentity

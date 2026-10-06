@@ -13,7 +13,12 @@ namespace Web {
 class HttpServerTransport {
 public:
     virtual bool addRoute(const char* path, HttpMethod method,
-                          HttpRouteHandler handler, void* context = nullptr) = 0;
+                          HttpRouteHandler handler, void* context = nullptr) {
+        return addRoute(path, method, handler, context, HttpRouteOptions {});
+    }
+    virtual bool addRoute(const char* path, HttpMethod method,
+                          HttpRouteHandler handler, void* context,
+                          const HttpRouteOptions& options) = 0;
     virtual bool setNotFoundHandler(HttpNotFoundHandler handler,
                                     void* context = nullptr) = 0;
     virtual bool begin(uint16_t port) = 0;

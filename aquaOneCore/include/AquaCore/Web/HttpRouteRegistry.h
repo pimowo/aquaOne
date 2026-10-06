@@ -8,11 +8,24 @@
 namespace AquaCore {
 namespace Web {
 
-// The request view and writer are valid only during the transport callback.
-// F9.2 accepts bodyless GET/POST only; no HTTPD or Domain type crosses here.
+constexpr size_t HTTP_NORMAL_BODY_CAPACITY = 512U;
+
+struct HttpRouteOptions {
+    constexpr explicit HttpRouteOptions(size_t maximum = 0U)
+        : maxBodyLength(maximum) {}
+    // Zero means that the route accepts no normal request body.
+    size_t maxBodyLength;
+};
+
+// The request view and writer are valid only during the transport callback;
+// no HTTPD or Domain type crosses here. bodyLength is authoritative. The
+// transport appends a convenience NUL byte after a non-null body view. Any
+// future async/deferred handler must copy the required bytes before returning.
 struct HttpRouteRequest {
     HttpMethod method;
     const char* path;
+    const char* body;
+    size_t bodyLength;
 };
 
 using HttpRouteHandler = void (*)(
@@ -32,6 +45,7 @@ public:
         HttpMethod method = HttpMethod::Get;
         HttpRouteHandler handler = nullptr;
         void* context = nullptr;
+        HttpRouteOptions options {};
     };
 
     HttpRouteRegistry() = default;
@@ -40,8 +54,16 @@ public:
 
     bool addRoute(const char* path, HttpMethod method,
                   HttpRouteHandler handler, void* context) {
+        return addRoute(path, method, handler, context, HttpRouteOptions {});
+    }
+
+    bool addRoute(const char* path, HttpMethod method,
+                  HttpRouteHandler handler, void* context,
+                  const HttpRouteOptions& options) {
         if (frozen_ || !validPath(path) || !validMethod(method) ||
-            handler == nullptr || count_ == MAX_ROUTES) {
+            handler == nullptr || count_ == MAX_ROUTES ||
+            options.maxBodyLength > HTTP_NORMAL_BODY_CAPACITY ||
+            (method == HttpMethod::Get && options.maxBodyLength != 0U)) {
             return false;
         }
         for (size_t i = 0U; i < count_; ++i) {
@@ -55,6 +77,7 @@ public:
         route.method = method;
         route.handler = handler;
         route.context = context;
+        route.options = options;
         ++count_;
         return true;
     }

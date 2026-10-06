@@ -116,7 +116,36 @@ NativeWebService::~NativeWebService() {
     stop();
 }
 
+bool NativeWebService::addRoute(
+    const char* path, HttpMethod method,
+    HttpRouteHandler handler, void* context
+) {
+    return addRoute(path, method, handler, context, HttpRouteOptions {});
+}
+
+bool NativeWebService::addRoute(
+    const char* path, HttpMethod method,
+    HttpRouteHandler handler, void* context,
+    const HttpRouteOptions& options
+) {
+    if (registrationClosed_ || routeRegistrationFailed_ || path == nullptr ||
+        std::strcmp(path, "/") == 0 ||
+        std::strcmp(path, "/assets/aqua.css") == 0 ||
+        std::strcmp(path, "/api/system") == 0 ||
+        std::strcmp(path, "/api/diagnostics") == 0) {
+        return false;
+    }
+    if (!transport_.addRoute(path, method, handler, context, options)) {
+        // The transport contract has no rollback. After any failed delegated
+        // registration this service cannot prove the table is composable.
+        routeRegistrationFailed_ = true;
+        return false;
+    }
+    return true;
+}
+
 bool NativeWebService::begin(const WebConfig& config) {
+    registrationClosed_ = true;
     if ((config.navigationMask & ~ALL_NAVIGATION_SECTIONS) != 0U ||
         (config.enabled && config.port == 0U)) {
         transport_.stop();

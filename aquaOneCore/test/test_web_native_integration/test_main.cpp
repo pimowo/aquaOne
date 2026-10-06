@@ -57,10 +57,12 @@ public:
         HttpMethod method = HttpMethod::Get;
         HttpRouteHandler handler = nullptr;
         void* context = nullptr;
+        HttpRouteOptions options {};
     };
 
     bool addRoute(const char* path, HttpMethod method,
-                  HttpRouteHandler handler, void* context) override {
+                  HttpRouteHandler handler, void* context,
+                  const HttpRouteOptions& options) override {
         ++addAttempts;
         if (failAddAttempt != 0U && addAttempts == failAddAttempt) {
             return false;
@@ -78,6 +80,7 @@ public:
         route.method = method;
         route.handler = handler;
         route.context = context;
+        route.options = options;
         ++addCalls;
         return true;
     }
@@ -103,7 +106,7 @@ public:
         writer.snapshotLock = lock;
         for (size_t i = 0U; i < count; ++i) {
             if (routes[i].method == method && std::strcmp(routes[i].path, path) == 0) {
-                const HttpRouteRequest request {method, path};
+                const HttpRouteRequest request {method, path, nullptr, 0U};
                 routes[i].handler(routes[i].context, request, writer);
                 return writer;
             }

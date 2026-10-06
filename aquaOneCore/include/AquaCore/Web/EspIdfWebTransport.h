@@ -34,8 +34,11 @@ public:
     EspIdfWebTransport(const EspIdfWebTransport&) = delete;
     EspIdfWebTransport& operator=(const EspIdfWebTransport&) = delete;
 
+    using HttpServerTransport::addRoute;
+
     bool addRoute(const char* path, HttpMethod method,
-                  HttpRouteHandler handler, void* context = nullptr) override;
+                  HttpRouteHandler handler, void* context,
+                  const HttpRouteOptions& options) override;
     bool setNotFoundHandler(HttpNotFoundHandler handler,
                             void* context = nullptr) override;
     bool setRealtimeEndpoint(const char* path);
@@ -67,6 +70,10 @@ private:
     static void keepBorrowedContext(void*);
 
     HttpRouteRegistry routes_;
+    // ESP-IDF URI callbacks run serially on the HTTP server task. Keeping the
+    // bounded body buffer here avoids adding 513 bytes to each dispatch frame.
+    // The bytes remain borrowed and callback-scoped.
+    char normalBody_[HTTP_NORMAL_BODY_CAPACITY + 1U] {};
     static constexpr size_t REALTIME_PATH_CAPACITY = HttpRouteRegistry::MAX_PATH_LENGTH;
     static constexpr size_t REALTIME_WORK_CAPACITY = 4U;
     static constexpr size_t REALTIME_PAYLOAD_CAPACITY = 256U;

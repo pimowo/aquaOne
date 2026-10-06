@@ -2314,6 +2314,21 @@ Legacy `WebService`/`Esp32WebBackend` i produkty pozostają bez migracji; normal
 POST/body, Auth, upload, finalny error envelope oraz pozostały schema/mapping
 pozostają w dalszym zakresie WEB-102/F9.7C+. WEB-101 pozostaje DECISION REQUIRED.
 
+F9.7C implementuje CURRENT wąski foundation dla normalnego POST: neutralne
+`HttpRouteOptions::maxBodyLength`, zero jako jawnie bodyless, GET wyłącznie z
+limitem zero i bieżącą stałą pojemność transportu 512 B. Limit 512 B jest
+capacity pierwszego małego cohortu akcji, nie standardem platformy ani limitem
+uploadu. HTTPD składa partial reads do owner-held bufora, a handler pożycza
+length-authoritative body tylko podczas callbacku; oversize daje 413, a
+niepełny odbiór 400 i zamknięcie połączenia z nieprzeczytanymi bajtami. Przed
+przejściem do Application route tworzy własny bounded typed command.
+`NativeActionBoundary` korzysta z istniejącego `WebActionBridge`: rozróżnia
+not accepted, accepted+completed, accepted+outcome unknown oraz bridge failure,
+zachowuje pełny `CommandExecutionResult`/`OperationStarted`, a accepted timeout
+nie anuluje i ma candidate 202. Queue full i failure przed acceptance mają
+candidate 503. Finalne product statusy/envelope, Auth, upload, idempotency i
+publiczne schemas pozostają otwarte; produkty nadal używają legacy Web.
+
 ### RT-101 — Realtime notification boundary — PARTIALLY ACCEPTED — TARGET
 
 F9.1 ustala v1 WS przede wszystkim jako server-to-client notifications. Incoming

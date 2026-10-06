@@ -28,6 +28,13 @@ public:
     );
     ~NativeWebService();
 
+    // Product routes must be registered before the first begin() attempt.
+    // The four Core paths remain reserved for the built-in read surface.
+    bool addRoute(const char* path, HttpMethod method,
+                  HttpRouteHandler handler, void* context = nullptr);
+    bool addRoute(const char* path, HttpMethod method,
+                  HttpRouteHandler handler, void* context,
+                  const HttpRouteOptions& options);
     bool begin(const WebConfig& config);
     void stop();
     bool isRunning() const;
@@ -49,6 +56,7 @@ private:
     NativeWebState state_ = NativeWebState::Stopped;
     bool routesRegistered_ = false;
     bool routeRegistrationFailed_ = false;
+    bool registrationClosed_ = false;
 };
 
 } // namespace Web

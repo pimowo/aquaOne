@@ -85,15 +85,14 @@ private:
     bool failed_ = false;
 };
 
-esp_err_t bodyUnsupported(httpd_req_t* request) {
-    httpd_resp_set_status(request, "413 Payload Too Large");
+esp_err_t rejectUnreadBody(httpd_req_t* request, const char* status,
+                           const char* message) {
+    httpd_resp_set_status(request, status);
     httpd_resp_set_type(request, "text/plain; charset=utf-8");
-    const esp_err_t result = httpd_resp_send(
-        request, "Request body not supported", HTTPD_RESP_USE_STRLEN
-    );
-    // No body was consumed. Close this connection so it cannot pollute the
-    // next request; F9.4 will introduce bounded owned command input.
-    return result == ESP_OK ? ESP_FAIL : result;
+    httpd_resp_send(request, message, HTTPD_RESP_USE_STRLEN);
+    // The body was not fully consumed. Returning failure makes HTTPD close the
+    // session, so unread bytes cannot be parsed as the next request.
+    return ESP_FAIL;
 }
 
 // Provisional internal F9.6B marker encoding used only to exercise the
@@ -131,14 +130,15 @@ EspIdfWebTransport::~EspIdfWebTransport() {
 
 bool EspIdfWebTransport::addRoute(
     const char* path, HttpMethod method,
-    HttpRouteHandler handler, void* context
+    HttpRouteHandler handler, void* context,
+    const HttpRouteOptions& options
 ) {
     if (server_ != nullptr ||
         (realtimeConfigured_ && method == HttpMethod::Get && path != nullptr &&
          strcmp(path, realtimePath_) == 0)) {
         return false;
     }
-    return routes_.addRoute(path, method, handler, context);
+    return routes_.addRoute(path, method, handler, context, options);
 }
 
 bool EspIdfWebTransport::setNotFoundHandler(
@@ -660,14 +660,33 @@ esp_err_t EspIdfWebTransport::dispatch(httpd_req_t* request) {
     if (route == nullptr || route->handler == nullptr) {
         return httpd_resp_send_500(request);
     }
-    if (request->content_len != 0U) {
-        return bodyUnsupported(request);
+    if (request->content_len > route->options.maxBodyLength) {
+        return rejectUnreadBody(request, "413 Payload Too Large",
+                                "Request body exceeds route limit");
     }
+
+    size_t total = 0U;
+    while (total < request->content_len) {
+        const size_t remaining = request->content_len - total;
+        const ssize_t received = httpd_req_recv(
+            request, owner->normalBody_ + total, remaining
+        );
+        // Timeouts and socket errors are terminal for this bounded request.
+        // Retrying here could make the HTTPD task wait without a local bound.
+        if (received <= 0) {
+            return rejectUnreadBody(request, "400 Bad Request",
+                                    "Incomplete request body");
+        }
+        total += static_cast<size_t>(received);
+    }
+    owner->normalBody_[total] = '\0';
 
     IdfResponseWriter response(*request);
     const HttpRouteRequest view {
         route->method,
-        request->uri
+        request->uri,
+        total == 0U ? nullptr : owner->normalBody_,
+        total
     };
     route->handler(route->context, view, response);
     return response.finish();
