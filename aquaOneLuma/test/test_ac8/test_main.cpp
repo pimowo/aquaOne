@@ -94,6 +94,9 @@ public:
 
 class NetBackend final : public NetworkBackend {
 public:
+    bool applyRadioPolicy(
+        TriStateSetting, TriStateSetting, WifiPowerSaveMode
+    ) override { return true; }
     bool setHostname(const char*) override { ++hostnameCalls; return true; }
     bool beginSta(const char*, const char*) override {
         ++beginCalls; return beginResult;
@@ -103,6 +106,9 @@ public:
     bool disconnectSta() override { ++disconnectCalls; return true; }
     IpAddress localIp() const override { return {{192U, 168U, 1U, 55U}}; }
     int32_t rssi() const override { return -58; }
+    NetworkDisconnectReason consumeDisconnectReason() override {
+        return NetworkDisconnectReason::None;
+    }
     bool startAccessPoint(const char*, const char*) override {
         ++apStartCalls; return true;
     }

@@ -152,6 +152,21 @@ public:
     CoreDiagnosticsProjection value {};
 };
 
+class StaticPage final : public WebPageProvider {
+public:
+    StaticPage(const char* path, const char* pageTitle, const char* body)
+        : path_(path), title_(pageTitle), body_(body) {}
+    const char* route() const override { return path_; }
+    const char* title() const override { return title_; }
+    void render(WebResponseWriter& response) const override {
+        response.writeText(body_);
+    }
+private:
+    const char* path_;
+    const char* title_;
+    const char* body_;
+};
+
 struct Fixture {
     Fixture()
         : systemSnapshot(systemLock),
@@ -336,6 +351,29 @@ void testRootCssAndNotFound() {
     TEST_ASSERT_EQUAL_STRING("Not Found", missing.body.c_str());
 }
 
+void testBorrowedStaticPagesUseBuiltInRootAndSharedShell() {
+    Fixture f;
+    StaticPage root("/", "Luma dashboard", "<section>root-page</section>");
+    StaticPage control("/control", "Control", "<section>control-page</section>");
+    StaticPage reserved("/api/system", "Wrong", "wrong");
+    TEST_ASSERT_TRUE(f.service.addPage(root));
+    TEST_ASSERT_TRUE(f.service.addPage(control));
+    TEST_ASSERT_FALSE(f.service.addPage(reserved));
+    TEST_ASSERT_TRUE(f.publisher.update().systemPublished);
+    TEST_ASSERT_TRUE(f.service.begin(f.enabledConfig()));
+    TEST_ASSERT_EQUAL_UINT32(5U, f.transport.count);
+    Writer rootResponse = f.transport.request("/");
+    TEST_ASSERT_EQUAL_UINT16(200U, rootResponse.status);
+    assertContains(rootResponse.body, "root-page");
+    assertContains(rootResponse.body, "Luma dashboard");
+    Writer controlResponse = f.transport.request("/control");
+    TEST_ASSERT_EQUAL_UINT16(200U, controlResponse.status);
+    assertContains(controlResponse.body, "control-page");
+    assertContains(controlResponse.body, "href=\"/assets/aqua.css\"");
+    StaticPage late("/late", "Late", "late");
+    TEST_ASSERT_FALSE(f.service.addPage(late));
+}
+
 void testLifecycleDisabledFailureRetryAndRestart() {
     Fixture disabled;
     WebConfig disabledConfig {};
@@ -474,6 +512,7 @@ void runTests() {
     RUN_TEST(testSystemUnavailableAndSnapshotIndependence);
     RUN_TEST(testDiagnosticsCompatibilityAndIndependence);
     RUN_TEST(testRootCssAndNotFound);
+    RUN_TEST(testBorrowedStaticPagesUseBuiltInRootAndSharedShell);
     RUN_TEST(testLifecycleDisabledFailureRetryAndRestart);
     RUN_TEST(testPartialRegistrationIsTerminalAndRuntimeLossIsRecoverable);
     RUN_TEST(testSystemServiceSourceRequiresReadyAuthority);

@@ -1,10 +1,21 @@
-# LumaSense — WWW po AC8
+# LumaSense — WWW po F9.7D
 
 ## 1. Stan i granice
 
-AC8 podłącza istniejące moduły `AquaCore::Network`, `AquaCore::Diagnostics` i `AquaCore::Web` do produkcyjnego `main.cpp`. WWW jest opcjonalnym interfejsem lokalnym. `FirmwareApp` uruchamia się przed siecią, a `FirmwareApp::update()` pozostaje pierwszą operacją pętli.
+F9.7D przełącza produkcyjne WWW na jeden `EspIdfWebTransport` używany przez
+`NativeWebService`. Nie powstaje legacy `Esp32WebBackend` ani `WebService`, a
+transport HTTPD nie wymaga `update()`/`handleClient()`. WWW pozostaje opcjonalnym
+interfejsem lokalnym. `FirmwareApp` uruchamia się przed siecią, a
+`FirmwareApp::update()` pozostaje pierwszą operacją pętli. Jest to przejściowa
+kompozycja produktu, bez migracji całej Lumy do `ApplicationRuntime`.
 
-Brak Wi-Fi, rozłączenie albo błąd Web nie zatrzymują Core. Kod `src/web` nie zapisuje GPIO/PWM i nie odwołuje się do `HardwareInterface` ani `TransitionEngine`. Polecenia przechodzą przez ścisłą walidację, `FirmwareApp`, istniejące API `LumaCore` i — dla profilu — istniejący `StorageService`.
+Brak Wi-Fi, rozłączenie albo błąd Web nie zatrzymują Core. HTTPD czyta wyłącznie
+opublikowane snapshoty i nie posiada `FirmwareApp`, Network, Diagnostics,
+Storage ani Hardware. Mutacje przechodzą jako owned `LumaWebRequest` przez
+stałopojemnościowy `WebApplicationBridge`; najwyżej jedno żądanie wykonuje się
+w Application loop. Profil pozostaje `CONFIG_ACTION`, a mode/manual są
+przejściową serializowaną ścieżką Application. Manual używa bieżącego `nowMs`
+Application, nie czasu HTTPD.
 
 ## 2. Strony
 
@@ -28,6 +39,15 @@ Strony używają wspólnego `HtmlShell` i lokalnego `/assets/aqua.css`. Nie pobi
 
 Body POST ma limit 512 bajtów. Parser odrzuca niepełny lub rozszerzony schemat, niepoprawne typy, NaN/Inf, zakresy i dane po obiekcie. Złe dane dają 400, konflikt stanu lub zapis Storage 409, a idempotentna operacja poprawne `no_change`. Dynamiczne wartości są escapowane dla JSON/HTML.
 
+Oczekiwanie HTTPD na wynik jest ograniczone do 250 ms. Jest to prowizoryczna
+wartość integracyjna Lumy, nie standard Core. F9.7D2 HIL dał 20 bezpiecznych
+POST no-change bez 202; mediana wyniosła 249.802 ms, p95 504.565 ms, a maksimum
+561.396 ms. Szczegóły i dalsze ryzyko timingowe opisuje
+`docs/WEB_F9_7D2_LUMA_HIL.md`.
+Queue-full lub awaria przed acceptance daje 503. Timeout po acceptance daje
+202 z `outcome_unknown`; nie anuluje, nie ponawia i nie wysyła ponownie żądania.
+ControlPage sprawdza `body.ok`, więc 202 nie jest prezentowane jako sukces.
+
 ## 4. Trwałość i restart
 
 Zmiana profilu tworzy kopię `DeviceConfig`, waliduje ją, zapisuje transakcyjnym Storage i dopiero po sukcesie aktywuje. `activeProfileIndex` wraca po restarcie. Tryby runtime nie są zapisywane; restart zawsze uruchamia NORMAL i nie odtwarza MANUAL/OFF.
@@ -36,9 +56,33 @@ Zmiana profilu tworzy kopię `DeviceConfig`, waliduje ją, zapisuje transakcyjny
 
 Repo zawiera tylko `include/NetworkSecrets.example.h` z wyłączonym Wi-Fi i pustymi polami. Lokalny `include/NetworkSecrets.h` jest ignorowany. Hasło nie trafia do logu, stron ani API. Diagnostyka może podać SSID.
 
-AC8 używa STA z reconnectem co 10 s i wyłączonym SoftAP. HTTP nie ma uwierzytelniania ani HTTPS, więc sterowanie jest przeznaczone wyłącznie dla zaufanej sieci LAN.
+Luma używa STA z reconnectem co 10 s i wyłączonym SoftAP. HTTP nie ma
+uwierzytelniania ani HTTPS; jest to zachowanie kompatybilności CURRENT, a nie
+globalna decyzja WEB-101. WEB-101 nadal wymaga decyzji, a SEC-101 pozostaje OPEN.
 
-## 6. Poza AC8
+Dashboard zachowuje polling statusu co 1500 ms. Luma nie konfiguruje WebSocket,
+Realtime ani StreamStart w F9.7D.
+
+F9.7D ma real HTTP/Wi-Fi HIL PASS na `LOLIN32_TEST`: jeden listener portu 80,
+natywne strony/API, 512/513-byte body boundary, Application actions i 60 s
+stability soak. F9.7D jest CURRENT/CLOSED po checkpointcie. Nie zamyka to
+Phase 9 ani nie zmienia otwartego WEB-101 i SEC-101.
+
+## 6. F9.7D2 HIL
+
+F9.7D2 completed real production HTTP/Wi-Fi HIL on `LOLIN32_TEST` using one
+`EspIdfWebTransport` on port 80. Native pages and APIs, the 512/513-byte body
+boundary, Application actions, profile restore, a partial-body disconnect and a
+60-second light soak passed. The sanitized evidence is
+`docs/WEB_F9_7D2_LUMA_HIL.md`.
+
+The 250 ms Application wait remains a provisional product value. Twenty safe
+no-change POST requests produced no 202 response; host-observed median was
+249.802 ms, p95 504.565 ms and maximum 561.396 ms. The tail latency remains a
+residual scheduling/HTTPD risk. Luma remains polling-only; WEB-101 is DECISION
+REQUIRED and SEC-101 remains OPEN.
+
+## 7. Poza AC8
 
 AC8 nie dodaje CHANNEL_TEST, PREVIEW, SIMULATION, edytora profili/kanałów, konfiguratora sieci, NTP, MQTT, Home Assistant, OTA ani captive portalu.
 

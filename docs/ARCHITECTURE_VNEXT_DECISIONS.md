@@ -2329,6 +2329,29 @@ nie anuluje i ma candidate 202. Queue full i failure przed acceptance mają
 candidate 503. Finalne product statusy/envelope, Auth, upload, idempotency i
 publiczne schemas pozostają otwarte; produkty nadal używają legacy Web.
 
+F9.7D1 dodaje implementation candidate dla pierwszego
+produktu: Luma komponuje jeden `EspIdfWebTransport` i `NativeWebService`, bez
+legacy fizycznego serwera oraz bez transport pollingu. Built-ins czytają
+Application-published Core projections, a `/api/lumasense/status` czyta osobny
+bounded `LumaStatusProjection`; HTTPD nie posiada referencji do mutable
+FirmwareApp, Network, Diagnostics, Storage ani Hardware. Static Luma pages są
+borrowed przez stałopojemnościowy adapter `NativeWebService::addPage()`; built-in
+`/` zachowuje własność fizycznej trasy i osadza root provider we wspólnym shellu.
+
+Mutacje Lumy zachowują dokładny `FirmwareCommandResult` przez osobny,
+stałopojemnościowy `WebApplicationBridge<Request, Result, Capacity>` dla
+non-Command Application workflows. To nie jest druga Domain pipeline:
+mode/manual/exit korzystają przejściowo z istniejących entrypoints FirmwareApp,
+a profil pozostaje `CONFIG_ACTION` z persistence po stronie Application.
+Application wykonuje najwyżej jedno żądanie Web na tick; manual pobiera `nowMs`
+z tego ticku. Luma używa prowizorycznego bounded wait 250 ms: queue-full przed
+acceptance daje 503, accepted timeout lub technical unknown daje 202
+`outcome_unknown`, bez cancel/retry/resubmit. Snapshot statusu jest publikowany
+po processing w tej samej iteracji. Luma pozostaje polling-only i nie konfiguruje
+Realtime. Brak Auth zachowuje kompatybilność CURRENT; WEB-101 nadal jest
+DECISION REQUIRED, SEC-101 OPEN, WEB-102 PARTIALLY ACCEPTED — TARGET, a pełna
+Domain/CommandPipeline migration oraz CMD-101/CMD-102 nie są zakończone.
+
 ### RT-101 — Realtime notification boundary — PARTIALLY ACCEPTED — TARGET
 
 F9.1 ustala v1 WS przede wszystkim jako server-to-client notifications. Incoming
@@ -2626,6 +2649,20 @@ i Internet reachability pozostają otwarte.
 - SYS-103 — onboarding/recovery mode.
 
 Nie ustalamy tych wartości na podstawie istniejącego Dosera ani innego kodu legacy.
+
+## F9.7D2 — Luma native Web HIL
+
+F9.7D2 confirms real production HIL on `LOLIN32_TEST`: firmware upload, Wi-Fi
+and port 80, four native pages, Core APIs, Luma status, malformed and 512/513-byte
+body boundary, Application mode/manual/exit/profile actions, profile restore and
+a 60-second light soak passed without panic, watchdog or reboot. Port 80 was the
+only checked listener; ports 81 and 8080 did not answer. Twenty no-change POST
+requests returned 200 with no 202 `outcome_unknown`; host-observed median was
+249.802 ms, p95 504.565 ms and maximum 561.396 ms. The 250 ms wait remains
+provisional and the tail latency is a residual scheduling/HTTPD risk. Sanitized
+evidence is in `docs/WEB_F9_7D2_LUMA_HIL.md`. F9.7D is CURRENT/CLOSED after its
+checkpoint. Luma remains polling-only and transitional: WEB-101 is DECISION
+REQUIRED, SEC-101 OPEN, with no full ApplicationRuntime or CommandPipeline migration.
 
 ## SPIKE REQUIRED
 

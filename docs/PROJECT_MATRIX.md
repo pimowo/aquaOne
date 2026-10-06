@@ -1,10 +1,19 @@
 # Project Matrix — Status i Integracja Core
 
-**Snapshot date:** 2026-09-12
-**Snapshot commit:** `bc03c89`
+**Snapshot date:** 2026-10-06
+**Snapshot base commit:** `ca8516d` plus local F9.7D checkpoint candidate
 
 Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla wskazanego
 commita. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
+
+## F9.7D2 update
+
+F9.7D is CURRENT/CLOSED after the native production Web HIL and checkpoint.
+Luma uses one `EspIdfWebTransport` plus `NativeWebService`; it remains
+polling-only with a transitional Application bridge. Real HTTP/Wi-Fi evidence is
+sanitized in `docs/WEB_F9_7D2_LUMA_HIL.md`. WEB-101 remains DECISION REQUIRED
+and SEC-101 remains OPEN. The 250 ms wait is provisional: HIL recorded no 202,
+with p95 504.565 ms and maximum 561.396 ms host-observed HTTP latency.
 
 ## Legenda
 
@@ -21,8 +30,8 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Aspekt | Status | Notatki |
 |--------|--------|---------|
 | **Platforma** | ESP32 (AQMA, LOLIN32 testowa) | |
-| **Status** | 🟢 Zweryfikowany | Istniejący klient CURRENT; nie jest wzorcem Architecture vNext |
-| **Architektura** | app/core/hardware/web/time/storage | Wzorzec do naśladowania |
+| **Status** | ✅ F9.7D CLOSED | Native production Web HIL PASS; sanitized evidence: `docs/WEB_F9_7D2_LUMA_HIL.md` |
+| **Architektura** | app/core/hardware/web/time/storage | Transitional product composition, bez pełnego ApplicationRuntime |
 | | | |
 | **Używane moduły Core** | | |
 | System | ✅ READY | systemService (boot, uptime) |
@@ -30,17 +39,17 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Logging | ✅ READY | Logger + SerialLogSink |
 | Diagnostics | ✅ READY | DiagnosticsService agregator |
 | Network | ✅ READY | NetworkService (WiFi state machine) |
-| Web | ✅ READY | WebService + provider pattern |
+| Web | F9.7D CURRENT | Jeden `EspIdfWebTransport` + `NativeWebService`; real HTTP/Wi-Fi HIL PASS, Core/Luma snapshots i bounded Application bridge |
 | Time | ✅ READY | RtcService, NtpService, EuropeWarsawTimeService |
 | | | |
 | **Elementy lokalne** | | |
 | Logika | LightEngine, TransitionEngine, DayEngine, ModeManager | |
 | Konfiguracja | DeviceConfig, ChannelConfig, profiles | |
 | Hardware | PWM LED drivers, AqmaHardware, Lolin32Hardware | |
-| Web UI | LumaPages, LumaApi, profil editor | |
+| Web UI | LumaPages + native Luma routes | Polling 1500 ms; bez WebSocket/Auth/OTA |
 | | | |
-| **Migracja do Core** | — | Już zintegrowany, bez zmian |
-| **Ryzyko** | ✅ Niskie | Stabilna architektura |
+| **Migracja do Core** | F9.7D | Native Web cutover CURRENT/CLOSED po HIL i checkpointcie; polling-only, transitional Application path |
+| **Ryzyko** | 🟡 Średnie | HTTPD wait 250 ms pozostaje prowizoryczny; HIL p95 504.565 ms, max 561.396 ms, bez 202 |
 
 ---
 

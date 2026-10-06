@@ -28,7 +28,8 @@ StorageService::StorageService()
         backend_,
         STORAGE_NAMESPACE,
         SLOT_A_KEY,
-        SLOT_B_KEY
+        SLOT_B_KEY,
+        {workspace_, sizeof(workspace_)}
     ) {
 }
 

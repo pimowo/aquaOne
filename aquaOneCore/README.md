@@ -520,8 +520,9 @@ GET/POST registration frozen before start, one HTTPD handle/port, a single 404
 handler, and begin/stop/restart lifecycle. Callbacks run in the HTTPD server
 task. The original F9.2 surface accepted bodyless routes only; F9.7C now adds
 the bounded normal-body contract described below. Snapshot publication,
-serialized actions, upload/Auth and Realtime semantics are separate layers. Products
-still use `Esp32WebBackend` and the Arduino `WebServer`.
+serialized actions, upload/Auth and Realtime semantics are separate layers. Most
+products still use `Esp32WebBackend` and the Arduino `WebServer`; the
+uncheckpointed F9.7D1 Luma candidate is the first native production cutover.
 Legacy body/upload behavior, including `maxBodyLength == 0`, requires an
 explicit compatibility decision during F9.7/WEB-102 migration.
 
@@ -541,9 +542,9 @@ the system and diagnostics projections through `CoreWebProjectionPublisher` in
 its serialized tick. The transitional source adapters are the only layer that
 reads `SystemService` and `DiagnosticsService`. `WebStartup` is an optional
 `INTERFACES_INIT` participant and `WebHealthProvider` contributes live Web
-health through SYS-106. The native HTTP path has no transport polling. Products
-still use the legacy `WebService`/`Esp32WebBackend`; Auth and product migration
-remain later Phase 9 work.
+health through SYS-106. The native HTTP path has no transport polling. Most
+products still use the legacy `WebService`/`Esp32WebBackend`; Auth and further
+product migration remain later Phase 9 work.
 
 **CURRENT F9.4 foundation:** `WebActionBridge<Command, Capacity>` accepts an
 owned, bounded typed command into a fixed FIFO and invokes the existing
@@ -573,9 +574,21 @@ typed command before crossing tasks. `NativeActionBoundary` reuses
 unknown with candidate 202 and no cancellation or automatic retry. Application
 still calls `processOne()` from its serialized tick. `NativeWebService` accepts
 product routes only before its first `begin()` attempt and protects built-in
-paths. Products and legacy `WebRouteOptions` behavior remain unchanged; the
+paths. Legacy `WebRouteOptions` behavior remains unchanged; the
 final error envelope, compatibility statuses, Auth and product routes remain
 open under WEB-101/WEB-102.
+
+**CURRENT F9.7D1 candidate:** `NativeWebService::addPage()` borrows a small,
+fixed set of static/projection-safe `WebPageProvider` instances before begin.
+The root provider does not register another physical `/` route; the built-in
+root renders it inside the shared shell. Other pages are GET/bodyless and run
+in the HTTPD task, so providers must not read mutable authority. The generic
+`WebApplicationBridge<Request, Result, Capacity>` copies bounded request/result
+values for serialized non-Command Application workflows. It uses fixed slots,
+FIFO, slot generations, bounded wait and abandon; its executor runs outside the
+metadata lock. Accepted timeout does not cancel or retry. Luma uses this bridge
+to preserve its exact `FirmwareCommandResult`; `WebActionBridge` remains the
+separate CommandPipeline-backed primitive.
 
 **CURRENT F9.5 foundation:** one optional WS endpoint belongs to the same
 `EspIdfWebTransport` HTTPD handle. Application assigns its own RuntimeIdentity

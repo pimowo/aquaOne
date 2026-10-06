@@ -7,6 +7,7 @@
 #endif
 
 #include "AquaCore/Config/PreferencesStorageBackend.h"
+#include "AquaCore/Config/StorageRecord.h"
 #include "AquaCore/Config/StorageService.h"
 #include "ConfigTypes.h"
 
@@ -30,6 +31,9 @@ private:
         AquaCore::Config::PreferencesStorageBackend<Preferences>;
 
     PreferencesBackend backend_;
+    uint8_t workspace_[
+        AquaCore::Config::StorageRecord::HEADER_SIZE + sizeof(DeviceConfig)
+    ] {};
     AquaCore::Config::StorageService storage_;
 
     static bool validatePayload(

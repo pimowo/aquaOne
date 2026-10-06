@@ -8,8 +8,13 @@
 #include "AquaCore/Network/Esp32NetworkBackend.h"
 #include "AquaCore/Network/NetworkService.h"
 #include "AquaCore/System/SystemService.h"
-#include "AquaCore/Web/Esp32WebBackend.h"
-#include "AquaCore/Web/WebService.h"
+#include "AquaCore/Web/CoreWebProjectionPublisher.h"
+#include "AquaCore/Web/CoreWebProjectionSources.h"
+#include "AquaCore/Web/Esp32ActionBridgeSynchronizer.h"
+#include "AquaCore/Web/Esp32SnapshotSynchronizer.h"
+#include "AquaCore/Web/EspIdfWebTransport.h"
+#include "AquaCore/Web/NativeWebService.h"
+#include "AquaCore/Web/PublishedSnapshot.h"
 
 #include "app/FirmwareApp.h"
 #include "BuildConfig.h"
@@ -19,7 +24,7 @@
 #include "storage/StorageService.h"
 #include "time/NtpSyncCoordinator.h"
 #include "time/TimeService.h"
-#include "web/LumaWebApp.h"
+#include "web/LumaNativeWeb.h"
 
 #if __has_include("NetworkSecrets.h")
     #include "NetworkSecrets.h"
@@ -82,18 +87,47 @@ AquaCore::Diagnostics::DiagnosticsService diagnosticsService(
     &networkService
 );
 
-AquaCore::Web::Esp32WebBackend webBackend;
-AquaCore::Web::WebService webService(
-    webBackend,
-    systemService,
-    &diagnosticsService
+AquaCore::Web::Esp32SnapshotSynchronizer systemProjectionSynchronizer;
+AquaCore::Web::Esp32SnapshotSynchronizer diagnosticsProjectionSynchronizer;
+AquaCore::Web::Esp32SnapshotSynchronizer lumaStatusSynchronizer;
+AquaCore::Web::PublishedSnapshot<AquaCore::Web::CoreSystemProjection>
+    systemProjection(systemProjectionSynchronizer);
+AquaCore::Web::PublishedSnapshot<AquaCore::Web::CoreDiagnosticsProjection>
+    diagnosticsProjection(diagnosticsProjectionSynchronizer);
+AquaCore::Web::PublishedSnapshot<LumaSense::Web::LumaStatusProjection>
+    lumaStatus(lumaStatusSynchronizer);
+AquaCore::Web::SystemServiceWebProjectionSource systemProjectionSource(
+    systemService
 );
-
-LumaSense::Web::LumaWebApp lumaWebApp(
-    webService,
+AquaCore::Web::DiagnosticsServiceWebProjectionSource
+    diagnosticsProjectionSource(diagnosticsService);
+AquaCore::Web::CoreWebProjectionPublisher coreWebPublisher(
+    systemProjectionSource,
+    &diagnosticsProjectionSource,
+    systemProjection,
+    diagnosticsProjection
+);
+AquaCore::Web::EspIdfWebTransport webTransport;
+AquaCore::Web::NativeWebService nativeWebService(
+    webTransport,
+    systemProjection,
+    diagnosticsProjection
+);
+AquaCore::Web::Esp32ActionBridgeSynchronizer lumaActionSynchronizer;
+LumaSense::Web::LumaApplicationBridge lumaActionBridge(
+    lumaActionSynchronizer
+);
+LumaSense::Web::LumaWebApplication lumaWebApplication(
     app,
     networkService,
-    diagnosticsService
+    diagnosticsService,
+    lumaStatus,
+    lumaActionBridge
+);
+LumaSense::Web::LumaNativeWeb lumaNativeWeb(
+    nativeWebService,
+    lumaStatus,
+    lumaActionBridge
 );
 
 bool networkAddressReported = false;
@@ -272,7 +306,7 @@ void reportNetworkAddress() {
     printIpAddress(networkService.ipAddress());
     Serial.println();
 
-    if (webService.isRunning()) {
+    if (nativeWebService.isRunning()) {
         Serial.print("Web URL: http://");
         printIpAddress(networkService.ipAddress());
         Serial.println('/');
@@ -398,11 +432,18 @@ void setup() {
         networkService.begin(networkConfig);
     const bool ntpOk = ntpSyncCoordinator.begin(nowMs);
 
+    // Transitional product composition: mutable authorities are sampled only
+    // here in Application context before the optional HTTPD service starts.
+    const AquaCore::Web::CoreWebPublicationResult initialCorePublication =
+        coreWebPublisher.update();
+    (void)initialCorePublication;
+    (void)lumaWebApplication.publishStatus();
+
     const bool routesOk =
-        lumaWebApp.registerRoutes();
+        lumaNativeWeb.registerRoutes();
 
     const bool webOk =
-        routesOk && webService.begin(makeWebConfig());
+        routesOk && nativeWebService.begin(makeWebConfig());
 
     printStartupStatus(networkOk, routesOk, webOk);
     Serial.print("NTP: ");
@@ -420,8 +461,10 @@ void loop() {
         networkService.isConnected(),
         nowMs
     );
-    lumaWebApp.update(nowMs);
-    webService.update();
+    // At most one accepted Web request executes per autonomous lamp tick.
+    (void)lumaWebApplication.processOne(nowMs);
+    (void)coreWebPublisher.update();
+    (void)lumaWebApplication.publishStatus();
 
     reportNetworkAddress();
 

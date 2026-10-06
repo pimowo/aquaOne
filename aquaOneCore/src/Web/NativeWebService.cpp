@@ -144,6 +144,34 @@ bool NativeWebService::addRoute(
     return true;
 }
 
+bool NativeWebService::addPage(WebPageProvider& provider) {
+    const char* path = provider.route();
+    if (registrationClosed_ || routeRegistrationFailed_ || path == nullptr) {
+        return false;
+    }
+    if (std::strcmp(path, "/") == 0) {
+        if (rootPage_ != nullptr) return false;
+        rootPage_ = &provider;
+        return true;
+    }
+    if (pageRouteCount_ == MAX_PAGE_PROVIDERS ||
+        std::strcmp(path, "/assets/aqua.css") == 0 ||
+        std::strcmp(path, "/api/system") == 0 ||
+        std::strcmp(path, "/api/diagnostics") == 0) {
+        return false;
+    }
+    PageRoute& route = pageRoutes_[pageRouteCount_];
+    route.service = this;
+    route.provider = &provider;
+    if (!transport_.addRoute(path, HttpMethod::Get, handlePage, &route)) {
+        route = {};
+        routeRegistrationFailed_ = true;
+        return false;
+    }
+    ++pageRouteCount_;
+    return true;
+}
+
 bool NativeWebService::begin(const WebConfig& config) {
     registrationClosed_ = true;
     if ((config.navigationMask & ~ALL_NAVIGATION_SECTIONS) != 0U ||
@@ -225,7 +253,41 @@ void NativeWebService::handleRoot(
         sizeof(info.aquaCoreVersion) - 1U
     );
     info.ready = value.ready;
-    HtmlShell::render(response, info, self->config_, "Dashboard");
+    HtmlShell::render(
+        response,
+        info,
+        self->config_,
+        self->rootPage_ != nullptr ? self->rootPage_->title() : "Dashboard",
+        self->rootPage_
+    );
+}
+
+void NativeWebService::handlePage(
+    void* context, const HttpRouteRequest&, WebResponseWriter& response
+) {
+    const PageRoute* route = static_cast<const PageRoute*>(context);
+    CoreSystemProjection value {};
+    if (route == nullptr || route->service == nullptr ||
+        route->provider == nullptr ||
+        !route->service->systemSnapshot_.read(value)) {
+        unavailable(response, "system unavailable");
+        return;
+    }
+    WebShellInfo info {};
+    info.identity = value.identity;
+    std::strncpy(
+        info.aquaCoreVersion,
+        value.aquaCoreVersion,
+        sizeof(info.aquaCoreVersion) - 1U
+    );
+    info.ready = value.ready;
+    HtmlShell::render(
+        response,
+        info,
+        route->service->config_,
+        route->provider->title(),
+        route->provider
+    );
 }
 
 void NativeWebService::handleStylesheet(

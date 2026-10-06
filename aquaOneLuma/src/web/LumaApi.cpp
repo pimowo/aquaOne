@@ -1,4 +1,5 @@
 #include "LumaApi.h"
+#include "LumaWebProtocol.h"
 
 #include <cmath>
 #include <cstdio>
@@ -272,6 +273,81 @@ void commandResponse(WebResponseWriter& response,
 
 } // namespace
 
+bool parseModeRequest(
+    const char* body, size_t bodyLength,
+    LumaWebRequest& request, const char*& error
+) {
+    const WebRequest view {HttpMethod::Post, nullptr, body, bodyLength, nullptr};
+    char requested[16] {};
+    if (!parseMode(view, requested)) {
+        error = "malformed request";
+        return false;
+    }
+    if (std::strcmp(requested, "EXIT_MANUAL") == 0) {
+        request = {};
+        request.kind = LumaWebRequestKind::ExitManual;
+        return true;
+    }
+    request = {};
+    request.kind = LumaWebRequestKind::SetMode;
+    if (std::strcmp(requested, "NORMAL") == 0) {
+        request.mode = OperatingMode::Normal;
+    } else if (std::strcmp(requested, "SERVICE") == 0) {
+        request.mode = OperatingMode::Service;
+    } else if (std::strcmp(requested, "OFF") == 0) {
+        request.mode = OperatingMode::Off;
+    } else {
+        error = "invalid mode";
+        return false;
+    }
+    return true;
+}
+
+bool parseProfileRequest(
+    const char* body, size_t bodyLength,
+    LumaWebRequest& request, const char*& error
+) {
+    const WebRequest view {HttpMethod::Post, nullptr, body, bodyLength, nullptr};
+    uint8_t profileIndex = 0U;
+    if (!parseProfile(view, profileIndex)) {
+        error = "invalid profile";
+        return false;
+    }
+    request = {};
+    request.kind = LumaWebRequestKind::SelectProfile;
+    request.profileIndex = profileIndex;
+    return true;
+}
+
+bool parseManualRequest(
+    const char* body, size_t bodyLength,
+    LumaWebRequest& request, const char*& error
+) {
+    request = {};
+    request.kind = LumaWebRequestKind::SetManual;
+    if (!parseManual(
+            WebRequest {HttpMethod::Post, nullptr, body, bodyLength, nullptr},
+            request.levels,
+            request.timeoutMinutes
+        )) {
+        error = "invalid manual levels";
+        return false;
+    }
+    return true;
+}
+
+void writeLumaError(
+    WebResponseWriter& response, uint16_t status, const char* message
+) {
+    errorResponse(response, status, message);
+}
+
+void writeFirmwareCommandResult(
+    WebResponseWriter& response, FirmwareCommandResult result
+) {
+    commandResponse(response, result);
+}
+
 StatusApi::StatusApi(const FirmwareApp& app,
                      const AquaCore::Network::NetworkService& network,
                      const AquaCore::Diagnostics::DiagnosticsService& diagnostics)
@@ -323,30 +399,31 @@ ModeApi::ModeApi(FirmwareApp& app) : app_(app) {}
 const char* ModeApi::route() const { return "/api/lumasense/mode"; }
 HttpMethod ModeApi::method() const { return HttpMethod::Post; }
 void ModeApi::handle(const WebRequest& request, WebResponseWriter& response) {
-    char requested[16] {};
-    if (!parseMode(request, requested)) {
-        errorResponse(response, 400U, "malformed request"); return;
+    LumaWebRequest parsed {};
+    const char* error = nullptr;
+    if (!parseModeRequest(request.body, request.bodyLength, parsed, error)) {
+        writeLumaError(response, 400U, error); return;
     }
-    if (std::strcmp(requested, "EXIT_MANUAL") == 0) {
-        commandResponse(response, app_.exitManual()); return;
-    }
-    OperatingMode mode;
-    if (std::strcmp(requested, "NORMAL") == 0) mode = OperatingMode::Normal;
-    else if (std::strcmp(requested, "SERVICE") == 0) mode = OperatingMode::Service;
-    else if (std::strcmp(requested, "OFF") == 0) mode = OperatingMode::Off;
-    else { errorResponse(response, 400U, "invalid mode"); return; }
-    commandResponse(response, app_.commandMode(mode));
+    writeFirmwareCommandResult(
+        response,
+        parsed.kind == LumaWebRequestKind::ExitManual
+            ? app_.exitManual()
+            : app_.commandMode(parsed.mode)
+    );
 }
 
 ProfileApi::ProfileApi(FirmwareApp& app) : app_(app) {}
 const char* ProfileApi::route() const { return "/api/lumasense/profile"; }
 HttpMethod ProfileApi::method() const { return HttpMethod::Post; }
 void ProfileApi::handle(const WebRequest& request, WebResponseWriter& response) {
-    uint8_t profileIndex = 0U;
-    if (!parseProfile(request, profileIndex)) {
-        errorResponse(response, 400U, "invalid profile"); return;
+    LumaWebRequest parsed {};
+    const char* error = nullptr;
+    if (!parseProfileRequest(request.body, request.bodyLength, parsed, error)) {
+        writeLumaError(response, 400U, error); return;
     }
-    commandResponse(response, app_.setActiveProfileIndex(profileIndex));
+    writeFirmwareCommandResult(
+        response, app_.setActiveProfileIndex(parsed.profileIndex)
+    );
 }
 
 ManualApi::ManualApi(FirmwareApp& app, const uint32_t& nowMs)
@@ -354,13 +431,14 @@ ManualApi::ManualApi(FirmwareApp& app, const uint32_t& nowMs)
 const char* ManualApi::route() const { return "/api/lumasense/manual"; }
 HttpMethod ManualApi::method() const { return HttpMethod::Post; }
 void ManualApi::handle(const WebRequest& request, WebResponseWriter& response) {
-    ChannelLevels levels {};
-    uint16_t timeoutMinutes = 0U;
-    if (!parseManual(request, levels, timeoutMinutes)) {
-        errorResponse(response, 400U, "invalid manual levels"); return;
+    LumaWebRequest parsed {};
+    const char* error = nullptr;
+    if (!parseManualRequest(request.body, request.bodyLength, parsed, error)) {
+        writeLumaError(response, 400U, error); return;
     }
-    commandResponse(response,
-        app_.commandManual(levels, timeoutMinutes, nowMs_));
+    writeFirmwareCommandResult(response, app_.commandManual(
+        parsed.levels, parsed.timeoutMinutes, nowMs_
+    ));
 }
 
 } // namespace Web
