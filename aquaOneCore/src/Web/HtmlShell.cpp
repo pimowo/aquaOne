@@ -137,18 +137,34 @@ bool HtmlShell::render(
     const char* pageTitle,
     const WebPageProvider* page
 ) {
-    DeviceIdentity fallback(
+    WebShellInfo info {};
+    const DeviceIdentity fallback(
         "aqua-device",
         "Aqua Device",
         "unknown",
         "unknown"
     );
-    const DeviceIdentity& identity = system != nullptr
+    info.identity = system != nullptr
         ? system->deviceIdentity()
         : fallback;
-    const char* coreVersion = system != nullptr
-        ? system->aquaCoreVersion()
-        : AQUA_CORE_VERSION;
+    std::strncpy(
+        info.aquaCoreVersion,
+        system != nullptr ? system->aquaCoreVersion() : AQUA_CORE_VERSION,
+        sizeof(info.aquaCoreVersion) - 1U
+    );
+    info.ready = system != nullptr && system->isReady();
+    return render(response, info, config, pageTitle, page);
+}
+
+bool HtmlShell::render(
+    WebResponseWriter& response,
+    const WebShellInfo& info,
+    const WebConfig& config,
+    const char* pageTitle,
+    const WebPageProvider* page
+) {
+    const DeviceIdentity& identity = info.identity;
+    const char* coreVersion = info.aquaCoreVersion;
     const char* title =
         pageTitle != nullptr ? pageTitle : "Dashboard";
     const char* currentPath =
@@ -173,7 +189,7 @@ bool HtmlShell::render(
     ) && ok;
     ok = writeHtmlEscaped(response, identity.deviceType) && ok;
     ok = response.writeText("</span><span class=\"tag ") && ok;
-    const bool ready = system != nullptr && system->isReady();
+    const bool ready = info.ready;
     ok = response.writeText(ready ? "ok\">GOTOWY" : "err\">NIEDOSTEPNY") && ok;
     ok = response.writeText("</span></div><p class=\"meta\">Firmware ") && ok;
     ok = writeHtmlEscaped(response, identity.firmwareVersion) && ok;

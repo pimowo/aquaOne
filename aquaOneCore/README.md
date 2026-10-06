@@ -532,6 +532,18 @@ an owner-held static FreeRTOS mutex. This projection is not Domain authority;
 watermark/resync and Realtime semantics are still later Phase 9 work. No product
 composition uses this foundation yet.
 
+**CURRENT F9.7B integration:** `NativeWebService` adds the built-in GET routes
+`/`, `/assets/aqua.css`, `/api/system` and `/api/diagnostics` over the narrow
+`HttpServerTransport` capability implemented by `EspIdfWebTransport`. HTTPD
+callbacks read only bounded `PublishedSnapshot` copies; Application refreshes
+the system and diagnostics projections through `CoreWebProjectionPublisher` in
+its serialized tick. The transitional source adapters are the only layer that
+reads `SystemService` and `DiagnosticsService`. `WebStartup` is an optional
+`INTERFACES_INIT` participant and `WebHealthProvider` contributes live Web
+health through SYS-106. The native HTTP path has no transport polling. Products
+still use the legacy `WebService`/`Esp32WebBackend`; POST/body, Auth and product
+migration remain later Phase 9 work.
+
 **CURRENT F9.4 foundation:** `WebActionBridge<Command, Capacity>` accepts an
 owned, bounded typed command into a fixed FIFO and invokes the existing
 `CommandPipeline` only from the serialized Application context. Each accepted

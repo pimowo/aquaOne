@@ -7,6 +7,7 @@
 #include <freertos/semphr.h>
 
 #include "AquaCore/Web/HttpRouteRegistry.h"
+#include "AquaCore/Web/HttpServerTransport.h"
 #include "AquaCore/Web/Realtime.h"
 #include "AquaCore/Web/RealtimeResync.h"
 
@@ -26,7 +27,7 @@ enum class RealtimeRecoveryServiceResult : uint8_t {
 // Lifecycle methods and destruction belong to the Application/composition
 // context, never to a route callback or the HTTPD server task: httpd_stop()
 // waits for that task to exit. Calls from the owner are serialized.
-class EspIdfWebTransport final {
+class EspIdfWebTransport final : public HttpServerTransport {
 public:
     EspIdfWebTransport();
     ~EspIdfWebTransport();
@@ -34,9 +35,9 @@ public:
     EspIdfWebTransport& operator=(const EspIdfWebTransport&) = delete;
 
     bool addRoute(const char* path, HttpMethod method,
-                  HttpRouteHandler handler, void* context = nullptr);
+                  HttpRouteHandler handler, void* context = nullptr) override;
     bool setNotFoundHandler(HttpNotFoundHandler handler,
-                            void* context = nullptr);
+                            void* context = nullptr) override;
     bool setRealtimeEndpoint(const char* path);
     RealtimePublicationResult publishRealtime(
         const RealtimeNotificationMetadata& metadata, RealtimeFrameType type,
@@ -53,9 +54,9 @@ public:
 
     // Same-port repeat is idempotent. Different-port repeat fails. Failed
     // starts leave no running server; stop allows retry with frozen routes.
-    bool begin(uint16_t port);
-    void stop();
-    bool isRunning() const { return accepting_.load(); }
+    bool begin(uint16_t port) override;
+    void stop() override;
+    bool isRunning() const override { return accepting_.load(); }
 
 private:
     static esp_err_t dispatch(httpd_req_t* request);

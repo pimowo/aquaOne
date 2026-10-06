@@ -2299,6 +2299,21 @@ POST przy zachowaniu Basic Auth i jednego fizycznego serwera. WEB-101, SEC-101,
 końcowe mapowanie HTTP i product S3 HIL pozostają otwarte. TOOLCHAIN-2 jest w
 F9.7A tylko audytem; board i flagi produktów zachowują własną tożsamość.
 
+F9.7B implementuje CURRENT Core-native read path dla `/`, immutable CSS,
+`/api/system`, `/api/diagnostics` i 404. `NativeWebService` pożycza wąski
+`HttpServerTransport` oraz dwa `PublishedSnapshot`; HTTPD kopiuje projekcję pod
+synchronizerem i serializuje ją po zwolnieniu blokady, bez odczytu
+`SystemService`, `DiagnosticsService`, runtime, Network, Storage ani Domain.
+Application-side `CoreWebProjectionPublisher` buduje i publikuje niezależne,
+bounded system/diagnostics values w serializowanym ticku. Transitional source
+adaptery są jedynym miejscem odczytu legacy authorities. `WebStartup` jest
+optional participantem `INTERFACES_INIT`, a live `WebHealthProvider` utrzymuje
+DEGRADED przez SYS-106 handoff i pozwala na powrót do OK po odzyskaniu Web bez
+zmiany historycznego `StartupReport`. Native transport nie wymaga pollingu.
+Legacy `WebService`/`Esp32WebBackend` i produkty pozostają bez migracji; normalny
+POST/body, Auth, upload, finalny error envelope oraz pozostały schema/mapping
+pozostają w dalszym zakresie WEB-102/F9.7C+. WEB-101 pozostaje DECISION REQUIRED.
+
 ### RT-101 — Realtime notification boundary — PARTIALLY ACCEPTED — TARGET
 
 F9.1 ustala v1 WS przede wszystkim jako server-to-client notifications. Incoming
