@@ -70,8 +70,17 @@ serwera HTTP i bez przenoszenia logiki domenowej do Core.
 
 #### Tabela tras W2
 
-Poniższa tabela jest obowiązującym zakresem W2. Wiersz z `DECISION REQUIRED` nie może wejść
-do implementacji, dopóki decyzja nie zostanie zatwierdzona i wpisana do tabeli.
+Poniższa tabela opisuje **planowany zakres W2**, a nie inwentarz działających
+tras ani zatwierdzony kontrakt migracji F9.7. Wiersz z `DECISION REQUIRED` nie
+może wejść do implementacji, dopóki decyzja nie zostanie zatwierdzona i wpisana
+do tabeli. W szczególności Doser **nie rejestruje obecnie** `GET /api/status`:
+potwierdzają to `WebManager::configureRoutes()` i test `test_web_bridge`.
+Wiersz tej trasy jest wyłącznie TARGET/W2. Oznaczenia `PUBLIC`, JSON, `409 busy`
+i wspólna koperta błędu w poniższej tabeli są wymaganiami/propozycjami W2, a
+nie opisem obecnych odpowiedzi legacy ani decyzją WEB-101/WEB-102 dla Phase 9.
+Przykładowo obecny Doser `POST /api/restart` zwraca `202` z tekstem, a nie JSON;
+obecny upload nie gwarantuje `409` przy drugim START. Aktualny inwentarz tras i
+zachowanie callbacków opisuje `WEB_F9_7A_MIGRATION_AUDIT.md`.
 
 | Method | Path | Owner | Auth | Request/body limit | Response type | Side effects | Concurrency/BUSY policy | Expected status codes | Acceptance test |
 |---|---|---|---|---|---|---|---|---|---|
@@ -79,13 +88,14 @@ do implementacji, dopóki decyzja nie zostanie zatwierdzona i wpisana do tabeli.
 | GET | `/assets/aqua.css` | Core `WebService` | PUBLIC | Brak body | CSS | Brak; zasób statyczny | Odczyt współbieżny; bez BUSY | `200`, `404`, `500`, `503` | Arkusz stylów odpowiada przez jedyny backend i ma poprawny content type |
 | GET | `/api/system` | Core `WebService` | PUBLIC | Brak body | JSON | Brak; snapshot read-only | Odczyt współbieżny; bez BUSY | `200`, `500`, `503` | Zwraca bieżący snapshot systemowy przez jedyny backend; brak sekretów |
 | GET | `/api/diagnostics` | Core `WebService` | PUBLIC | Brak body | JSON | Brak; snapshot read-only | Odczyt współbieżny; bez BUSY | `200`, `500`, `503` | Zwraca bieżący snapshot diagnostyczny przez jedyny backend; brak sekretów |
-| GET | `/api/status` | Doser domain provider | **DECISION REQUIRED** | Brak body | JSON | Brak; snapshot read-only | Odczyt współbieżny; bez BUSY | `200`, `401` jeśli AUTHENTICATED, `500`, `503` | Snapshot ma zatwierdzony schema; test public/auth zgodny z decyzją; brak sekretów |
+| GET | `/api/status` **TARGET/W2; brak w CURRENT Doser** | Doser domain provider (planowany) | **DECISION REQUIRED** | Brak body | JSON | Brak; snapshot read-only | Odczyt współbieżny; bez BUSY | `200`, `401` jeśli AUTHENTICATED, `500`, `503` | Snapshot ma zatwierdzony schema; test public/auth zgodny z decyzją; brak sekretów |
 | POST | `/api/restart` | Doser `WebManager` / domain policy | AUTHENTICATED | Bez body; żądanie z body odrzucone | JSON | Planowanie one-shot restart; pump stop przed restartem | Kolejne żądanie podczas pending restart: `409 busy` | `202`, `400`, `401`, `409`, `500`, `503` | Realm; odpowiedź przed restartem; one-shot; drugi request zwraca busy; pompy zatrzymane |
 | GET | `/update` | Doser `WebManager` / domain policy | AUTHENTICATED | Brak body | HTML | Brak | Podczas aktywnego OTA: `409 busy` | `200`, `401`, `409`, `500`, `503` | Realm; formularz dostępny po auth; brak wpływu na aktywne OTA |
 | POST | `/update` | Doser `WebManager` / domain policy | AUTHENTICATED | Multipart firmware; max upload size: **DECISION REQUIRED**; zwykły `maxBodyLength` nie jest limitem uploadu | HTML lub tekst dla wyniku strony; callback upload bez JSON envelope | Pump stop, maintenance, firmware write, cleanup, opóźniony restart po sukcesie | Jedno OTA naraz; drugi START: `409 busy`, bez resetu aktywnego uploadu | `200`, `400`, `401`, `409`, `413` po zatwierdzeniu limitu, `500`, `503` | Auth przy START; success/failure/ABORT/disconnect; drugi START nie resetuje uploadu; cleanup; restart i reconnect |
 
-Tabela zawiera wszystkie trasy Core i Dosera znane w zakresie W2 na dzień przeglądu. Dodanie
-innej migrowanej trasy wymaga najpierw dodania jej pełnego wiersza i zatwierdzenia tabeli.
+Tabela zawiera planowane trasy Core i Dosera w zakresie W2 na dzień przeglądu;
+nie dowodzi, że każda z nich istnieje w CURRENT firmware. Dodanie innej trasy
+do W2 wymaga najpierw dodania jej pełnego wiersza i zatwierdzenia tabeli.
 
 #### Auth i ekspozycja
 

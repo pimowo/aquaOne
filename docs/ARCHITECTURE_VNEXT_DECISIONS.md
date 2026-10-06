@@ -2290,6 +2290,15 @@ bez automatycznego ujawniania sekretów. Finalne route/path names, schema, wire
 representation, HTTP status mapping, limity, Auth i compatibility/migration details
 pozostają DECISION REQUIRED. `WEB-102` nie jest w pełni ACCEPTED.
 
+F9.7A audit (`WEB_F9_7A_MIGRATION_AUDIT.md`) mapuje rzeczywiste trasy Core,
+Luma, Hydro i Doser oraz granice migracji bez zmiany tej decyzji. Native HTTPD
+nie obsługuje jeszcze body normalnych POST ani uploadu. Hydro `/api/settings`
+wymaga Application Config lifecycle, Doser `/api/restart` konkretnej realizacji
+SYS-107, a pełne przełączenie Dosera wymaga bezpiecznego zastąpienia `/update`
+POST przy zachowaniu Basic Auth i jednego fizycznego serwera. WEB-101, SEC-101,
+końcowe mapowanie HTTP i product S3 HIL pozostają otwarte. TOOLCHAIN-2 jest w
+F9.7A tylko audytem; board i flagi produktów zachowują własną tożsamość.
+
 ### RT-101 — Realtime notification boundary — PARTIALLY ACCEPTED — TARGET
 
 F9.1 ustala v1 WS przede wszystkim jako server-to-client notifications. Incoming
