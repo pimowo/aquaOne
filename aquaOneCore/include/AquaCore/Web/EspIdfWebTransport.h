@@ -8,9 +8,17 @@
 
 #include "AquaCore/Web/HttpRouteRegistry.h"
 #include "AquaCore/Web/Realtime.h"
+#include "AquaCore/Web/RealtimeResync.h"
 
 namespace AquaCore {
 namespace Web {
+
+enum class RealtimeRecoveryServiceResult : uint8_t {
+    Idle,
+    Progress,
+    RetryNeeded,
+    TransportRecycleSuggested
+};
 
 // Application-owned physical HTTPD transport. Route callbacks run in the
 // HTTPD server task, never implicitly in the Application loop. F9.2 routes
@@ -34,6 +42,14 @@ public:
         const RealtimeNotificationMetadata& metadata, RealtimeFrameType type,
         const uint8_t* payload, size_t length
     );
+    bool publishRealtimeStreamStartState(const RealtimeStreamStartState& state);
+    void requestRealtimeRecovery();
+    bool isRealtimeRecoveryRequired() const {
+        return realtimeRecovery_.isRequired();
+    }
+    RealtimeRecoveryServiceResult serviceRealtimeRecovery();
+    bool tryClearRealtimeRecovery(Identity::RuntimeIdentity runtime,
+                                  RealtimeStreamPosition coherentPosition);
 
     // Same-port repeat is idempotent. Different-port repeat fails. Failed
     // starts leave no running server; stop allows retry with frozen routes.
@@ -46,6 +62,7 @@ private:
     static esp_err_t notFound(httpd_req_t* request, httpd_err_code_t error);
     static esp_err_t realtimeDispatch(httpd_req_t* request);
     static void realtimeWork(void* argument);
+    static void streamStartWork(void* argument);
     static void keepBorrowedContext(void*);
 
     HttpRouteRegistry routes_;
@@ -61,11 +78,25 @@ private:
         uint8_t payload[REALTIME_PAYLOAD_CAPACITY] {};
         size_t length = 0U;
         RealtimeFrameType type = RealtimeFrameType::Text;
+        RealtimeRecoveryState::Generation recoveryGeneration = 0U;
+        std::atomic<bool> inUse {false};
+    };
+    struct StreamStartWork {
+        EspIdfWebTransport* owner = nullptr;
+        RealtimeClientToken token {};
+        RealtimeStreamStartState state {};
+        RealtimeRecoveryState::Generation recoveryGeneration = 0U;
+        uint8_t payload[18U] {};
+        size_t length = 0U;
         std::atomic<bool> inUse {false};
     };
     char realtimePath_[REALTIME_PATH_CAPACITY + 1U] {};
     bool realtimeConfigured_ = false;
     RealtimeWork realtimeWork_[REALTIME_WORK_CAPACITY];
+    StreamStartWork streamStartWork_[REALTIME_CLIENT_CAPACITY];
+    RealtimeClientRegistry<REALTIME_CLIENT_CAPACITY> realtimeClients_;
+    RealtimeStreamStartState streamStartState_;
+    RealtimeRecoveryState realtimeRecovery_;
     httpd_handle_t server_ = nullptr;
     uint16_t port_ = 0U;
     std::atomic<bool> accepting_ {false};

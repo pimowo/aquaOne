@@ -96,6 +96,26 @@ esp_err_t bodyUnsupported(httpd_req_t* request) {
     return result == ESP_OK ? ESP_FAIL : result;
 }
 
+// Provisional internal F9.6B marker encoding used only to exercise the
+// transport path. It is not the final RT-101 wire format.
+void encodeUint64(uint64_t value, uint8_t* output) {
+    for (size_t i = 0U; i < 8U; ++i) {
+        output[i] = static_cast<uint8_t>((value >> (i * 8U)) & 0xFFU);
+    }
+}
+
+size_t encodeStreamStart(const RealtimeStreamStartState& state,
+                         uint8_t* output, size_t capacity) {
+    if (!state.isAvailable() || output == nullptr || capacity < 18U) return 0U;
+    output[0] = 1U;
+    encodeUint64(state.runtimeIdentity().value(), &output[1]);
+    output[9] = state.position().isBeforeFirst() ? 1U : 2U;
+    encodeUint64(state.position().hasSequence() ?
+                     state.position().sequence().value() : 0U,
+                 &output[10]);
+    return 18U;
+}
+
 } // namespace
 
 EspIdfWebTransport::EspIdfWebTransport()
@@ -166,6 +186,10 @@ RealtimePublicationResult EspIdfWebTransport::publishRealtime(
         xSemaphoreGive(realtimeMutex_);
         return RealtimePublicationResult::NotRunning;
     }
+    if (realtimeRecovery_.isRequired()) {
+        xSemaphoreGive(realtimeMutex_);
+        return RealtimePublicationResult::RecoveryRequired;
+    }
     if (!metadata.isValid()) {
         xSemaphoreGive(realtimeMutex_);
         return RealtimePublicationResult::InvalidMetadata;
@@ -183,6 +207,7 @@ RealtimePublicationResult EspIdfWebTransport::publishRealtime(
             work.metadata = metadata;
             work.length = length;
             work.type = type;
+            work.recoveryGeneration = realtimeRecovery_.generation();
             if (length != 0U) {
                 memcpy(work.payload, payload, length);
             }
@@ -191,12 +216,120 @@ RealtimePublicationResult EspIdfWebTransport::publishRealtime(
                 xSemaphoreGive(realtimeMutex_);
                 return RealtimePublicationResult::QueueWorkFailure;
             }
+            RealtimeStreamPosition position;
+            RealtimeStreamPosition::at(metadata.sequence(), position);
+            realtimeClients_.notePublication(position);
             xSemaphoreGive(realtimeMutex_);
             return RealtimePublicationResult::Accepted;
         }
     }
     xSemaphoreGive(realtimeMutex_);
     return RealtimePublicationResult::Busy;
+}
+
+bool EspIdfWebTransport::publishRealtimeStreamStartState(
+    const RealtimeStreamStartState& state
+) {
+    if (!state.isAvailable() || realtimeMutex_ == nullptr ||
+        xSemaphoreTake(realtimeMutex_, portMAX_DELAY) != pdTRUE) {
+        return false;
+    }
+    streamStartState_ = state;
+    xSemaphoreGive(realtimeMutex_);
+    return true;
+}
+
+void EspIdfWebTransport::requestRealtimeRecovery() {
+    realtimeRecovery_.request();
+    if (realtimeMutex_ == nullptr ||
+        xSemaphoreTake(realtimeMutex_, portMAX_DELAY) != pdTRUE) {
+        return;
+    }
+    realtimeClients_.requestRecovery();
+    xSemaphoreGive(realtimeMutex_);
+}
+
+RealtimeRecoveryServiceResult EspIdfWebTransport::serviceRealtimeRecovery() {
+    if (realtimeMutex_ == nullptr ||
+        xSemaphoreTake(realtimeMutex_, portMAX_DELAY) != pdTRUE) {
+        return RealtimeRecoveryServiceResult::RetryNeeded;
+    }
+    httpd_handle_t server = server_;
+    if (realtimeRecovery_.isRequired()) {
+        // Repeat the client transition under the mutex so a recovery request
+        // remains effective even if its first registry lock could not be taken.
+        realtimeClients_.requestRecovery();
+    }
+    RealtimeClientToken token;
+    int fd = -1;
+    bool closeRequested = false;
+    for (size_t i = 0U; i < REALTIME_CLIENT_CAPACITY; ++i) {
+        RealtimeClientRegistry<REALTIME_CLIENT_CAPACITY>::Slot* slot =
+            realtimeClients_.slot(i);
+        if (slot == nullptr || slot->state == RealtimeClientState::Free) continue;
+        const RealtimeClientToken candidate(i, slot->generation);
+        if (server != nullptr &&
+            httpd_ws_get_fd_info(server, slot->fd) != HTTPD_WS_CLIENT_WEBSOCKET) {
+            realtimeClients_.reclaimInactive(candidate, slot->fd);
+            xSemaphoreGive(realtimeMutex_);
+            return RealtimeRecoveryServiceResult::Progress;
+        }
+        if (slot->state == RealtimeClientState::Closing) {
+            token.slot = i;
+            token.generation = slot->generation;
+            fd = slot->fd;
+            closeRequested = slot->closeRequested;
+            break;
+        }
+    }
+    xSemaphoreGive(realtimeMutex_);
+    if (fd < 0) return RealtimeRecoveryServiceResult::Idle;
+    if (server == nullptr) {
+        return RealtimeRecoveryServiceResult::TransportRecycleSuggested;
+    }
+    if (httpd_ws_get_fd_info(server, fd) != HTTPD_WS_CLIENT_WEBSOCKET) {
+        if (xSemaphoreTake(realtimeMutex_, portMAX_DELAY) == pdTRUE) {
+            realtimeClients_.reclaimInactive(token, fd);
+            xSemaphoreGive(realtimeMutex_);
+        }
+        return RealtimeRecoveryServiceResult::Progress;
+    }
+    if (closeRequested) {
+        return RealtimeRecoveryServiceResult::RetryNeeded;
+    }
+    const esp_err_t closeResult = httpd_sess_trigger_close(server, fd);
+    if (closeResult == ESP_ERR_NOT_FOUND) {
+        if (xSemaphoreTake(realtimeMutex_, portMAX_DELAY) == pdTRUE) {
+            realtimeClients_.reclaimInactive(token, fd);
+            xSemaphoreGive(realtimeMutex_);
+        }
+        return RealtimeRecoveryServiceResult::Progress;
+    }
+    if (closeResult != ESP_OK) {
+        return RealtimeRecoveryServiceResult::RetryNeeded;
+    }
+    if (xSemaphoreTake(realtimeMutex_, portMAX_DELAY) == pdTRUE) {
+        realtimeClients_.markCloseRequested(token, fd);
+        xSemaphoreGive(realtimeMutex_);
+    }
+    return RealtimeRecoveryServiceResult::Progress;
+}
+
+bool EspIdfWebTransport::tryClearRealtimeRecovery(
+    Identity::RuntimeIdentity runtime,
+    RealtimeStreamPosition coherentPosition
+) {
+    if (!runtime.isValid() || !coherentPosition.isValid() ||
+        realtimeMutex_ == nullptr ||
+        xSemaphoreTake(realtimeMutex_, portMAX_DELAY) != pdTRUE) {
+        return false;
+    }
+    const bool canClear = realtimeRecovery_.tryClear(
+        !realtimeClients_.hasClients(), isRunning(), streamStartState_, runtime,
+        coherentPosition
+    );
+    xSemaphoreGive(realtimeMutex_);
+    return canClear;
 }
 
 bool EspIdfWebTransport::begin(uint16_t port) {
@@ -286,6 +419,10 @@ void EspIdfWebTransport::stop() {
     for (size_t i = 0U; i < REALTIME_WORK_CAPACITY; ++i) {
         realtimeWork_[i].inUse.store(false);
     }
+    for (size_t i = 0U; i < REALTIME_CLIENT_CAPACITY; ++i) {
+        streamStartWork_[i].inUse.store(false);
+    }
+    realtimeClients_.reset();
     if (realtimeMutex_ != nullptr) {
         xSemaphoreGive(realtimeMutex_);
     }
@@ -296,6 +433,57 @@ esp_err_t EspIdfWebTransport::realtimeDispatch(httpd_req_t* request) {
         return ESP_ERR_INVALID_ARG;
     }
     if (request->method == HTTP_GET) {
+        EspIdfWebTransport* owner = static_cast<EspIdfWebTransport*>(
+            httpd_get_global_user_ctx(request->handle)
+        );
+        if (owner == nullptr || owner->realtimeMutex_ == nullptr ||
+            xSemaphoreTake(owner->realtimeMutex_, portMAX_DELAY) != pdTRUE) {
+            return ESP_FAIL;
+        }
+        const int fd = httpd_req_to_sockfd(request);
+        if (!owner->accepting_.load() || owner->realtimeRecovery_.isRequired() ||
+            !owner->streamStartState_.isAvailable() || fd < 0) {
+            xSemaphoreGive(owner->realtimeMutex_);
+            return ESP_FAIL;
+        }
+        // A new handshake on a reused fd invalidates only an observed stale
+        // occupant. Its generation prevents queued old work from matching.
+        for (size_t i = 0U; i < REALTIME_CLIENT_CAPACITY; ++i) {
+            RealtimeClientRegistry<REALTIME_CLIENT_CAPACITY>::Slot* slot =
+                owner->realtimeClients_.slot(i);
+            if (slot != nullptr && slot->state != RealtimeClientState::Free &&
+                slot->fd == fd) {
+                const RealtimeClientToken stale {i, slot->generation};
+                owner->realtimeClients_.release(stale);
+            }
+        }
+        RealtimeClientToken token;
+        if (!owner->realtimeClients_.connect(
+                fd, owner->streamStartState_.position(), token)) {
+            xSemaphoreGive(owner->realtimeMutex_);
+            return ESP_FAIL;
+        }
+        StreamStartWork& work = owner->streamStartWork_[token.slot];
+        bool expected = false;
+        if (!work.inUse.compare_exchange_strong(expected, true)) {
+            owner->realtimeClients_.release(token);
+            xSemaphoreGive(owner->realtimeMutex_);
+            return ESP_FAIL;
+        }
+        work.owner = owner;
+        work.token = token;
+        work.state = owner->streamStartState_;
+        work.recoveryGeneration = owner->realtimeRecovery_.generation();
+        work.length = encodeStreamStart(work.state, work.payload,
+                                        sizeof(work.payload));
+        if (work.length == 0U ||
+            httpd_queue_work(owner->server_, streamStartWork, &work) != ESP_OK) {
+            work.inUse.store(false);
+            owner->realtimeClients_.release(token);
+            xSemaphoreGive(owner->realtimeMutex_);
+            return ESP_FAIL;
+        }
+        xSemaphoreGive(owner->realtimeMutex_);
         return ESP_OK;
     }
     httpd_ws_frame_t frame {};
@@ -327,18 +515,59 @@ void EspIdfWebTransport::realtimeWork(void* argument) {
         xSemaphoreGive(owner.realtimeMutex_);
     }
 
-    if (server != nullptr) {
-        size_t count = REALTIME_CLIENT_CAPACITY;
-        int clients[REALTIME_CLIENT_CAPACITY] {};
-        if (httpd_get_client_list(server, &count, clients) == ESP_OK) {
-            httpd_ws_frame_t frame {};
-            frame.type = work->type == RealtimeFrameType::Text ?
-                HTTPD_WS_TYPE_TEXT : HTTPD_WS_TYPE_BINARY;
-            frame.payload = work->payload;
-            frame.len = work->length;
-            for (size_t i = 0U; i < count; ++i) {
-                if (httpd_ws_get_fd_info(server, clients[i]) == HTTPD_WS_CLIENT_WEBSOCKET) {
-                    (void)httpd_ws_send_frame_async(server, clients[i], &frame);
+    RealtimeClientToken tokens[REALTIME_CLIENT_CAPACITY] {};
+    int clients[REALTIME_CLIENT_CAPACITY] {};
+    size_t count = 0U;
+    if (server != nullptr && owner.realtimeMutex_ != nullptr &&
+        xSemaphoreTake(owner.realtimeMutex_, portMAX_DELAY) == pdTRUE) {
+        if (owner.realtimeRecovery_.acceptsGeneration(
+                work->recoveryGeneration)) {
+            for (size_t i = 0U; i < REALTIME_CLIENT_CAPACITY; ++i) {
+                const RealtimeClientRegistry<REALTIME_CLIENT_CAPACITY>::Slot* slot =
+                    owner.realtimeClients_.slot(i);
+                if (slot != nullptr && slot->state == RealtimeClientState::Live) {
+                    tokens[count] = RealtimeClientToken {i, slot->generation};
+                    clients[count] = slot->fd;
+                    ++count;
+                }
+            }
+        }
+        xSemaphoreGive(owner.realtimeMutex_);
+    }
+    httpd_ws_frame_t frame {};
+    frame.type = work->type == RealtimeFrameType::Text ?
+        HTTPD_WS_TYPE_TEXT : HTTPD_WS_TYPE_BINARY;
+    frame.payload = work->payload;
+    frame.len = work->length;
+    for (size_t i = 0U; i < count; ++i) {
+        if (!owner.realtimeRecovery_.acceptsGeneration(
+                work->recoveryGeneration)) {
+            break;
+        }
+        const bool active =
+            httpd_ws_get_fd_info(server, clients[i]) == HTTPD_WS_CLIENT_WEBSOCKET;
+        if (!active ||
+            httpd_ws_send_frame_async(server, clients[i], &frame) != ESP_OK) {
+            if (xSemaphoreTake(owner.realtimeMutex_, portMAX_DELAY) == pdTRUE) {
+                if (active) {
+                    owner.realtimeClients_.sendFailed(tokens[i]);
+                } else {
+                    owner.realtimeClients_.reclaimInactive(tokens[i], clients[i]);
+                }
+                xSemaphoreGive(owner.realtimeMutex_);
+            }
+            if (active) {
+                const esp_err_t closeResult =
+                    httpd_sess_trigger_close(server, clients[i]);
+                if (xSemaphoreTake(owner.realtimeMutex_, portMAX_DELAY) == pdTRUE) {
+                    if (closeResult == ESP_OK) {
+                        owner.realtimeClients_.markCloseRequested(
+                            tokens[i], clients[i]);
+                    } else if (closeResult == ESP_ERR_NOT_FOUND) {
+                        owner.realtimeClients_.reclaimInactive(
+                            tokens[i], clients[i]);
+                    }
+                    xSemaphoreGive(owner.realtimeMutex_);
                 }
             }
         }
@@ -347,6 +576,69 @@ void EspIdfWebTransport::realtimeWork(void* argument) {
         xSemaphoreTake(owner.realtimeMutex_, portMAX_DELAY) == pdTRUE) {
         work->inUse.store(false);
         xSemaphoreGive(owner.realtimeMutex_);
+    }
+}
+
+void EspIdfWebTransport::streamStartWork(void* argument) {
+    StreamStartWork* work = static_cast<StreamStartWork*>(argument);
+    if (work == nullptr || work->owner == nullptr) return;
+    EspIdfWebTransport& owner = *work->owner;
+    httpd_handle_t server = nullptr;
+    int fd = -1;
+    bool maySend = false;
+    if (owner.realtimeMutex_ != nullptr &&
+        xSemaphoreTake(owner.realtimeMutex_, portMAX_DELAY) == pdTRUE) {
+        const RealtimeClientRegistry<REALTIME_CLIENT_CAPACITY>::Slot* slot =
+            owner.realtimeClients_.slot(work->token.slot);
+        if (owner.accepting_.load() && owner.server_ != nullptr &&
+            owner.realtimeRecovery_.acceptsGeneration(
+                work->recoveryGeneration) &&
+            owner.realtimeClients_.isTokenCurrent(work->token) &&
+            slot->state == RealtimeClientState::Connecting &&
+            !slot->missedWhileConnecting) {
+            server = owner.server_;
+            fd = slot->fd;
+            maySend = true;
+        } else {
+            owner.realtimeClients_.markerFailed(work->token);
+        }
+        xSemaphoreGive(owner.realtimeMutex_);
+    }
+    bool sent = false;
+    const bool active = maySend &&
+        httpd_ws_get_fd_info(server, fd) == HTTPD_WS_CLIENT_WEBSOCKET;
+    if (active) {
+        httpd_ws_frame_t frame {};
+        frame.type = HTTPD_WS_TYPE_BINARY;
+        frame.payload = work->payload;
+        frame.len = work->length;
+        sent = httpd_ws_send_frame_async(server, fd, &frame) == ESP_OK;
+    }
+    bool live = false;
+    if (owner.realtimeMutex_ != nullptr &&
+        xSemaphoreTake(owner.realtimeMutex_, portMAX_DELAY) == pdTRUE) {
+        live = sent && owner.realtimeRecovery_.acceptsGeneration(
+            work->recoveryGeneration) &&
+            owner.realtimeClients_.markerSucceeded(work->token, false);
+        if (!active) {
+            owner.realtimeClients_.reclaimInactive(work->token, fd);
+        } else if (!live) {
+            owner.realtimeClients_.markerFailed(work->token);
+        }
+        work->inUse.store(false);
+        xSemaphoreGive(owner.realtimeMutex_);
+    }
+    if (!live && active && server != nullptr && fd >= 0) {
+        const esp_err_t closeResult = httpd_sess_trigger_close(server, fd);
+        if (owner.realtimeMutex_ != nullptr &&
+            xSemaphoreTake(owner.realtimeMutex_, portMAX_DELAY) == pdTRUE) {
+            if (closeResult == ESP_OK) {
+                owner.realtimeClients_.markCloseRequested(work->token, fd);
+            } else if (closeResult == ESP_ERR_NOT_FOUND) {
+                owner.realtimeClients_.reclaimInactive(work->token, fd);
+            }
+            xSemaphoreGive(owner.realtimeMutex_);
+        }
     }
 }
 

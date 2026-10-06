@@ -506,6 +506,14 @@ HTTP server with routing, provider pattern.
 selected for HTTP + WebSocket. Production migration is Phase 9; it is not yet
 implemented here.
 
+**CURRENT ESP32 Core baseline:** `aquaOneCore/platformio.ini` pins pioarduino
+`platform-espressif32` 53.03.13 from its exact release asset. That release uses
+Arduino-ESP32 3.1.3 and ESP-IDF base 5.3.2 for the `esp32dev` profile. This is
+the baseline used by the F9.6C classic ESP32 HIL. Phase 8 remains historical
+feasibility evidence on `platformio/espressif32@6.13.0`, Arduino-ESP32 2.0.17
+and ESP-IDF 4.4.7. Product projects retain their independent unpinned platform
+declarations until TOOLCHAIN-2 aligns them with the accepted Core baseline.
+
 **CURRENT F9.2 foundation:** `EspIdfWebTransport` is an application-owned
 `esp_http_server` transport alongside the legacy backend. It has fixed, bounded
 GET/POST registration frozen before start, one HTTPD handle/port, a single 404
@@ -548,6 +556,41 @@ lifecycle mutex; stop releases it before blocking in `httpd_stop()` and reclaims
 slots only after server callbacks end. Incoming bounded frames are consumed and
 rejected without invoking Domain commands. EventSequence, wire envelope, Auth,
 snapshot watermark/resync and final backpressure policy remain deferred.
+
+**CURRENT F9.6B foundation:** `RealtimeStreamPosition` represents either
+`BeforeFirst` or a legal `RealtimeStreamSequence`; sequence zero stays invalid,
+and the Application-owned sequencer exposes a read-only `currentPosition()`.
+`RealtimeSnapshot<T>` publishes RuntimeIdentity, watermark, coherence and its
+typed payload as one bounded copy. A successful outer snapshot read is usable
+as current only when `isCoherentCurrent()` also succeeds. Position ordering is
+used only after establishing the same RuntimeIdentity. `RealtimeCohortPublisher`
+uses a caller-owned fixed binding array whose bindings, contexts and targets
+outlive it: it invalidates and
+builds every member, republishes every member with the same position, publishes
+the immutable StreamStart state, and only then submits the notification. A
+failed cohort requests recovery and withholds the notification; an explicit
+republish operation can repair the current cohort without issuing a sequence.
+
+`EspIdfWebTransport` now owns a fixed technical WS client table with
+`CONNECTING`, `LIVE` and `CLOSING` states plus runtime-local generations.
+StreamStart uses a reserved per-client work item; a notification observed while
+the marker is pending closes that client only when its position is newer than
+the captured marker position; older or equal queued work is ignored.
+Global recovery is sticky outside the normal notification pool, suppresses
+fan-out and new LIVE clients, and is cleared only with a matching coherent
+Application position after old clients are gone. The bounded recovery service
+also reclaims normally disconnected slots, avoids duplicate queued closes and
+reports when lifecycle recycle should be considered. A runtime-local recovery
+generation invalidates notification and StreamStart work captured before a
+sticky cycle, including after clear. One transport mutex protects technical state; it is never held
+across `httpd_stop()`, Domain/Application callbacks or snapshot builders.
+The marker byte encoding is an internal compile fixture, not final RT-101 wire.
+F9.6B has native 402/402 PASS and ESP32 compile/link PASS with runtime skipped.
+F9.6C adds PASS evidence on the pinned Current baseline for Wemos D1 mini
+ESP32 (`esp32dev`, ESP32-D0WD-V3 rev 3.1, 4 MB flash, no PSRAM), including
+saturation and slow-client scenarios. Heartbeat, final slow-client thresholds,
+Auth and product composition remain outside this foundation. RT-101 and EVT-102
+remain PARTIALLY ACCEPTED — TARGET.
 
 ```cpp
 #include <AquaCore/Web/Esp32WebBackend.h>

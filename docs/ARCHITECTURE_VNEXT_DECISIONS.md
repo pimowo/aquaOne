@@ -2200,15 +2200,23 @@ no-op, bez rozgałęzień po `device_type`.
 ### WEB-001 — jeden transport
 Jedno urządzenie ma jeden fizyczny transport Web. HTTP i Realtime docelowo współdzielą backend i port.
 
-### WEB-103 — wspólny HTTP + WebSocket transport — ACCEPTED — TARGET
+### WEB-103 — wspólny HTTP + WebSocket transport — ACCEPTED — CURRENT BASELINE
 
 Docelowym backendem v1 dla jednego fizycznego Web listenera i portu HTTP+WS
-jest natywny ESP-IDF `esp_http_server` używany z Arduino-ESP32. Decyzja dotyczy
-przebadanej bazy ESP32-S3, Arduino-ESP32 2.0.17 / ESP-IDF 4.4.7 i nie oznacza
-implementacji produkcyjnego Web. CURRENT Arduino `WebServer` może pozostać
-legacy HTTP do migracji w Phase 9, lecz F8.1 uznało go za **NOT FEASIBLE WITH
-CURRENT STACK** dla WEB-001: nie zapewnia równoległego HTTP+WS na jednym
-listenerze/porcie.
+jest natywny ESP-IDF `esp_http_server` używany z Arduino-ESP32. Current Core
+baseline jest przypięty w `aquaOneCore/platformio.ini` do pioarduino
+`platform-espressif32` 53.03.13, Arduino-ESP32 3.1.3 i ESP-IDF base 5.3.2 dla
+`esp32dev`. F9.6C dało HIL PASS dla Wemos D1 mini ESP32 (ESP32-D0WD-V3 rev 3.1,
+4 MB flash, bez PSRAM); nie jest to gwarancja dla każdego ESP32 board.
+CURRENT Arduino `WebServer` może pozostać legacy HTTP do migracji w Phase 9,
+lecz F8.1 uznało go za **NOT FEASIBLE WITH CURRENT STACK** dla WEB-001: nie
+zapewnia równoległego HTTP+WS na jednym listenerze/porcie.
+
+Phase 8 pozostaje historycznym feasibility evidence, przypiętym w
+`spikes/web_transport_f8_2/platformio.ini` do `platformio/espressif32@6.13.0`,
+Arduino-ESP32 2.0.17 i ESP-IDF 4.4.7. Nie jest to Current production contract.
+Pozostałe product projects zachowują własne nieprzypięte deklaracje do
+następnego, odrębnego TOOLCHAIN-2.
 
 F8.2 potwierdziło compile/link obu kandydatów. F8.3A dało **IDF HIL PASS**:
 jeden port 80 obsługiwał HTTP i 1/2 trwałe WS, równoległe GET, reconnect i
@@ -2375,14 +2383,48 @@ Domain eventu; błąd wysyłki do jednego klienta dotyczy tylko jego sesji.
 Snapshot failure bez kolejnej zmiany jest naprawiany przez jawny republish
 aktualnych projekcji przy istniejącej pozycji, bez wydania nowej sekwencji.
 Jeśli kolejka sterująca nie pozwala zamknąć sesji, osobny lifecycle supervisor
-zatrzymuje/recyklinguje HTTPD. `httpd_sess_trigger_close()` w IDF 4.4.7 sam
+zatrzymuje/recyklinguje HTTPD. `httpd_sess_trigger_close()` w Current IDF 5.3.2 sam
 kolejkuje work, więc nie stanowi bezwarunkowego fallbacku. F9.6B implementuje
 kontrakt, F9.6C mierzy saturację, slow client i HIL na dostępnym classic ESP32,
 a F9.6D wykonuje review/checkpoint. Szczegóły zawiera
-`WEB_REALTIME_F9_6A_RESYNC_DESIGN.md`. Jest to wyłącznie design gate; CURRENT
-F9.5 nie ma jeszcze watermarku, StreamStart ani resync path. RT-101 pozostaje
+`WEB_REALTIME_F9_6A_RESYNC_DESIGN.md`. W momencie powstania F9.6A był to wyłącznie
+design gate; ówczesny F9.5 nie miał jeszcze watermarku, StreamStart ani resync
+path. RT-101 pozostaje
 PARTIALLY ACCEPTED — TARGET; finalne wire spelling, heartbeat, liczbowe limity,
 progi i Auth/session pozostają otwarte.
+
+F9.6B implementuje ten kontrakt jako CURRENT foundation. Jeden
+`RealtimeStreamPosition` obsługuje `BeforeFirst` i legalne pozycje sekwencji,
+a `currentPosition()` pozostaje niesynchronizowanym query wyłącznie dla
+serialized Application owner. HTTPD otrzymuje kopię `RealtimeStreamStartState`.
+`RealtimeSnapshot<T>` kopiuje metadata, coherence i typed payload razem.
+Outer snapshot read jest current dopiero, gdy wrapper potwierdza
+`isCoherentCurrent()`, a porównanie pozycji wymaga wcześniej potwierdzonego tego
+samego `RuntimeIdentity`.
+Statyczny `RealtimeResyncResourceBinding` oraz `RealtimeCohortPublisher` budują
+heterogeniczny, jawnie skomponowany resync set bez dynamicznych kontenerów;
+każdy członek dostaje wspólny watermark, także przy niezmienionym payloadzie.
+Cohort failure wstrzymuje WS i żąda recovery, a `republishCurrentCohort()`
+odtwarza cohort przy istniejącej pozycji bez nowej sekwencji.
+
+Transport ma stałą tablicę klientów z generacją fd i stanami CONNECTING/LIVE/
+CLOSING. Zarezerwowany per-client StreamStart work poprzedza fan-out; tylko
+pozycja nowsza od captured StreamStart podczas CONNECTING oznacza zamknięcie,
+a starsza lub równa jest bezpiecznie pomijana. Sticky recovery
+jest niezależne od normalnego work pool, tłumi fan-out i aktywację klientów.
+Bounded `serviceRealtimeRecovery()` sprząta rozłączone sloty, ponawia techniczne
+close bez natychmiastowych duplikatów i pozostawia próg recycle do F9.6C.
+Runtime-local recovery generation unieważnia notification i StreamStart work
+sprzed sticky cycle także po clear. Clear wymaga braku starych klientów,
+działającego transportu i `RuntimeIdentity + RealtimeStreamPosition` zgodnych z
+opublikowanym StreamStart oraz coherent cohort potwierdzonym przez Application.
+Jeden mutex transportu chroni technical state i nie jest trzymany przez stop,
+Domain/Application callbacks ani snapshot builders. Foundation nie używa heap
+na swoich granicach. Evidence: native 402/402 PASS; esp32dev compile/link PASS
+z runtime SKIPPED; F9.6C classic ESP32 HIL PASS na Current baseline, w tym
+rzeczywiste `Busy`, recovery i StreamStart/resync. F9.6 jest READY TO CHECKPOINT
+po finalnym review; RT-101 i EVT-102 pozostają PARTIALLY ACCEPTED — TARGET, a
+finalny wire, heartbeat, Auth, limity i product migration są otwarte.
 
 ### SEC-001 — Auth i Safety
 Auth odpowiada za uprawnienie, Safety za możliwość wykonania akcji w danym stanie. Domain nie zna haseł, sesji ani handshake transportu.

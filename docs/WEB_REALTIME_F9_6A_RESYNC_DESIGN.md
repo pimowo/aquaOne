@@ -168,7 +168,8 @@ A dedicated transport-control attempt must be scheduled immediately,
 independently of any
 future Domain event, to enumerate and close all active WS sessions. Retry a
 failed control submission while the transport remains running. This control
-path cannot rely only on a free normal publication slot. In ESP-IDF 4.4.7,
+path cannot rely only on a free normal publication slot. In the Current
+ESP-IDF 5.3.2 baseline,
 `httpd_sess_trigger_close()` itself queues work and can fail; it is not an
 unconditional escape from a saturated/broken control queue. Retries are
 scheduled and bounded, never a busy loop or a block in Domain processing. If control work
