@@ -2664,6 +2664,22 @@ evidence is in `docs/WEB_F9_7D2_LUMA_HIL.md`. F9.7D is CURRENT/CLOSED after its
 checkpoint. Luma remains polling-only and transitional: WEB-101 is DECISION
 REQUIRED, SEC-101 OPEN, with no full ApplicationRuntime or CommandPipeline migration.
 
+## F9.7E1 — Hydro native Web migration gate
+
+Hydro E2 moves control and settings effects from HTTPD to bounded,
+Application-owned bridge workflows. Settings GET projections never contain
+password bytes; missing or empty password fields retain stored secrets, while
+nonempty values replace them. The selected per-route settings limit is 1,536 B
+(789 B full ASCII; 1,237 B strict percent encoding), requiring a 1,024 B Core
+normal-body storage increase in E2. Application validates, persists, commits,
+and then schedules the existing safe delayed restart. Hydro remains polling-only
+and uses a route-local provisional 1,000 ms wait pending S3 measurement.
+The global buffer change also costs about 1,024 B in Luma and every other
+`EspIdfWebTransport`; this simple cross-product cost is accepted provisionally.
+The delayed restart remains a product workflow and does not close SYS-107.
+WEB-101 and SEC-101 remain open; SEC-002 is mandatory. Details are in
+`docs/WEB_F9_7E1_HYDRO_MIGRATION_GATE.md`.
+
 ## SPIKE REQUIRED
 
 - WEB/RT: długotrwały slow client, saturacja kolejek i docelowa polityka backpressure poza ograniczonym HIL F8.3;
