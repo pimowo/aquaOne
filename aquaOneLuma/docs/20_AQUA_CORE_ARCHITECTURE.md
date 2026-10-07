@@ -59,7 +59,7 @@ lib/
     diagnostics/
     network/          # później
     web/              # później
-    mqtt_ha/          # później
+    ha_api/           # future external integration adapter
     ota/              # później
 src/
   lumasense/
@@ -85,7 +85,7 @@ Pierwszy zakres Aqua Core obejmuje:
 4. **Logging** — wspólne poziomy oraz neutralny odbiornik logów.
 5. **Diagnostics** — agregacja jawnych statusów modułów bez przejmowania sterowania.
 
-Później, w osobnych wersjach i jako moduły opcjonalne, mogą dojść Network, Web, HA/MQTT oraz OTA. Scheduler, trwałe zdarzenia, EventLog i ewentualne wspólne pomocniki trybów mogą być rozważane dopiero podczas AquaDoser, kiedy pojawią się konkretne wymagania wykonania dawek i odzyskiwania po restarcie.
+Później, w osobnych wersjach i jako moduły opcjonalne, mogą dojść Network, Web/Realtime oraz OTA. Home Assistant pozostaje zewnętrznym klientem lokalnego API. Scheduler, trwałe zdarzenia, EventLog i ewentualne wspólne pomocniki trybów mogą być rozważane dopiero podczas AquaDoser, kiedy pojawią się konkretne wymagania wykonania dawek i odzyskiwania po restarcie.
 
 ## 5. Kontrakty modułów
 
@@ -154,14 +154,14 @@ Każdy moduł ma osobny interfejs, cykl życia i status. Urządzenie wybiera mod
 - **Dozwolone zależności:** Network, System, Logging, Diagnostics.
 - **Status diagnostyczny:** stan serwera, liczba aktywnych żądań i ostatni błąd transportu.
 
-### 5.8 HA/MQTT — moduł późniejszy i opcjonalny
+### 5.8 Home Assistant API adapter — późniejszy i opcjonalny
 
-- **Odpowiedzialność:** połączenie z brokerem, publikacja neutralnych wiadomości, subskrypcje i opcjonalne discovery przez adapter urządzenia.
+- **Odpowiedzialność:** po stronie HA lokalny klient HTTP/Realtime, product mapping, Config Flow i późniejsze Zeroconf discovery.
 - **Nie odpowiada za:** prawdę źródłową stanu urządzenia, tryby domenowe ani gwarancję działania procesu.
-- **Wejście:** konfiguracja brokera, jawnie zarejestrowane encje/tematy i callback komend.
-- **Wyjście:** zdarzenia transportowe i dostarczenie komendy do aplikacji.
-- **Dozwolone zależności:** Network, System, Logging, Diagnostics.
-- **Status diagnostyczny:** stan połączenia, kolejka, liczba błędów; brak brokera nie blokuje urządzenia.
+- **Wejście:** wersjonowane HTTP snapshots, Realtime change stream i legalne HTTP action endpoints.
+- **Wyjście:** encje HA oraz komendy przekazane przez normalną granicę Application.
+- **Dozwolone zależności:** wyłącznie publiczne API urządzenia; AquaCore nie zna produktu ani HA entity model.
+- **Status diagnostyczny:** lokalna reachability i stan sesji; brak HA nie blokuje urządzenia.
 
 ### 5.9 OTA — moduł późniejszy i opcjonalny
 
@@ -248,7 +248,7 @@ Wydanie biblioteki poprzedza aktualizację konsumenta. Firmware wskazuje opublik
 
 ### Aqua Core 0.3
 
-- opcjonalne Web, HA/MQTT i OTA jako oddzielne moduły;
+- opcjonalne Web/Realtime i OTA jako oddzielne moduły oraz zewnętrzny klient HA;
 - kontrakty rejestracji DTO/komend pozostają po stronie urządzenia;
 - żaden z modułów nie staje się zależnością System, Time ani Config/Storage.
 
@@ -284,7 +284,7 @@ Migracja jest sekwencyjna. Po każdym etapie repozytorium ma pozostać uruchamia
 | **AC5** | Minimalny read-only Diagnostics agregujący System, Time i Config/Storage. | Snapshot nie steruje usługami; testy health, niezależności i braku skutków ubocznych. |
 | **AC6** | Minimalny Network: niezależne STA/AP, backend ESP32 i nieblokujący reconnect. Bez integracji z domeną LumaSense. | Test state machine, rollover, niezależności usług i opcjonalnego NetworkDiagnostics. |
 | **AC7** | Opcjonalny Network bez Web/MQTT; retry nie blokuje pętli urządzenia. | Sterowanie pozostaje poprawne przy braku AP, błędnym haśle, zrywaniu połączenia i millis overflow. Kandydat 0.2. |
-| **AC8** | Opcjonalne Web oraz HA/MQTT przez adaptery LumaSense. UI i DTO domenowe pozostają lokalne. | Odłączenie serwera/brokera nie wpływa na harmonogram; autoryzacja i walidacja komend; test 24–72 h offline. |
+| **AC8** | Opcjonalne Web oraz przyszły adapter HA/API. UI i DTO domenowe pozostają lokalne. | Odłączenie klienta nie wpływa na harmonogram; autoryzacja i walidacja komend; test 24–72 h offline. |
 | **AC9** | Opcjonalne OTA, stabilizacja pakowania i próbne użycie wybranego podzbioru przez szkielet AquaDoser. | Weryfikacja obrazu, kontrolowany rollback/restart, przypięte wersje; brak wymuszonych modułów. Kandydat 0.3. |
 
 W jednym etapie nie przenosi się kilku niezależnych usług. Adapter zgodności może istnieć przez jeden lub kilka etapów. Usunięcie starej ścieżki następuje dopiero po przejściu porównawczych testów i nie może być połączone z refaktorem domeny.
@@ -331,7 +331,7 @@ flowchart TD
     APP --> DIAG[Aqua Core: Diagnostics]
     APP -. opcjonalnie .-> NET[Aqua Core: Network]
     APP -. opcjonalnie .-> WEB[Aqua Core: Web]
-    APP -. opcjonalnie .-> MQTT[Aqua Core: HA/MQTT]
+    APP -. opcjonalnie .-> HA[HTTP/Realtime: external HA client]
     APP -. opcjonalnie .-> OTA[Aqua Core: OTA]
 
     DOMAIN --> SYSTEM
@@ -346,7 +346,7 @@ flowchart TD
     NET --> SYSTEM
     NET --> LOG
     WEB --> NET
-    MQTT --> NET
+    HA --> NET
     OTA --> SYSTEM
 ```
 
@@ -383,7 +383,7 @@ Wyjątek wymaga aktualizacji tego kontraktu, konkretnego przypadku z co najmniej
 ### ODKŁADAMY
 
 - Network do 0.2;
-- Web, HA/MQTT i OTA do 0.3;
+- Web/Realtime, HA API adapter i OTA do 0.3;
 - osobne repozytorium do czasu sprawdzenia API przez drugi produkt;
 - scheduler, exactly-once, restart recovery, dose history, missed events, feeding events, EventLog i wspólne pomocniki trybów do prac nad AquaDoser.
 

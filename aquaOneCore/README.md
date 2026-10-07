@@ -17,7 +17,7 @@ System, Config/Storage, Logging, Diagnostics, Network, Web i Time. CURRENT nie j
 pełną platformą Architecture vNext.
 
 Architecture vNext jest TARGET. Docelowo Core obejmie również lifecycle/composition,
-Commands, Events, Alarms, Safety, Maintenance, Registry, Realtime, wspólny MQTT, OTA,
+Commands, Events, Alarms, Safety, Maintenance, Registry, Realtime, OTA,
 Backup/Restore, Factory Reset, Auth i wersjonowanie. Te elementy nie są automatycznie
 zaimplementowane tylko dlatego, że występują w architekturze docelowej.
 
@@ -963,9 +963,8 @@ Brak zewnętrznych bibliotek — Core pozostaje lekki.
 
 ## 🚀 Przyszłe rozszerzenia (PLANNED, no versions assigned)
 
-- **MQTT Module** — Message broker integration
 - **Core OTA** — Shared firmware update orchestration, signing and rollback
-- **Home Assistant Integration** — Discovery and entity mapping
+- **Home Assistant Integration** — external custom integration over local HTTP + Realtime; no Core MQTT module
 - **Alarm/Safety** — alarm state foundation i Action Lock foundation są CURRENT; pełny framework pozostaje planowany
 
 Doser W1.5 ma lokalne OTA jako **CURRENT**. Nie jest to implementacja wspólnego Core OTA,
@@ -976,9 +975,8 @@ które pozostaje **TARGET/FUTURE**.
 ## ⚠️ Ograniczenia i wiadome problemy
 
 **Nie zaimplementowane:**
-- MQTT module
 - shared Core OTA
-- Home Assistant integration
+- Home Assistant custom integration client package
 - pełne Alarm/Safety Core modules
 - Generic TimezoneProvider (Europe/Warsaw is hardcoded dla teraz)
 

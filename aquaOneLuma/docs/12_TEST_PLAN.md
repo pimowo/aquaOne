@@ -186,7 +186,7 @@ Przed wydaniem należy dodatkowo sprawdzić na rzeczywistym urządzeniu:
 
 ## 9. Pozostałe testy fizyczne i integracyjne
 
-Pełna walidacja elektryczna AQma pozostaje TODO. Po wdrożeniu przyszłych modułów trzeba dodać testy WWW, MQTT i OTA. Storage wymaga testów migracji, factory resetu oraz importu/eksportu.
+Pełna walidacja elektryczna AQma pozostaje TODO. Po wdrożeniu przyszłych modułów trzeba dodać testy WWW/Realtime, Home Assistant API i OTA. Storage wymaga testów migracji, factory resetu oraz importu/eksportu.
 
 ## 10. Bramka kamienia milowego
 

@@ -42,7 +42,7 @@ Każdy sterownik:
 * działa autonomicznie,
 * przechowuje potrzebną konfigurację lokalnie,
 * może posiadać własny panel WWW,
-* może korzystać z MQTT / Home Assistant,
+* może korzystać z lokalnej custom integration Home Assistant,
 * korzysta tylko z potrzebnych elementów `aquaOneCore`,
 * nie importuje kodu innych urządzeń.
 
@@ -95,7 +95,7 @@ Dostarcza wyłącznie mechanizmy techniczne, które w przeciwnym razie trzeba by
 | **Network**     | ✅      | Wi-Fi, STA/AP, reconnect i state machine               |
 | **Web**         | ✅      | serwer HTTP, routing, API i provider pattern           |
 | **Time**        | ✅      | RTC, NTP, recovery i strefa Europe/Warsaw              |
-| **MQTT**        | LATER  | brak implementacji Core; najpierw wymagany T0 ESP-MQTT |
+| **HA integration** | TARGET | custom integration po lokalnym HTTP + WebSocket/Realtime; bez Core MQTT |
 | **OTA**         | TARGET | wspólny moduł nie istnieje; Doser ma lokalne OTA       |
 
 Aktualna wersja:
@@ -182,7 +182,7 @@ aquaOneXxx/
 │   │
 │   └── interfaces/
 │       ├── Web
-│       └── MQTT
+│       └── ApiRealtime
 │
 └── test/
 ```
@@ -333,13 +333,14 @@ Szczegółowy kontrakt transportu i polityki domenowej definiuje
 
 ---
 
-# MQTT i Home Assistant
+# Home Assistant integration
 
-MQTT jest opcjonalną warstwą integracji i nie może być źródłem autonomicznej logiki
-urządzenia. Wspólny moduł MQTT w Core **nie jest zaimplementowany ani aktywnie wdrażany**;
-ma status **LATER**, a spike T0 ESP-MQTT MUSI poprzedzać decyzję transportu i implementację.
-Kontrakt docelowy opisuje [MQTT_STANDARD.md](docs/MQTT_STANDARD.md), a kolejność prac
-[ROADMAP.md](docs/ROADMAP.md).
+TARGET to jedna lokalna custom integration `aquaOne`: HTTP snapshots są source of truth,
+WebSocket/Realtime dostarcza zmianę i resync, a komendy przechodzą przez HTTP POST oraz normalne
+Application boundaries. MQTT, broker i MQTT Discovery nie należą do TARGET. Doser zachowuje
+lokalny MQTT jako LEGACY CURRENT do migracji. Kontrakt opisuje
+[HOME_ASSISTANT_INTEGRATION_STANDARD.md](docs/HOME_ASSISTANT_INTEGRATION_STANDARD.md), a
+kolejność prac [ROADMAP.md](docs/ROADMAP.md).
 
 ---
 
@@ -413,8 +414,8 @@ Aktualnie posiada m.in.:
 * harmonogram,
 * zapis konfiguracji,
 * RTC/NTP,
-* MQTT,
-* Home Assistant Discovery,
+* legacy MQTT,
+* legacy Home Assistant MQTT Discovery,
 * Web UI,
 * integrację z Core prowadzoną etapowo.
 
@@ -452,7 +453,7 @@ Docelowo:
 * szacowanie ilości CO₂,
 * kontrola poprawności sensorów,
 * alarmy,
-* Web/MQTT.
+* native Web/API with a future Home Assistant adapter.
 
 Projekt posiada już rozdzieloną strukturę:
 
@@ -567,7 +568,8 @@ aquaOne/
     ├── ROADMAP.md
     ├── ALARM_STANDARD.md
     ├── SAFETY_STANDARD.md
-    ├── MQTT_STANDARD.md
+    ├── HOME_ASSISTANT_INTEGRATION_STANDARD.md
+    ├── MQTT_STANDARD.md          # deprecated legacy Doser reference
     ├── WEB_STANDARD.md
     ├── OTA_STANDARD.md
     ├── CONFIG_STORAGE_STANDARD.md

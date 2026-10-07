@@ -6,6 +6,14 @@
 Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla wskazanego
 commita. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
 
+## HA-101 target update
+
+Home Assistant TARGET is one local custom `aquaOne` integration using HTTP snapshots,
+HTTP POST actions and WebSocket/Realtime. AquaCore MQTT is not a planned module. Luma and
+Hydro are future product adapters after their native API readiness. Doser MQTT/Discovery is
+LEGACY CURRENT and remains functional until F10.6 replaces it. Gas, Clima and Fauna are future
+HA/API adapters. These TARGET statements do not change any CURRENT implementation below.
+
 ## F9.7D2 update
 
 F9.7D is CURRENT/CLOSED after the native production Web HIL and checkpoint.
@@ -74,7 +82,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Logika | PumpManager, SchedulerManager, MqttManager, HaDiscovery | |
 | Konfiguracja | `PumpConfig`, dokładnie 8 pomp | |
 | Hardware | Relay drivers, PWM pump control | |
-| MQTT/HA | LOCAL | Istniejący PubSubClient + 205 encji nie jest kontraktem przyszłego Core MQTT |
+| MQTT/HA | LEGACY CURRENT / LOCAL | Istniejące PubSubClient, MqttManager, HaDiscovery i około 205 encji pozostają do migracji Dosera; nie są TARGET Core ani docelowym modelem encji HA |
 | **Web W1/W1.5** | DONE | Jeden serwer, auth, restart, OTA success/abort/cleanup/reconnect |
 | **Następny etap Web** | PLANNED | W2: pozostałe strony/API zgodnie z WEB_STANDARD |
 | **Ryzyko dalszej migracji** | Średnie/wysokie | Lokalna domena działa i nie może zostać naruszona |
@@ -105,7 +113,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | | | |
 | **Brakujące integracje** | | |
 | Logging | Opcjonalnie można dodać AquaCore::Logger | Not priority |
-| MQTT | Nie planowany teraz | — |
+| Home Assistant | FUTURE HA/API adapter | Po native Web/Realtime; brak planu MQTT |
 | | | |
 | **Migracja do Core** | 🟢 READY | Już dobra architektura |
 | **Ryzyko** | ✅ Niskie | Proste dodatki (Logger) |
@@ -138,7 +146,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | **Plan integracji** | | |
 | Etap 1 | Config + Storage (gdy potrzebne) | Persistence |
 | Etap 2 | Network + Web (gdy potrzebne) | UI + diagnostics |
-| Etap 3 | MQTT (przyszłość) | HA integration |
+| Etap 3 | HA/API adapter (przyszłość) | Custom Home Assistant integration |
 | | | |
 | **Migracja do Core** | 🟡 PLANNED | Etapowo, medium risk |
 
@@ -213,9 +221,9 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Time | ✅ READY | RtcService, NtpService, EuropeWarsawTimeService |
 | | | |
 | **Nie zaimplementowane** | | |
-| MQTT | ❌ | Planned (no version assigned) |
+| MQTT | ❌ | Not planned for TARGET Core |
 | OTA | ❌ | Planned (no version assigned) |
-| Home Assistant integration | ❌ | Planned (no version assigned) |
+| Home Assistant integration | ❌ | TARGET custom HTTP/WS integration (Phase 10) |
 | RTC/NTP recovery | ✅ IMPLEMENTED | `ResilientTimeService` z progami failure/recovery i cache czasu |
 | | | |
 | **Design** | | |
@@ -288,5 +296,5 @@ Doser, Luma i Hydro nie są wzorcami Core vNext. Dla każdego istniejącego elem
 obowiązuje późniejsza ocena KEEP, ADAPT, REWRITE albo REMOVE.
 
 Docelowe, jeszcze nie CURRENT, obszary platformy to Commands, Events, Alarms, Safety,
-Maintenance, Realtime, Registry, wspólny MQTT, OTA, Backup/Restore, Factory Reset oraz
+Maintenance, Realtime, Registry, Home Assistant client integration, OTA, Backup/Restore, Factory Reset oraz
 Application lifecycle/composition.

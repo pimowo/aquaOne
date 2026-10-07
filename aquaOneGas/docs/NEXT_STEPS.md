@@ -8,5 +8,5 @@
 6. Napisać i przetestować filtrację oraz detekcję stabilności.
 7. Dopiero potem dodać logikę butli.
 8. Następnie ADS1115 / ciśnienie.
-9. Potem WWW i MQTT.
+9. Potem native WWW/API i przyszły adapter Home Assistant.
 10. Na końcu pełny audyt odporności i testy awarii.

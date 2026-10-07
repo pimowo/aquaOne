@@ -1,6 +1,6 @@
 # Architecture vNext — decyzje
 
-**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE, F1.6 SYS-104 DESIGN GATE, F1.8 SYS-105 RECOVERY DESIGN GATE, F1.9 SYS-106 WRITER OWNERSHIP DESIGN GATE, F1.10 SYS-107 RESTART REQUEST POLICY DESIGN GATE, F1.11 SYS-101 RUNTIME IDENTITY DESIGN GATE, F1.12 IDN-101 DEVICE IDENTITY DESIGN GATE i F1.13 ARCH-101 CORE ↔ DOMAIN API DESIGN GATE
+**Status:** DRAFT ACCEPTED dla FAZY 0, F1.1 CONTRACT GATE, F1.5 SYS-102 DESIGN GATE, F1.6 SYS-104 DESIGN GATE, F1.8 SYS-105 RECOVERY DESIGN GATE, F1.9 SYS-106 WRITER OWNERSHIP DESIGN GATE, F1.10 SYS-107 RESTART REQUEST POLICY DESIGN GATE, F1.11 SYS-101 RUNTIME IDENTITY DESIGN GATE, F1.12 IDN-101 DEVICE IDENTITY DESIGN GATE, F1.13 ARCH-101 CORE ↔ DOMAIN API DESIGN GATE i HA-101 HOME ASSISTANT INTEGRATION TRANSPORT
 **Scope:** cała platforma aquaOne
 **Zasada:** Architecture vNext jest TARGET. CURRENT wynika z kodu i macierzy projektu. Legacy code is not architecture.
 
@@ -27,6 +27,27 @@ koordynuje startup i runtime przez wąskie kontrakty. Nie posiada konkretnych us
 konkretnych klas Domain, Network, Web ani MQTT, nie jest service locatorem ani Registry i nie
 zawiera semantyki domenowej. Dokładny ApplicationPlan, hooks i ownership definiuje decyzja
 SYS-102 poniżej.
+
+### HA-101 — Home Assistant integration transport — ACCEPTED TARGET
+
+Targetem całej rodziny jest jedna custom integration `aquaOne` po stronie Home Assistant.
+Odczyt używa lokalnych, koherentnych snapshotów HTTP jako source of truth. WebSocket/Realtime
+przenosi zmianę/notyfikację i po connect, reconnect, gap, continuity loss albo zmianie
+RuntimeIdentity ponownie używa modelu F9.6: StreamStart/current position, HTTP snapshot z
+watermark, bounded overlap, odrzucenie zmian `<= watermark` i dalszy contiguous stream.
+
+Komendy używają HTTP POST i normalnej ścieżki Application/Command/Policy/Safety; protokół v1
+nie przenosi komend przez WebSocket. Home Assistant jest klientem, nie authority Domain.
+Integracja używa Config Flow, z manual host/IP jako fallback. Target discovery to lokalny
+Zeroconf/DNS-SD; `_aquaone._tcp.local.` jest kandydatem, a exact registration, port i TXT schema
+pozostają Phase 10 spike. Identity HA opiera się na DeviceIdentity/future stable DeviceId, nie
+na IP; HA-101 nie redefiniuje MAC jako publicznego wire identity.
+
+MQTT, broker i MQTT Discovery nie należą do TARGET. Nie powstaje wspólny AquaCore MQTT module.
+Doser zachowuje `PubSubClient`, `MqttManager` i `HaDiscovery` jako LEGACY CURRENT do F10.6.
+Wcześniejsze wzmianki o przyszłym lub targetowym MQTT w historycznych decyzjach poniżej są
+superseded przez HA-101 i nie stanowią obowiązującego targetu. Replacement standard:
+`HOME_ASSISTANT_INTEGRATION_STANDARD.md`. SEC-101 pozostaje OPEN.
 
 ### ARCH-101 — Core ↔ Domain API — ACCEPTED TARGET
 
@@ -144,7 +165,7 @@ do projektu. F6.3 potwierdza ten contract testowym Domain fixture; nie wprowadza
 ani nie migruje produkcyjnej domeny.
 Jest to self-contained immutable snapshot value albo ograniczony czasowo immutable read-only view. Dla view owner i lifetime są jawne, adapter nie zatrzymuje go poza gwarantowanym okresem, view nie staje się drugą authoritative kopią, a serializer nie może mutować stanu. Nie jest
 wystawiana mutable reference. Application adapter mapuje project-specific snapshot na HTTP,
-Realtime, MQTT, Panel lub diagnostics. Core nie wymaga `std::variant` obejmującego wszystkie
+Realtime, Panel lub diagnostics. Core nie wymaga `std::variant` obejmującego wszystkie
 domeny i nie musi rozumieć pól snapshotu.
 
 Config/storage lifecycle należy do Core/Application. Domain nie zna NVS ani `ConfigService`;
@@ -162,7 +183,7 @@ adapter aplikacyjny; ARCH-101 ustala kierunek, ale nie jej finalne API.
 Komendy domenowe są typed i należą do Domain. Application/command adapter mapuje przyszły
 generic/wire envelope na wąski `DomainCommandHandler` dopiero po systemowej validation,
 Auth/policy oraz Safety/Action Locks. Transport nie może wywołać handlera bezpośrednio, a handler
-nie zna źródła HTTP/MQTT/WebSocket, sesji ani formatu odpowiedzi. Domain zwraca semantic result,
+nie zna źródła HTTP/WebSocket/integration, sesji ani formatu odpowiedzi. Domain zwraca semantic result,
 na przykład accepted/completed, domain-rule rejection, invalid domain state albo operation
 started; Application mapuje go na wynik transportowy. Dokładne typy, enum, error codes,
 correlation i idempotency pozostają CMD-101/CMD-102.
@@ -178,7 +199,7 @@ ominięcia policy lub Safety.
 
 Semantic events płyną z Domain przez wąski, jawnie wstrzyknięty `DomainEventSink` albo
 równoważny non-owning callback contract do adaptera aplikacyjnego.
-Sink i jego context muszą żyć co najmniej tak długo, jak emitujący moduł może ich używać. Domain nie przejmuje ownership, nie dopuszcza dangling callback/context i nie wykonuje heap ownership transfer. Domain nie publikuje MQTT ani
+Sink i jego context muszą żyć co najmniej tak długo, jak emitujący moduł może ich używać. Domain nie przejmuje ownership, nie dopuszcza dangling callback/context i nie wykonuje heap ownership transfer. Domain nie publikuje bezpośrednio do transportu ani
 WebSocket i nie zna transportu. ARCH-101 ustala ten kierunek i ownership; F4.1 ustala
 typed sink, sygnaturę `emit(const Event&)` i borrowed lifetime. Pozostały zakres EVT-101
 obejmuje delivery/buffering, envelope, priorytety i sequence.
@@ -250,9 +271,9 @@ TIME-101 jest ACCEPTED dla v1 foundation. Drift policy, bogatsze freshness/sourc
 sync events i advanced source quality pozostają future scope.
 
 Domain nie zależy od Network. Dane zewnętrzne trafiają przez adapter jako semantic input.
-Capability przekazywana Domain domyślnie nie ujawnia Wi-Fi/MQTT credentials, session tokens, auth secrets, private keys ani transport-specific credentials. Wyjątek wymaga osobnego, jawnego kontraktu dla rzeczywiście niezbędnego semantic inputu; capability nie może być boczną drogą do transport/session/auth internals.
+Capability przekazywana Domain domyślnie nie ujawnia Wi-Fi credentials, session tokens, auth secrets, private keys ani transport-specific credentials. Wyjątek wymaga osobnego, jawnego kontraktu dla rzeczywiście niezbędnego semantic inputu; capability nie może być boczną drogą do transport/session/auth internals.
 Transport i UI układają się jako `Domain ↔ semantic contracts ↔ Application adapters ↔ Core
-transport infrastructure ↔ HTTP/WS/MQTT/Panel`. Domain nie posiada serwera, routes, HTML,
+transport infrastructure ↔ HTTP/WS/Panel/Home Assistant client`. Domain nie posiada serwera, routes, HTML,
 WebSocket, users, sessions, passwords ani transport permissions. Auth i authorization kończą się
 przed semantic command execution; domena może odrzucić operację wyłącznie z powodów domenowych.
 WEB-001 i dokładny UI/config schema pozostają bez zmian.
@@ -282,7 +303,7 @@ ARCH-101 zamyka dependency direction, ownership, lifecycle integration, hardware
 provider/event/config boundaries, DI, transport isolation, static zero-heap composition i
 testability. Nie zamyka dokładnych metod przyszłych interfejsów, Command API, Event API, Alarm
 API, Action Locks API, Maintenance workflow, RuntimePlan scheduling, config apply workflow,
-Diagnostics schema, Web routes, MQTT adapters, serialization, Auth details ani konkretnych portów
+Diagnostics schema, Web routes, Home Assistant adapters, serialization, Auth details ani konkretnych portów
 hardware poszczególnych projektów.
 
 ### SYS-001 — lifecycle
@@ -491,7 +512,7 @@ a zmiana identity unieważnia poprzedni runtime state/seq consumers. Unavailable
 udaje legalnego event stream ID. Dokładne zachowanie protokołu przy unavailable jest przyszłe.
 
 MQTT może publikować RuntimeIdentity w retained state, ale topic root pozostaje oparty na
-device identity/MAC standardzie, bez zmiany root przy każdym reboot. HTTP, Realtime, MQTT,
+device identity/MAC standardzie, bez zmiany root przy każdym reboot. HTTP, Realtime,
 logs i diagnostics używają tego samego canonical value. Nie wymaga się wpisywania ID w każdym
 logu; logger formatting pozostaje przyszłe. Identity jest publiczna i nie jest credential,
 auth token, security nonce ani anti-replay primitive; nie może stanowić podstawy autoryzacji.
@@ -515,7 +536,7 @@ runtime. Kilka różnych wartości nie dowodzi jakości rozkładu ani braku koli
 value-type correctness pozostaje host-testable.
 
 SYS-101 nie zamyka IDN-101, ARCH-101, current-boot RestartReason catalog, event payload API,
-Realtime protocol, MQTT payload/topic standard, Diagnostics full API, logger formatting,
+Realtime protocol, Home Assistant API contract, Diagnostics full API, logger formatting,
 boot history, next-boot metadata ani security/session identifiers. F4.2 nie zmienia
 ApplicationRuntime ani istniejących Device/Build/Hardware identity.
 
@@ -1003,10 +1024,10 @@ wystarcza; SYS-105 nie dodaje stanów `RECOVERY`, `SAFE_MODE` ani `FAILED_STARTU
 Recovery services są explicit opt-in w Composition Root. Mogą działać wyłącznie usługi
 systemowe jawnie uznane za bezpieczne w `ERROR` i tylko wtedy, gdy ich zależności są dostępne.
 Logging i lokalna diagnostyka mogą być dostępne niezależnie od sieci. Status, diagnostics,
-Config read/write, factory reset, restore, OTA, restart, Network, Web, Realtime i MQTT nie są
+Config read/write, factory reset, restore, OTA, restart, Network, Web i Realtime nie są
 automatycznie dostępne: każda capability wymaga osobnego bezpiecznego kontraktu i poprawnie
 uruchomionej infrastruktury. Failure przed `NETWORK_INIT` nie pozwala zakładać Network ani Web.
-Brak Network, Web lub MQTT nie jest kolejnym startup failure. Recovery pozostaje autonomiczne
+Brak Network, Web lub Home Assistant nie jest kolejnym startup failure. Recovery pozostaje autonomiczne
 i nie może wymagać sieci. Lokalna diagnostyka może działać bez Network, jeżeli konkretne
 urządzenie jawnie ją udostępnia.
 
@@ -1256,7 +1277,7 @@ i dostarczać SafetyContribution, lecz Maintenance != Safety.
 
 Command pipeline czyta OperationalState, HealthState, SafetyState i Action Locks, ale nie
 pisze bezpośrednio globalnych osi. Komenda może zmienić condition przez jego dozwolony workflow;
-dopiero coordinator aktualizuje aggregate. HTTP, Realtime, MQTT i Panel czytają/publikują stan,
+dopiero coordinator aktualizuje aggregate. HTTP, Realtime, Home Assistant i Panel czytają/publikują stan,
 nie otrzymują write authority. Diagnostics również nie jest alternatywnym writerem.
 
 #### Migration, testability i scope
@@ -1379,7 +1400,7 @@ State owner żyje przez cały okres używania pożyczonych requesterów i read v
 
 RestartRequester zapisuje intencję i nigdy nie wykonuje platformowego resetu. RestartExecutor
 jest efektem platformowym dostępnym wyłącznie lifecycle/system orchestration; Domain,
-HTTP, Realtime, MQTT, Panel i arbitrary services nie otrzymują executora ani nie wykonują
+HTTP, Realtime, Home Assistant, Panel i arbitrary services nie otrzymują executora ani nie wykonują
 bezpośrednio ESP.restart(). Transport może inicjować autoryzowany workflow przez requester.
 
 V1 nie ma cancellation, także przez ownera pierwotnego requestu. Sticky request nie znika
@@ -1457,7 +1478,7 @@ nie musi mapować 1:1 i nie zmienia źródła prawdy hardware reset cause. SYS-1
 current-boot RestartReason catalog, storage, atomicity ani validity tego metadata.
 
 Minimum status/diagnostics to read-only snapshot pending, primary i accepted mask: przy pending=false primary nie jest publikowany jako legalna wartość, a maska jest pusta; przy pending=true snapshot zawiera pending, legalny primary i accepted mask. Additional causes są wyliczane z maski i nie są osobną authoritative kopią.
-Nie wymaga loggera, Network ani transportów; przyszłe HTTP/MQTT/Realtime mogą publikować ten
+Nie wymaga loggera, Network ani transportów; przyszłe HTTP/Realtime mogą publikować ten
 sam snapshot. Pierwszy accepted request i dodanie nowego cause są istotnymi zmianami systemowymi,
 logowalnymi i potencjalnie publikowanymi jako event. Duplicate nie wymaga nowego eventu/logu.
 Próba wywołania executora i jego failure powinny być logowalne, jeśli możliwe. Logging/publication
@@ -1673,7 +1694,7 @@ Fatal później zachowuje opublikowaną parę. Recovery nie ponawia identity rea
 drugi start() jest no-op, config repair nie daje ERROR → RUNNING; nowa próba wymaga
 nowej instancji startupu. RuntimeStatus, StartupReport i SYS-106 handoff są bez zmian.
 
-#### MQTT/HA naming, collisions, testability i scope
+#### Legacy MQTT naming, collisions, testability i scope
 
 Zachowujemy transport/integration standard: compact base aquaone-<MAC6>, type subtree
 aquaone-<MAC6>/<type>, client_id/HA technical name aquaone-<type>-<MAC6> oraz
@@ -1713,7 +1734,7 @@ MAC overrides bez zmiany canonical source. Host tests wystarczą dla tokenów/fo
 HIL nie jest wykonywany ani wymagany dla dokumentacji F1.12.
 
 IDN-101 nie zamyka ARCH-101, current-boot RestartReason, non-ESP32 source/extension,
-device provisioning/migration, asset management, friendly-name config, MQTT/HA full API,
+device provisioning/migration, asset management, friendly-name config, Home Assistant full API,
 transport payload formats, naming-collision resolution, security/certificate identities,
 BuildIdentity version grammar ani HardwareIdentity platform/revision schema.
 SYS-101 i wszystkie istniejące C++ kontrakty pozostają bez zmian.
@@ -1920,7 +1941,7 @@ pozostają zgodne z SYS-105. Fatal config failure sam nie tworzy restart request
 #### Active, desired i runtime change
 
 ActiveConfig jest authoritative current applied configiem bieżącego runtime: pełnym, validated,
-immutable snapshotem udostępnianym tylko read-only. UI, MQTT, transport i Domain nie mutują go
+immutable snapshotem udostępnianym tylko read-only. UI, external integration, transport i Domain nie mutują go
 w miejscu. Zmiana tworzy osobny proposed snapshot; apply przyjmuje cały validated snapshot,
 bez generic diff engine.
 
@@ -2004,7 +2025,7 @@ hardware apply failure oraz actuator safety. Host tests nie dowodzą physical ro
 
 CFG-101 nie ustala finalnego C++ API, konkretnych schemas/migrations, cross-record transaction,
 boot-loop protection implementation, persistent LKG/two-phase marker, CFG-102 backup
-`DomainState`, Maintenance, RestartReason, Commands, Web/MQTT config API, Auth, secret
+`DomainState`, Maintenance, RestartReason, Commands, Web/HA API, Auth, secret
 encryption, backup/restore/factory-reset workflow ani retry policy. Rozstrzyga v1 lifecycle,
 ownership, ordering, defaults/recovery i desired/active semantics.
 
@@ -2373,7 +2394,7 @@ Klient przechowuje bounded overlap, pomija
 powiadomienia <= N i używa kolejnych > N. Overflow, zmiana runtime identity,
 wykryta luka albo niekoherentny zestaw snapshotów wymaga pełnego HTTP resync.
 Nie ma obowiązkowego replay historii. V1 gwarantuje kolejność w obrębie strumienia
-WS, bez globalnego porządku pomiędzy HTTP, WS i przyszłym MQTT. Kontrakt wykrywania luk musi
+WS, bez globalnego porządku pomiędzy HTTP i WS. Kontrakt wykrywania luk musi
 uwzględnić ewentualne przyszłe filtrowane subskrypcje;
 dokładny wire envelope pozostaje otwarty.
 
@@ -2523,7 +2544,7 @@ F6.5 potwierdza użycie bez nowego Core descriptor API: Application/project defi
 providers wykonują odczyty poza Registry; Registry nie jest provider dispatcherem.
 
 ### SEC-002 — ochrona sekretów
-Sekrety nie mogą trafiać do status, diagnostics, logs, Realtime ani MQTT state.
+Sekrety nie mogą trafiać do status, diagnostics, logs ani Realtime.
 ### DIAG-001 — rozdział diagnostyki
 CoreDiagnostics i DomainDiagnostics są semantycznie oddzielone i korzystają ze wspólnej infrastruktury.
 
@@ -2545,7 +2566,7 @@ nie wykonuje komend, ACK/clear, zapisu config ani restartu i nie przejmuje autho
 `RuntimeStatus`, `AlarmState`, Events lub Logging. `Unavailable` nie mapuje się
 automatycznie na Health, Safety, Alarm ani command failure; wymagałoby to osobnej
 jawnej policy. Snapshoty nie mogą ujawniać haseł, tokenów, kluczy prywatnych,
-Wi-Fi credentials ani MQTT passwords. SSID/AP SSID nie są tym samym co sekret,
+Wi-Fi credentials ani integration secrets. SSID/AP SSID nie są tym samym co sekret,
 lecz ich widoczność w transporcie pozostaje osobną decyzją projekcji.
 
 F6.1 ustanowiła provider contract, a F6.2 dodaje niezależne read-only Core projections
@@ -2599,7 +2620,7 @@ a nie singletonem Core; obecny adapter obsługuje jedną aktywną instancję bac
 proof z fake backendem pokrywa neutralny kontrakt stanu. Istniejące interwały reconnect,
 fast retry i timeout pozostają CURRENT; F7.4 nie dodaje policy reconnect ani startup
 participanta. Network Connected może być warunkiem rozpoczęcia próby NTP, ale nie gwarantuje
-dostępności NTP, DNS, Internetu, MQTT ani Web. Otwarte pozostają target reconnect/backoff,
+dostępności NTP, DNS, Internetu ani Web. Otwarte pozostają target reconnect/backoff,
 AP fallback, static IP/DNS, testy Internet reachability
 oraz projekcja Network events/diagnostics.
 
@@ -2641,7 +2662,6 @@ i Internet reachability pozostają otwarte.
 - WEB-101 — public/auth policy endpointów;
 - WEB-102 (pozostały zakres) — finalne API/schema HTTP, route compatibility, response mapping i limity poza F9.1 foundation;
 - RT-101 (pozostały zakres) — wire envelope, heartbeat, capacity, backpressure, auth/session i dokładny reconnect/snapshot binding poza F9.1 foundation;
-- MQTT-101 — zakres wspólnej infrastruktury MQTT;
 - SEC-101 — auth HTTP/WebSocket oraz model sekretów;
 - HW-101 — polityka wspólnych driverów i dokładne kontrakty capability;
 - MNT-102 — zakres wspólnego OTA, restartu, backup/restore i factory reset;

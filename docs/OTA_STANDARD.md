@@ -5,6 +5,10 @@
 **Version:** 1.0
 **Last reviewed:** 2026-09-12
 
+> **HA-101 transition:** Local Web remains the primary OTA interface. Home Assistant MAY later
+> initiate the same authorized HTTP/system workflow, but is not required. MQTT controlled
+> offline text below applies only when maintaining the LEGACY CURRENT Doser transport.
+
 ## Terminologia normatywna
 
 - **MUSI** — wymaganie obowiązkowe.
@@ -678,7 +682,7 @@ finish upload
 
 ---
 
-# 46. MQTT przed restartem
+# 46. Legacy Doser MQTT przed restartem
 
 Jeśli MQTT jest online i jest czas na kontrolowane zakończenie:
 
@@ -969,7 +973,7 @@ Nie może to zmienić zasady, że urządzenie działa bez HA.
 
 ---
 
-# 73. OTA a MQTT
+# 73. Legacy Doser OTA a MQTT
 
 MQTT nie służy do przesyłania pliku firmware.
 

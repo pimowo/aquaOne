@@ -5,6 +5,10 @@
 **Version:** 1.0
 **Last reviewed:** 2026-09-12
 
+> **HA-101 transition:** Every remote integration command, including a Home Assistant HTTP
+> action, MUST pass the normal Command/Policy/Safety path. MQTT-specific command and offline
+> queue text below is DEPRECATED LEGACY DOSER reference only and creates no TARGET dependency.
+
 ## Terminologia normatywna
 
 - **MUSI** — wymaganie obowiązkowe.
@@ -210,7 +214,7 @@ request
 
 # 11. Brak bezpośredniego sterowania hardware z UI
 
-WWW, MQTT i HA nie powinny bezpośrednio zmieniać GPIO.
+WWW, Home Assistant i inne remote integrations nie powinny bezpośrednio zmieniać GPIO.
 
 Sterowanie zawsze przechodzi przez logikę domenową.
 
@@ -1338,7 +1342,7 @@ allowed
 reason_code
 ```
 
-Dzięki temu WWW, MQTT, HA i lokalne sterowanie zachowują się identycznie.
+Dzięki temu WWW, remote integration commands i lokalne sterowanie zachowują się identycznie.
 
 ---
 
@@ -1447,7 +1451,7 @@ WWW:
 
 ---
 
-# 113. Integracja z MQTT_STANDARD
+# 113. Legacy Doser integration with MQTT_STANDARD
 
 MQTT commands:
 

@@ -5,6 +5,10 @@
 **Version:** 1.0
 **Last reviewed:** 2026-09-12
 
+> **HA-101 transition:** All MQTT, broker and HA Discovery tests in this document are retained
+> only for the LEGACY CURRENT Doser implementation. TARGET integration tests cover the local
+> HTTP client, HTTP actions, Realtime reconnect/F9.6 resync, Config Flow and discovery contract.
+
 ## Terminologia normatywna
 
 - **MUSI** — wymaganie obowiązkowe.
@@ -356,9 +360,9 @@ Nie może go interpretować losowo.
 
 ---
 
-# 23. MQTT tests
+# 23. Legacy Doser MQTT tests
 
-Wspólny MQTT powinien mieć testy:
+Legacy Doser MQTT ma własne testy historycznego transportu:
 
 - connect,
 - auth failure,

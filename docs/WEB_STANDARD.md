@@ -5,6 +5,12 @@
 **Version:** 1.0
 **Last reviewed:** 2026-09-12
 
+> **HA-101 transition:** Web is independent of Home Assistant. The TARGET external integration
+> reuses local HTTP snapshots, HTTP POST actions and WebSocket/Realtime according to
+> `HOME_ASSISTANT_INTEGRATION_STANDARD.md`. MQTT settings, `/api/mqtt`, MQTT root, HA Discovery
+> and MQTT credential sections below are DEPRECATED LEGACY DOSER reference only; they are not
+> requirements for new Web or AquaCore implementations.
+
 ## Terminologia normatywna
 
 - **MUSI** — wymaganie obowiązkowe.
@@ -231,8 +237,7 @@ Brak HA/MQTT:
 WWW odpowiada za:
 
 - konfigurację Wi-Fi,
-- konfigurację MQTT,
-- konfigurację HA Discovery,
+- legacy Doser MQTT configuration only when maintaining that existing product,
 - konfigurację urządzenia domenowego,
 - ustawienia użytkownika,
 - diagnostykę,
@@ -299,7 +304,7 @@ Przykłady:
 - ręczne sterowanie kanałem,
 - akcja serwisowa.
 
-Sterowanie z WWW musi przechodzić przez tę samą logikę domenową i te same zabezpieczenia co sterowanie z HA/MQTT.
+Sterowanie z WWW musi przechodzić przez tę samą logikę domenową i te same zabezpieczenia co remote integration commands.
 
 WWW nie steruje hardware bezpośrednio z pominięciem logiki urządzenia.
 
@@ -972,7 +977,7 @@ Jeśli istnieją:
 ```text
 hardware_revision
 config_schema_version
-mqtt_protocol_version
+api_protocol_version
 ```
 
 również mogą być pokazane.
@@ -1317,7 +1322,7 @@ Lokalne API WWW jest przede wszystkim backendem dla własnego UI urządzenia.
 
 Nie traktujemy go automatycznie jako publicznego API dla integracji zewnętrznych.
 
-Integracje zewnętrzne używają przede wszystkim MQTT/HA.
+Integracje zewnętrzne używają wspólnych HTTP/Application i Realtime boundaries; Home Assistant jest jednym z klientów.
 
 ---
 

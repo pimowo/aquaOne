@@ -21,7 +21,7 @@ Najpierw sprawdzić publiczne API aktualnej wersji AquaCore, a dopiero potem pod
 - diagnostics,
 - logger,
 - Web,
-- MQTT, gdy warstwa MQTT będzie dostępna/stabilna,
+- HTTP/Realtime boundaries używane później przez custom integration Home Assistant,
 - watchdog/OTA, gdy będą dostępne we wspólnym rdzeniu.
 
 Nie tworzyć lokalnych odpowiedników tylko po to, żeby „na chwilę działało”, jeżeli dana funkcja ma wejść do AquaCore.

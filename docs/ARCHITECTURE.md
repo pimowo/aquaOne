@@ -7,7 +7,7 @@
 Ten dokument definiuje nadrzędne granice i kierunek zależności. Szczegółowe kontrakty są
 własnością odpowiednich standardów:
 
-- [Web](WEB_STANDARD.md), [MQTT](MQTT_STANDARD.md),
+- [Web](WEB_STANDARD.md), [Home Assistant Integration](HOME_ASSISTANT_INTEGRATION_STANDARD.md),
   [Config i storage](CONFIG_STORAGE_STANDARD.md), [diagnostyka](DIAGNOSTICS_STANDARD.md);
 - [alarmy](ALARM_STANDARD.md), [bezpieczeństwo](SAFETY_STANDARD.md),
   [OTA](OTA_STANDARD.md), [testy](TEST_STANDARD.md);
@@ -27,7 +27,7 @@ niezatwierdzone pomysły. Standard opisuje wymagany kontrakt; nie jest sam w sob
 Konsekwencje tego założenia:
 
 1. **Brak zależności kodowych** między urządzeniami
-2. **Opcjonalność sieciowych modułów** (WiFi, MQTT, Web są dodatkami)
+2. **Opcjonalność sieciowych modułów** (WiFi, Web i external integrations są dodatkami)
 3. **Niezależna logika domenowa** w każdym projekcie
 4. **Wspólna infrastruktura techniczna** w Core
 
@@ -103,7 +103,7 @@ aquaOneXxx/
     ├── services/
     │   └── [helpers]         # Stateless utils, algorithms
     └── interfaces/
-        └── [optional]        # Web, MQTT routes
+        └── [optional]        # Web and integration routes
 ```
 
 **Separacja warstw:**
@@ -171,7 +171,7 @@ void XxxApp::update() {
 ```
 
 **Urządzenie → Urządzenie:** NIE ISTNIEJE
-- Jeśli potrzebna jest wymiana danych, to przez MQTT (przyszłość)
+- Jeśli potrzebna jest wymiana danych, to przez jawny lokalny kontrakt integracyjny (przyszłość)
 - Lub przez wspólną bazę konfiguracji (przyszłość)
 
 ### 5. Optional Core modules
@@ -246,7 +246,7 @@ class EuropeWarsawTimeService {
 
 Funkcja urządzenia **nigdy** nie powinna zależeć od:
 - WiFi connection
-- MQTT broker
+- external integration service
 - Home Assistant
 - innego urządzenia aquaOne
 - Cloud API
@@ -254,7 +254,7 @@ Funkcja urządzenia **nigdy** nie powinna zależeć od:
 Przykład Luma:
 - ✅ Światło zmienia się wg profilu (lokalnie, nie potrzebuje sieci)
 - ⚠️ Web panel niedostępny, jeśli brak WiFi (OK — to addon)
-- ⚠️ MQTT disconnect (OK — to addon, przyszłość)
+- ⚠️ external integration disconnect (OK — to addon)
 
 ### State machines i recovery
 
@@ -358,7 +358,7 @@ ownership i kolejność definiuje decyzja SYS-102 w `ARCHITECTURE_VNEXT_DECISION
 
 Domain jest authoritative ownerem własnych `DomainState` i `DomainMode` oraz odpowiada za logikę funkcjonalną, typed commands, semantyczne reguły config, alarmy, domenową część safety i diagnostics. Config/storage lifecycle pozostaje w Core/Application, a odczyt stanu odbywa się przez read-only project-specific snapshot/provider bez drugiej mutable kopii w Core. Domain nie używa bezpośrednio WiFi, WebServer, WebSocket, PubSubClient, Preferences/NVS, Update, `ESP.restart()` ani przypadkowych GPIO. Hardware jest dostępny przez interfejsy portów należące do Domain i implementowane przez hardware adapters, np. `PumpPort`, `LightChannelPort`, `TemperatureSensorPort`.
 
-Docelowy Core obejmuje Identity, Lifecycle, System state, Time, Storage, Config framework, Logging, Diagnostics, Alarm framework, Safety framework, Maintenance, Network, Commands, Events, Registry, Web, Realtime, MQTT infrastructure, OTA, Restart, Factory Reset, Backup/Restore, Versioning i Auth. To jest TARGET; nie wszystkie elementy są CURRENT.
+Docelowy Core obejmuje Identity, Lifecycle, System state, Time, Storage, Config framework, Logging, Diagnostics, Alarm framework, Safety framework, Maintenance, Network, Commands, Events, Registry, Web, Realtime, OTA, Restart, Factory Reset, Backup/Restore, Versioning i Auth. Home Assistant jest zewnętrznym klientem HTTP/Realtime, a wspólny moduł MQTT nie jest planowany. To jest TARGET; nie wszystkie elementy są CURRENT.
 
 ### Lifecycle i model stanu
 
@@ -415,7 +415,7 @@ Identity jest rozdzielone na `DeviceIdentity`, `BuildIdentity`, `HardwareIdentit
 otrzymać tylko `RestartRequester`, a minimalny restart Fazy 1 przechodzi przez pending request
 i safe point runtime loop. DeviceIdentity v1 definiuje IDN-101: para domain-owned lowercase
 ASCII device_type (do 23 chars) i full stable hardware MAC48 (6 bytes, canonical 12 uppercase
-hex chars). MAC6 jest derived compact naming suffix MQTT/HA, nie canonical DeviceId.
+hex chars). Historyczny MAC6 jest legacy naming suffix Dosera, nie canonical DeviceId ani nowym HA identity.
 DeviceId zachowuje się przez reboot/factory reset; wymiana MCU/source oznacza nowe ID.
 Inicjalizacja jest drugim REQUIRED participant CORE_INIT, po RuntimeIdentity.
 Rozszerzenia Build/Hardware identity schema, non-MAC source oraz rozszerzone workflow
@@ -426,7 +426,7 @@ Events/Realtime pozostają osobnymi otwartymi kontraktami.
 
 ### Command Path
 
-Wszystkie zewnętrzne i system/application źródła żądań sterowania — WEB, MQTT, PANEL, przycisk fizyczny oraz scheduler składający żądanie — korzystają z jednej ścieżki:
+Wszystkie zewnętrzne i system/application źródła żądań sterowania — WEB, Home Assistant integration, PANEL, przycisk fizyczny oraz scheduler składający żądanie — korzystają z jednej ścieżki:
 
 ```text
 Source → Command → Validation → Authorization/Policy → Safety/Action Locks →
@@ -437,7 +437,7 @@ Transport nigdy nie steruje bezpośrednio GPIO/driverem. Wewnętrzny regulator l
 
 ### Snapshot, Events i Realtime
 
-Rozróżniamy Snapshot, State Change, Domain Event, Alarm Event, Operation Event i Telemetry. Snapshot jest autorytatywnym źródłem aktualnego stanu, Event mówi, że coś się wydarzyło. Realtime nie jest jedynym źródłem prawdy. W V1 nie ma event replay; po reconnect klient zawsze wykonuje pełny resync. SYS-101 ustala semantykę i wartość RuntimeIdentity, ale nazwa pola w payloadach pozostaje otwarta: transport może użyć `runtime_id`, `boot_id` albo innej nazwy. Dokładne Events/Realtime/MQTT representation, sekwencje, gap detection i nazwy stanów UI pozostają DECISION REQUIRED.
+Rozróżniamy Snapshot, State Change, Domain Event, Alarm Event, Operation Event i Telemetry. Snapshot jest autorytatywnym źródłem aktualnego stanu, Event mówi, że coś się wydarzyło. Realtime nie jest jedynym źródłem prawdy. Model reconnect/resync wynika z F9.6, a szczegóły wire contractu i HA clienta z HA-101 oraz `HOME_ASSISTANT_INTEGRATION_STANDARD.md`. SYS-101 ustala semantykę i wartość RuntimeIdentity, ale nazwa pola w payloadach pozostaje otwarta.
 
 ### Config, Storage, Safety i Alarmy
 
@@ -451,7 +451,7 @@ Core nie jest katalogiem konkretnych driverów. Rozróżniamy generic technical 
 
 Na urządzeniu pozostaje dokładnie jeden fizyczny transport Web. HTTP i Realtime mają docelowo korzystać ze wspólnego backendu i portu; nie wolno tworzyć konkurencyjnego WebServera. Obecny synchroniczny Web Core jest CURRENT/legacy foundation. Provider pattern jest wartościowy, ale jego obecne API nie jest gwarantowanym kontraktem bez breaking changes. HTTP obsługuje request/response, initial/full snapshot, konfigurację, akcje, OTA i backup/restore; Realtime obsługuje live state, events, alarms, warnings i progress.
 
-Auth odpowiada „kto może wykonać akcję”, Safety „czy akcja może być teraz wykonana”. Auth należy do Core; Domain nie zna haseł, sesji, nagłówków HTTP ani WebSocket handshake auth. Sekrety nie trafiają do status, diagnostics, logs, realtime ani MQTT state. Logging opisuje, co się wydarzyło, diagnostics opisuje stan obecny. `CoreDiagnostics` i `DomainDiagnostics` są semantycznie oddzielone.
+Auth odpowiada „kto może wykonać akcję”, Safety „czy akcja może być teraz wykonana”. Auth należy do Core; Domain nie zna haseł, sesji, nagłówków HTTP ani WebSocket handshake auth. Sekrety nie trafiają do status, diagnostics, logs ani realtime. Logging opisuje, co się wydarzyło, diagnostics opisuje stan obecny. `CoreDiagnostics` i `DomainDiagnostics` są semantycznie oddzielone.
 
 ### CURRENT → vNext gap
 
@@ -463,6 +463,6 @@ Auth odpowiada „kto może wykonać akcję”, Safety „czy akcja może być t
 | Diagnostics | REWRITE architektoniczne na provider/capability |
 | Web | REWRITE architektoniczne; najpierw feasibility spike |
 | Commands, Events, Alarms, Safety, Maintenance, Realtime | BUILD NEW |
-| MQTT, OTA, Backup/Restore, Factory Reset, Registry, lifecycle | BUILD NEW |
+| Home Assistant client integration, OTA, Backup/Restore, Factory Reset, Registry, lifecycle | BUILD NEW |
 
 Istniejące projekty nie są wzorcem platformy. Każdy projekt może później zostać oceniony jako KEEP, ADAPT, REWRITE albo REMOVE.

@@ -30,7 +30,7 @@ profil lub tryb
 → GPIO
 ```
 
-WWW, MQTT, generator profili ani inne przyszłe integracje nie mogą sterować PWM bezpośrednio.
+WWW, Home Assistant ani inne przyszłe integracje nie mogą sterować PWM bezpośrednio.
 
 `FirmwareApp` odpowiada za wybór konfiguracji, uruchomienie usług, cykliczny odczyt czasu, wywołanie Core i przekazanie `actualLevels` do hardware. Nie implementuje Wi-Fi ani usług sieciowych.
 

@@ -1,9 +1,17 @@
 # MQTT_STANDARD.md
 
-**Status:** ACTIVE
+**Status:** DEPRECATED / LEGACY REFERENCE ONLY
 **Scope:** aquaOne ecosystem
 **Version:** 1.0
 **Last reviewed:** 2026-09-12
+
+> **DEPRECATION NOTICE:** MQTT is not part of the aquaOne TARGET architecture. Do not build a
+> new AquaCore MQTT module from this document. It is retained only as historical reference and
+> for the LEGACY CURRENT Doser implementation (`PubSubClient`, `MqttManager`, `HaDiscovery`)
+> until that product is migrated. The replacement target is
+> [HOME_ASSISTANT_INTEGRATION_STANDARD.md](HOME_ASSISTANT_INTEGRATION_STANDARD.md): one local
+> Home Assistant custom integration using HTTP snapshots, HTTP actions and WebSocket/Realtime.
+> Every normative statement below applies only inside that legacy scope.
 
 ## Terminologia normatywna
 
@@ -13,7 +21,7 @@
 
 ## 1. Cel
 
-Ten dokument definiuje wspólny standard MQTT dla całego ekosystemu **aquaOne**.
+Ten dokument zachowuje historyczny standard MQTT dla legacy Dosera; nie definiuje TARGET dla ekosystemu **aquaOne**.
 
 Dotyczy wszystkich urządzeń opartych o `aquaOneCore`, m.in.:
 

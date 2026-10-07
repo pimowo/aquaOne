@@ -24,9 +24,9 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 7. **FAZA 7 — Time / Network adaptation (CLOSED)**: dostarczono CURRENT monotonic i wall clock foundation, RTC jako offline UTC source, opcjonalną synchronizację NTP oraz optional Network startup, runtime i live Health.
 8. **FAZA 8 — HTTP + WebSocket feasibility spike (CLOSED)**: F8.1–F8.3C zamknęły feasibility i wybrały `esp_http_server` jako WEB-103 ACCEPTED — TARGET dla przebadanej bazy; production Web nie został zmigrowany.
 9. **FAZA 9 — Production Web + Realtime (REQUIRED NEXT)**: zaprojektowanie i migracja produkcyjnego Web na wybrany target oraz implementacja Realtime.
-10. **FAZA 10 — MQTT**: wspólna infrastruktura po ustaleniu Commands/Events.
+10. **FAZA 10 — Home Assistant Integration**: custom integration `aquaOne`, lokalny HTTP API client, WebSocket/Realtime client, Config Flow, Zeroconf/mDNS, Luma reference adapter, reconnect/resync i product-aware entity mapping. Plan: F10.1 architecture/client library; F10.2 Luma read-only; F10.3 Realtime reconnect/resync; F10.4 Luma commands; F10.5 Hydro adapter; F10.6 Doser MQTT replacement.
 11. **FAZA 11 — OTA / Backup / Restore / Factory Reset**: wspólne workflow i recovery.
-12. **FAZA 12 — UI Shell**: wspólny shell/design system po stabilizacji kontraktów.
+12. **FAZA 12 — UI Shell**: wspólny shell/design system po stabilizacji kontraktów. Shared Web Theme v1 jest już CURRENT foundation, ale nie zamyka całej fazy.
 13. **FAZA 13 — Reference Empty Device**: minimalny klient weryfikujący platformę bez domeny.
 14. **FAZA 14 — First real Domain migration**: wybór projektu dopiero po gotowej platformie.
 
@@ -48,7 +48,7 @@ alarm registry, severity, physical persistence schema, history/counters, bogatsz
 i transport również pozostają TARGET/FUTURE. Descriptor schema, stable/global diagnostic IDs,
 transport visibility/projection, timestamp conventions, richer diagnostic/failure metadata,
 hardware-specific diagnostics, migracja legacy `DiagnosticsService` i real Domain migration
-pozostają TARGET/FUTURE. Realtime, MQTT, OTA i Backup/Restore również pozostają TARGET/FUTURE.
+pozostają TARGET/FUTURE. Realtime, Home Assistant integration, OTA i Backup/Restore również pozostają TARGET/FUTURE.
 
 Phase 7 CURRENT rozdziela monotonic timing od UTC `WallClock`: prawidłowy RTC działa offline,
 NTP tylko opcjonalnie synchronizuje RTC, a Network pozostaje opcjonalną infrastrukturą bez

@@ -5,6 +5,11 @@
 **Version:** 1.0
 **Last reviewed:** 2026-09-12
 
+> **HA-101 transition:** TARGET Home Assistant integration requires no broker credentials and
+> does not require the device to store Home Assistant credentials merely because integration
+> exists. All MQTT broker, credential, Discovery and `mqtt_protocol_version` examples below are
+> DEPRECATED LEGACY DOSER reference only; that product-local debt remains until Doser cutover.
+
 ## Terminologia normatywna
 
 - **MUSI** — wymaganie obowiązkowe.
@@ -397,7 +402,7 @@ Nie ufamy samemu faktowi, że dane istnieją w flash.
 
 # 17. Walidacja przed zapisem
 
-Każda zmiana z WWW, MQTT lub innego źródła przechodzi walidację przed trwałym zapisem.
+Każda zmiana z WWW, Home Assistant lub innego remote integration source przechodzi walidację przed trwałym zapisem.
 
 Sekwencja:
 
@@ -1043,7 +1048,7 @@ Po utracie HA wartość pozostaje w urządzeniu.
 
 ---
 
-# 61. Konfiguracja a MQTT
+# 61. Legacy Doser konfiguracja a MQTT
 
 MQTT command może zmieniać trwałą wartość tylko wtedy, gdy dana opcja jest jawnie wystawiona jako config/control.
 
@@ -1425,7 +1430,7 @@ WWW:
 
 ---
 
-# 89. Integracja z MQTT_STANDARD
+# 89. Legacy Doser integration with MQTT_STANDARD
 
 MQTT:
 - nie przechowuje konfiguracji urządzenia,

@@ -5,6 +5,11 @@
 **Version:** 1.0
 **Last reviewed:** 2026-09-12
 
+> **HA-101 transition:** TARGET diagnostics describe device, Web/Realtime and local integration
+> connectivity without requiring MQTT or an `ONLINE` broker state. Home Assistant exposes only
+> selected useful diagnostics; full support diagnostics remain in Web snapshots. Sections and
+> fields named MQTT/MqttDiagnostics below are DEPRECATED LEGACY DOSER reference only.
+
 ## Terminologia normatywna
 
 - **MUSI** — wymaganie obowiązkowe.
@@ -33,7 +38,7 @@ Standard określa:
 - uptime,
 - pamięć,
 - sieć,
-- MQTT,
+- integration/Realtime connectivity,
 - czas,
 - storage,
 - sensory,
@@ -282,7 +287,7 @@ Jeśli dostępne:
 ```text
 hardware_revision
 config_schema_version
-mqtt_protocol_version
+api_protocol_version
 ```
 
 ---
@@ -485,7 +490,7 @@ Można oznaczyć health sieci jako DEGRADED, jeśli sygnał jest bardzo słaby.
 
 ---
 
-# 25. MQTT diagnostyka
+# 25. Legacy Doser MQTT diagnostyka
 
 Core powinien udostępniać:
 
@@ -1000,7 +1005,7 @@ Nie duplikujemy `alarm_active`, `alarm_severity`, `safety_lock` jako nowych diag
 
 ---
 
-# 61. Network/MQTT health w HA
+# 61. Network/integration health in Home Assistant
 
 Nie tworzymy domyślnie osobnych:
 

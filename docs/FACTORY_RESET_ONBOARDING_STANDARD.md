@@ -5,6 +5,11 @@
 **Version:** 1.0
 **Last reviewed:** 2026-09-12
 
+> **HA-101 transition:** Factory reset and onboarding do not depend on Home Assistant. TARGET
+> HA setup is a client-side Config Flow with local Zeroconf or manual host fallback and needs no
+> broker credentials. MQTT/Discovery settings and reset sections below are DEPRECATED LEGACY
+> DOSER reference only.
+
 ## Terminologia normatywna
 
 - **MUSI** — wymaganie obowiązkowe.
@@ -302,7 +307,7 @@ Brak Internetu przy działającym LAN nie jest powodem do onboardingu.
 
 ---
 
-# 24. MQTT nie jest częścią podstawowego onboardingu Wi-Fi
+# 24. Legacy Doser MQTT nie jest częścią podstawowego onboardingu Wi-Fi
 
 Najpierw urządzenie musi mieć lokalną sieć i WWW.
 
@@ -847,7 +852,7 @@ Safe defaults i interlocki mają pierwszeństwo.
 
 ---
 
-# 77. Integracja z MQTT_STANDARD
+# 77. Legacy Doser integration with MQTT_STANDARD
 
 MQTT nie jest wymagane do onboardingu.
 

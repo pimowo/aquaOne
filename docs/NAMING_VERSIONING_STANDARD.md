@@ -5,6 +5,11 @@
 **Version:** 1.0
 **Last reviewed:** 2026-09-12
 
+> **HA-101 transition:** The TARGET compatibility field is neutral `api_protocol_version`.
+> Home Assistant registry identity uses accepted DeviceIdentity/future stable DeviceId and
+> never IP. MQTT root, client_id, MQTT Discovery unique_id and `mqtt_protocol_version` sections
+> below are DEPRECATED LEGACY DOSER reference only and are not mandatory TARGET contracts.
+
 ## Terminologia normatywna
 
 - **MUSI** — wymaganie obowiązkowe.
@@ -34,7 +39,7 @@ Standard określa:
 - wersjonowanie firmware,
 - wersjonowanie `aquaOneCore`,
 - wersjonowanie config schema,
-- wersjonowanie MQTT protocol,
+- wersjonowanie neutralnego API protocol,
 - identyfikację buildów,
 - zasady kompatybilności.
 
@@ -709,7 +714,7 @@ Nie zwiększamy jej dla każdej nowej wersji firmware.
 
 ---
 
-# 38. mqtt_protocol_version
+# 38. Legacy Doser mqtt_protocol_version
 
 Wspólny kontrakt MQTT posiada:
 
@@ -727,7 +732,7 @@ To osobna liczba całkowita.
 
 ---
 
-# 39. Kiedy zwiększamy mqtt_protocol_version
+# 39. Legacy Doser rules for mqtt_protocol_version
 
 Zwiększamy tylko przy niekompatybilnej zmianie wspólnego kontraktu MQTT.
 

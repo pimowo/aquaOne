@@ -5,6 +5,10 @@
 **Version:** 1.0
 **Last reviewed:** 2026-09-12
 
+> **HA-101 transition:** TARGET alarm projection uses HTTP for current active alarm state and
+> WebSocket/Realtime for change notification. Alarm ACK uses the normal authorized HTTP command
+> path. MQTT event/entity sections below are DEPRECATED LEGACY DOSER reference only.
+
 ## Terminologia normatywna
 
 - **MUSI** — wymaganie obowiązkowe.
@@ -24,7 +28,7 @@ Dotyczy wszystkich urządzeń korzystających z `aquaOneCore`, m.in.:
 - `aquaOneGas`
 - `aquaOneFauna`
 
-Standard określa poziomy ważności alarmów, model stanu alarmu, ACK i ACK ALL, alarmy `latched`, alarmy `CRITICAL`, safe state i `safety_lock`, buzzer i globalne wyciszenie dźwięków, opóźnienia, histerezę i startup grace period, wspólne encje Home Assistant, zachowanie po restarcie, eventy MQTT, historię alarmów w WWW oraz rolę `aquaOneCore` i projektów domenowych.
+Standard określa poziomy ważności alarmów, model stanu alarmu, ACK i ACK ALL, alarmy `latched`, alarmy `CRITICAL`, safe state i `safety_lock`, buzzer i globalne wyciszenie dźwięków, opóźnienia, histerezę i startup grace period, projekcję alarmów HTTP/Realtime, historię alarmów w WWW oraz rolę `aquaOneCore` i projektów domenowych.
 
 ## Stan implementacji
 
@@ -716,7 +720,7 @@ Core domyślnie nie tworzy osobnego `binary_sensor` dla każdego alarmu.
 
 Projekt domenowy może świadomie wystawić wybrany alarm jako osobną encję, jeśli ma to realny sens.
 
-## 69. MQTT eventy alarmowe
+## 69. Legacy Doser MQTT eventy alarmowe
 
 Zmiany alarmów generują wspólne eventy:
 
@@ -941,7 +945,7 @@ Implementacja ma być lekka dla ESP:
 - ring buffer historii,
 - minimalne zapisy do flash.
 
-## 89. Integracja z MQTT_STANDARD
+## 89. Legacy Doser integration with MQTT_STANDARD
 
 Alarmy respektują wszystkie zasady `MQTT_STANDARD.md`, w szczególności:
 - QoS 1,

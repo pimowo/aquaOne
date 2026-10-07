@@ -43,7 +43,7 @@ Niepowodzenie migracji pozostawia ostatnią poprawną konfigurację oraz umożli
 
 Przyszły eksport tworzy wersjonowany dokument z pełną trwałą konfiguracją obsługiwaną w danym wydaniu. Nie eksportuje RuntimeState ani trybów chwilowych.
 
-Jeżeli przyszła struktura obejmie sekrety Wi-Fi lub MQTT, UI musi jasno określić, czy są zawarte. Format, szyfrowanie i polityka sekretów są TODO.
+Jeżeli przyszła struktura obejmie sekrety Wi-Fi lub integration auth, UI musi jasno określić, czy są zawarte. Format, szyfrowanie i polityka sekretów są TODO.
 
 ## 6. Import
 

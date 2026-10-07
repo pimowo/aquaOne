@@ -12,7 +12,7 @@ Najpierw mają zostać spięte:
 3. sterowniki,
 4. serwisy,
 5. logika urządzenia,
-6. WWW / MQTT.
+6. native WWW/API, then the future Home Assistant product adapter.
 
 Pełne założenia są w `docs/SPECIFICATION.md`.
 
@@ -29,4 +29,4 @@ Pełne założenia są w `docs/SPECIFICATION.md`.
 
 GasSense zawiera wyłącznie logikę charakterystyczną dla GasSense.
 
-Wi-Fi, MQTT, RTC/NTP, OTA, storage, watchdog, diagnostyka systemowa, wspólne tryby i szablon WWW powinny pochodzić z AquaCore.
+Wi-Fi, RTC/NTP, OTA, storage, watchdog, diagnostyka systemowa, wspólne tryby i szablon WWW powinny pochodzić z AquaCore. Home Assistant remains an external HTTP/Realtime client; Core does not provide MQTT.
