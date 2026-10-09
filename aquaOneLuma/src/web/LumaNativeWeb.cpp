@@ -188,6 +188,11 @@ LumaNativeWeb::LumaNativeWeb(
     LumaApplicationBridge& bridge
 ) : web_(web), status_(status), bridge_(bridge) {}
 
+LumaNativeWeb::~LumaNativeWeb() {
+    // Stop before the route context and owned pages are destroyed.
+    web_.stop();
+}
+
 bool LumaNativeWeb::registerRoutes() {
     if (registered_) return true;
     // Luma's three POST contracts stay at 512 bytes even though the shared

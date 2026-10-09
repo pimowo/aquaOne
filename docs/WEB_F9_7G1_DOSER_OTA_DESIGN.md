@@ -1,6 +1,6 @@
 # F9.7G1 — Doser native streaming OTA and atomic Web cutover
 
-**Status:** DESIGN GATE ACCEPTED; F9.7G implementation is next. This document specifies intended behavior, not implemented behavior. F9.7F1/F9.7F2 are closed; Phase 9 remains in progress.
+**Status:** F9.7G1 design gate and F9.7G2 Core streaming HTTP foundation are CLOSED. G3-G5 behavior in this document remains design, not implemented behavior. F9.7G3 is required next; Phase 9 remains in progress. Production Doser remains on legacy Web.
 
 ## Scope and current baseline
 
@@ -323,4 +323,4 @@ backup, restore, factory reset and common UI/maintenance policy belong to Phase 
 
 ## Decision
 
-**F9.7G IMPLEMENTABLE — architecture resolved.** F9.7G2 is the next implementation step. Physical OTA HIL and image/latency/heap measurements remain required release evidence; they are not prerequisites to start implementation.
+**F9.7G IMPLEMENTABLE — architecture resolved.** F9.7G2 is the current Core streaming HTTP foundation; F9.7G3 is required next. Physical OTA HIL and image/latency/heap measurements remain required release evidence.

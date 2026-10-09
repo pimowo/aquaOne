@@ -134,11 +134,17 @@ void test_exact_authorization_capacity_and_one_over() {
 }
 }
 
-int main(int, char**) {
-    UNITY_BEGIN();
+void runTests() {
     RUN_TEST(test_header_access_and_capacity);
     RUN_TEST(test_basic_auth_validation);
     RUN_TEST(test_challenge_realm_validation);
     RUN_TEST(test_exact_authorization_capacity_and_one_over);
-    return UNITY_END();
 }
+
+#if defined(ARDUINO_ARCH_ESP32)
+#include <Arduino.h>
+void setup() { UNITY_BEGIN(); runTests(); UNITY_END(); }
+void loop() {}
+#else
+int main(int, char**) { UNITY_BEGIN(); runTests(); return UNITY_END(); }
+#endif

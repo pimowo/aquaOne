@@ -24,6 +24,7 @@ public:
         const AquaCore::Web::PublishedSnapshot<HydroDiagnosticsProjection>& diagnostics,
         HydroApplicationBridge& bridge
     );
+    ~HydroNativeWeb();
 
     bool registerRoutes();
 

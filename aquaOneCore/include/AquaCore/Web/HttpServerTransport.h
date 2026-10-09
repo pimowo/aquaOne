@@ -22,6 +22,8 @@ public:
     virtual bool setNotFoundHandler(HttpNotFoundHandler handler,
                                     void* context = nullptr) = 0;
     virtual bool begin(uint16_t port) = 0;
+    // Must complete teardown before returning. An implementation unable to
+    // do so must fail fast: route contexts may be destroyed immediately after.
     virtual void stop() = 0;
     virtual bool isRunning() const = 0;
 

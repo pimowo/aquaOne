@@ -83,6 +83,7 @@ public:
         const AquaCore::Web::PublishedSnapshot<LumaStatusProjection>& status,
         LumaApplicationBridge& bridge
     );
+    ~LumaNativeWeb();
 
     bool registerRoutes();
 

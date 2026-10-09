@@ -19,7 +19,9 @@ enum class NativeWebState : uint8_t {
 // Application-owned native Core Web integration. Transport and snapshots are
 // borrowed and must outlive this service. Destruction stops the transport so
 // no callback remains active; because routes retain this context, the borrowed
-// transport must not be restarted after the service is destroyed.
+// transport must not be restarted after the service is destroyed. The
+// transport's stop() must finish teardown or fail fast before this service
+// and any product route context can be destroyed.
 class NativeWebService {
 public:
     static constexpr size_t MAX_PAGE_PROVIDERS = 6U;

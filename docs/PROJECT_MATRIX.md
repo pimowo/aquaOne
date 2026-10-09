@@ -76,7 +76,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Aspekt | Status | Notatki |
 |--------|--------|---------|
 | **Platforma** | ESP32-S3 Super Mini (4MB) | |
-| **Status** | 🟡 F9.7F2 CLOSED, integracja hybrydowa | Native Web foundation tested; one legacy production Web owner remains; F9.7G1 design accepted |
+| **Status** | 🟡 F9.7G2 CLOSED, integracja hybrydowa | Core streaming HTTP foundation is current; one legacy production Web owner remains; F9.7G3 required next |
 | **Architektura** | Composition root + lokalne managery/adapters | Migracja Core jest częściowa |
 | | | |
 | **Używane moduły Core** | | |
@@ -94,7 +94,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Hardware | Relay drivers, PWM pump control | |
 | MQTT/HA | LEGACY CURRENT / LOCAL | Istniejące PubSubClient, MqttManager, HaDiscovery i około 205 encji pozostają do migracji Dosera; nie są TARGET Core ani docelowym modelem encji HA |
 | **Web W1/W1.5** | DONE | Jeden serwer, auth, restart, OTA success/abort/cleanup/reconnect |
-| **Następny etap Web** | F9.7G2 REQUIRED NEXT | Core neutral streaming foundation; F9.7G3–G5 complete OTA and atomic production cutover |
+| **Następny etap Web** | F9.7G3 REQUIRED NEXT | Doser-local OTA; F9.7G4–G5 complete atomic production cutover and OTA HIL |
 | **Ryzyko dalszej migracji** | Średnie/wysokie | Lokalna domena działa i nie może zostać naruszona |
 
 ---
@@ -307,9 +307,10 @@ bridge are implemented and tested, while legacy remains the sole production owne
 F9.7G must provide streaming OTA before one atomic native production cutover.
 Doser MQTT/Discovery remains LEGACY CURRENT until F10.6.
 
-F9.7G1 is an accepted docs-only design gate. The streaming transport, Doser-local
-multipart parser, Application-owned Update lifecycle and atomic cutover remain
-unimplemented; details are in docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md.
+F9.7G1 and F9.7G2 are CLOSED. Core-neutral streaming transport is CURRENT;
+Doser-local multipart parsing, Application-owned Update lifecycle and atomic
+cutover remain unimplemented. F9.7G3 is REQUIRED NEXT; details are in
+docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md.
 
 ## Architecture vNext perspective
 

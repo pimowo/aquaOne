@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "AquaCore/Web/WebTypes.h"
+#include "AquaCore/Web/HttpStreamingServerTransport.h"
 
 namespace AquaCore {
 namespace Web {
@@ -68,10 +69,13 @@ public:
     static constexpr size_t MAX_ROUTES = 24U; // F9.2 implementation capacity.
     static constexpr size_t MAX_PATH_LENGTH = 63U;
 
+    enum class RouteKind : uint8_t { Normal, Streaming };
     struct Route {
         char path[MAX_PATH_LENGTH + 1U] {};
         HttpMethod method = HttpMethod::Get;
+        RouteKind kind = RouteKind::Normal;
         HttpRouteHandler handler = nullptr;
+        HttpStreamHandler streamHandler = nullptr;
         void* context = nullptr;
         HttpRouteOptions options {};
     };
@@ -103,9 +107,32 @@ public:
         Route& route = routes_[count_];
         strcpy(route.path, path); // validPath bounded this copy.
         route.method = method;
+        route.kind = RouteKind::Normal;
         route.handler = handler;
+        route.streamHandler = nullptr;
         route.context = context;
         route.options = options;
+        ++count_;
+        return true;
+    }
+
+    bool addStreamingRoute(const char* path, HttpMethod method,
+                           HttpStreamHandler handler, void* context,
+                           size_t maxContentLength) {
+        if (frozen_ || !validPath(path) || !validMethod(method) ||
+            handler == nullptr || count_ == MAX_ROUTES) return false;
+        for (size_t i = 0U; i < count_; ++i) {
+            if (routes_[i].method == method &&
+                strcmp(routes_[i].path, path) == 0) return false;
+        }
+        Route& route = routes_[count_];
+        strcpy(route.path, path);
+        route.method = method;
+        route.kind = RouteKind::Streaming;
+        route.handler = nullptr;
+        route.streamHandler = handler;
+        route.context = context;
+        route.options.maxBodyLength = maxContentLength;
         ++count_;
         return true;
     }

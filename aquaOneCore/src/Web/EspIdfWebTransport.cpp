@@ -1,6 +1,10 @@
 #include "AquaCore/Web/EspIdfWebTransport.h"
 #include "AquaCore/Web/HttpBasicAuth.h"
+#include "HttpCoreReservedPaths.h"
+#include "HttpServerStopLifecycle.h"
+#include "HttpStreamingReceive.h"
 
+#include <cstdlib>
 #include <limits.h>
 #include <string.h>
 
@@ -22,6 +26,7 @@ const char* statusLine(uint16_t code) {
         case 403U: return "403 Forbidden";
         case 404U: return "404 Not Found";
         case 405U: return "405 Method Not Allowed";
+        case 408U: return "408 Request Timeout";
         case 409U: return "409 Conflict";
         case 413U: return "413 Payload Too Large";
         case 422U: return "422 Unprocessable Entity";
@@ -180,6 +185,33 @@ esp_err_t rejectOversizeBody(httpd_req_t* request) {
     return httpd_resp_send(request, nullptr, 0);
 }
 
+int streamRead(void* context, uint8_t* buffer, size_t capacity) {
+    return static_cast<int>(httpd_req_recv(
+        static_cast<httpd_req_t*>(context), reinterpret_cast<char*>(buffer), capacity
+    ));
+}
+
+bool streamAccepting(void* context) {
+    return static_cast<EspIdfWebTransport*>(context)->isRunning();
+}
+
+esp_err_t rejectOversizeStream(httpd_req_t* request) {
+    // No recv: returning failure prevents HTTPD from purging the unread body.
+    if (httpd_resp_set_status(request, "413 Payload Too Large") == ESP_OK &&
+        httpd_resp_set_hdr(request, "Connection", "close") == ESP_OK) {
+        (void)httpd_resp_send(request, nullptr, 0);
+    }
+    return ESP_FAIL;
+}
+
+void streamOversize(void* context) {
+    (void)rejectOversizeStream(static_cast<httpd_req_t*>(context));
+}
+
+bool stopHttpd(httpd_handle_t handle, void*) {
+    return httpd_stop(handle) == ESP_OK;
+}
+
 // Provisional internal F9.6B marker encoding used only to exercise the
 // transport path. It is not the final RT-101 wire format.
 void encodeUint64(uint64_t value, uint8_t* output) {
@@ -218,7 +250,7 @@ bool EspIdfWebTransport::addRoute(
     HttpRouteHandler handler, void* context,
     const HttpRouteOptions& options
 ) {
-    if (server_ != nullptr ||
+    if (registrationFailed_ || server_ != nullptr ||
         (realtimeConfigured_ && method == HttpMethod::Get && path != nullptr &&
          strcmp(path, realtimePath_) == 0)) {
         return false;
@@ -226,15 +258,33 @@ bool EspIdfWebTransport::addRoute(
     return routes_.addRoute(path, method, handler, context, options);
 }
 
+bool EspIdfWebTransport::addStreamingRoute(
+    const char* path, HttpMethod method, HttpStreamHandler handler,
+    void* context, size_t maxContentLength
+) {
+    if (registrationFailed_ || server_ != nullptr || routes_.isFrozen())
+        return false;
+    if (Internal::isCoreReadPath(path)) {
+        // These paths belong to the Core read surface for either method.
+        // A failed attempt makes the final composition fail closed.
+        registrationFailed_ = true;
+        return false;
+    }
+    if (realtimeConfigured_ && method == HttpMethod::Get && path != nullptr &&
+        strcmp(path, realtimePath_) == 0) return false;
+    return routes_.addStreamingRoute(path, method, handler, context,
+                                     maxContentLength);
+}
+
 bool EspIdfWebTransport::setNotFoundHandler(
     HttpNotFoundHandler handler, void* context
 ) {
-    return server_ == nullptr &&
+    return !registrationFailed_ && server_ == nullptr &&
         routes_.setNotFoundHandler(handler, context);
 }
 
 bool EspIdfWebTransport::setRealtimeEndpoint(const char* path) {
-    if (server_ != nullptr || routes_.isFrozen() || realtimeConfigured_ ||
+    if (registrationFailed_ || server_ != nullptr || routes_.isFrozen() || realtimeConfigured_ ||
         path == nullptr || path[0] != '/') {
         return false;
     }
@@ -418,10 +468,10 @@ bool EspIdfWebTransport::tryClearRealtimeRecovery(
 }
 
 bool EspIdfWebTransport::begin(uint16_t port) {
-    if (port == 0U) {
+    if (port == 0U || registrationFailed_) {
         return false;
     }
-    if (server_ != nullptr) {
+    if (!Internal::canStartNewServer(server_)) {
         return accepting_.load() && port_ == port;
     }
 
@@ -440,15 +490,19 @@ bool EspIdfWebTransport::begin(uint16_t port) {
         server_ = nullptr;
         return false;
     }
+    port_ = port;
 
     for (size_t i = 0U; i < routes_.size(); ++i) {
         const HttpRouteRegistry::Route* route = routes_.routeAt(i);
         httpd_uri_t uri {};
         uri.uri = route->path;
         uri.method = route->method == HttpMethod::Get ? HTTP_GET : HTTP_POST;
-        uri.handler = dispatch;
+        uri.handler = route->kind == HttpRouteRegistry::RouteKind::Streaming
+            ? streamDispatch : dispatch;
         uri.user_ctx = const_cast<HttpRouteRegistry::Route*>(route);
         if (httpd_register_uri_handler(server_, &uri) != ESP_OK) {
+            registrationFailed_ = true;
+            routes_.freeze();
             stop();
             return false;
         }
@@ -463,6 +517,8 @@ bool EspIdfWebTransport::begin(uint16_t port) {
         realtime.is_websocket = true;
         realtime.handle_ws_control_frames = true;
         if (httpd_register_uri_handler(server_, &realtime) != ESP_OK) {
+            registrationFailed_ = true;
+            routes_.freeze();
             stop();
             return false;
         }
@@ -471,17 +527,18 @@ bool EspIdfWebTransport::begin(uint16_t port) {
     if (httpd_register_err_handler(
             server_, HTTPD_404_NOT_FOUND, notFound
         ) != ESP_OK) {
+        registrationFailed_ = true;
+        routes_.freeze();
         stop();
         return false;
     }
 
-    port_ = port;
     routes_.freeze();
     accepting_.store(true);
     return true;
 }
 
-void EspIdfWebTransport::stop() {
+bool EspIdfWebTransport::tryStop() {
     httpd_handle_t stopping = nullptr;
     if (realtimeMutex_ != nullptr) {
         xSemaphoreTake(realtimeMutex_, portMAX_DELAY);
@@ -492,15 +549,21 @@ void EspIdfWebTransport::stop() {
     if (realtimeMutex_ != nullptr) {
         xSemaphoreGive(realtimeMutex_);
     }
-    if (stopping != nullptr) {
-        // httpd_stop waits for HTTPD callbacks, so it must run without the
-        // lifecycle mutex held.
-        httpd_stop(stopping);
+    // httpd_stop waits for HTTPD callbacks, so it must run without the
+    // lifecycle mutex held. A failed send leaves stopping and port_ intact.
+    if (!Internal::stopRetainingHandle(stopping, port_, stopHttpd, nullptr)) {
+        if (realtimeMutex_ != nullptr) {
+            xSemaphoreTake(realtimeMutex_, portMAX_DELAY);
+        }
+        server_ = stopping;
+        if (realtimeMutex_ != nullptr) {
+            xSemaphoreGive(realtimeMutex_);
+        }
+        return false;
     }
     if (realtimeMutex_ != nullptr) {
         xSemaphoreTake(realtimeMutex_, portMAX_DELAY);
     }
-    port_ = 0U;
     for (size_t i = 0U; i < REALTIME_WORK_CAPACITY; ++i) {
         realtimeWork_[i].inUse.store(false);
     }
@@ -511,6 +574,16 @@ void EspIdfWebTransport::stop() {
     if (realtimeMutex_ != nullptr) {
         xSemaphoreGive(realtimeMutex_);
     }
+    return true;
+}
+
+void EspIdfWebTransport::stop() {
+    // This is also called by NativeWebService before its own destruction.
+    // Returning after an unsuccessful shutdown would let service, product,
+    // route and Realtime callback contexts be destroyed under a live HTTPD.
+    if (!tryStop() || Internal::destructionDisposition(server_) !=
+                          Internal::DestructionDisposition::Safe)
+        std::abort();
 }
 
 esp_err_t EspIdfWebTransport::realtimeDispatch(httpd_req_t* request) {
@@ -776,6 +849,35 @@ esp_err_t EspIdfWebTransport::dispatch(httpd_req_t* request) {
     };
     route->handler(route->context, view, response);
     return response.finish();
+}
+
+esp_err_t EspIdfWebTransport::streamDispatch(httpd_req_t* request) {
+    static_assert(sizeof(streamBody_) == Internal::HTTP_STREAM_CHUNK_CAPACITY,
+                  "stream receive storage must match the fixed read size");
+    if (request == nullptr) return ESP_ERR_INVALID_ARG;
+    EspIdfWebTransport* owner = static_cast<EspIdfWebTransport*>(
+        httpd_get_global_user_ctx(request->handle)
+    );
+    const HttpRouteRegistry::Route* route =
+        static_cast<const HttpRouteRegistry::Route*>(request->user_ctx);
+    if (owner == nullptr || !owner->accepting_.load() || route == nullptr ||
+        route->kind != HttpRouteRegistry::RouteKind::Streaming ||
+        route->streamHandler == nullptr) return ESP_FAIL;
+    IdfResponseWriter response(*request);
+    IdfRequestContext context(*request, response);
+    const HttpStreamRequest view {
+        route->method, request->uri, request->content_len, &context
+    };
+    const Internal::StreamReceiveResult result = Internal::receiveStream(
+        view, route->options.maxBodyLength, route->streamHandler,
+        route->context, response, owner->streamBody_, streamRead, request,
+        streamAccepting, owner, HTTPD_SOCK_ERR_TIMEOUT,
+        streamOversize, request
+    );
+    if (result == Internal::StreamReceiveResult::Complete ||
+        result == Internal::StreamReceiveResult::StoppedConsumed)
+        return response.finish();
+    return ESP_FAIL;
 }
 
 esp_err_t EspIdfWebTransport::notFound(

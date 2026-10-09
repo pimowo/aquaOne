@@ -2720,12 +2720,12 @@ OTA-only listener and silent OTA removal are forbidden. Deferring OTA to Phase
 LEGACY CURRENT through F10.6. Details:
 `docs/WEB_F9_7F1_DOSER_MIGRATION_GATE.md`.
 
-F9.7G1 accepts a separate neutral Core streaming HTTP capability on the one
-EspIdfWebTransport, with Doser-local bounded multipart parsing, a single-slot
-Application OTA bridge, generation/cancellation protection, the existing product
-restart owner and one atomic production listener replacement. These are design
-decisions, not CURRENT implementation. F9.7G2–G5 and bare-board OTA HIL remain
-required; SEC-101, SYS-107 and MNT-102 remain open. Details:
+F9.7G1 and F9.7G2 are CLOSED: one EspIdfWebTransport now has a separate neutral
+Core streaming HTTP capability. Doser-local bounded multipart parsing, a
+single-slot Application OTA bridge, generation/cancellation protection, the
+existing product restart owner and one atomic production listener replacement
+remain design work. F9.7G3 is REQUIRED NEXT; F9.7G4–G5 and bare-board OTA HIL
+remain required; SEC-101, SYS-107 and MNT-102 remain open. Details:
 docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md.
 
 ## SPIKE REQUIRED

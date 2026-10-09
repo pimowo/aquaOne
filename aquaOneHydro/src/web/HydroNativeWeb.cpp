@@ -27,6 +27,12 @@ HydroNativeWeb::HydroNativeWeb(
 {
 }
 
+HydroNativeWeb::~HydroNativeWeb()
+{
+    // Stop before the route context and owned pages are destroyed.
+    web_.stop();
+}
+
 bool HydroNativeWeb::registerRoutes()
 {
     if (registered_) return true;

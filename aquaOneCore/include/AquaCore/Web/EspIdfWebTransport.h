@@ -8,6 +8,7 @@
 
 #include "AquaCore/Web/HttpRouteRegistry.h"
 #include "AquaCore/Web/HttpServerTransport.h"
+#include "AquaCore/Web/HttpStreamingServerTransport.h"
 #include "AquaCore/Web/Realtime.h"
 #include "AquaCore/Web/RealtimeResync.h"
 
@@ -27,7 +28,8 @@ enum class RealtimeRecoveryServiceResult : uint8_t {
 // Lifecycle methods and destruction belong to the Application/composition
 // context, never to a route callback or the HTTPD server task: httpd_stop()
 // waits for that task to exit. Calls from the owner are serialized.
-class EspIdfWebTransport final : public HttpServerTransport {
+class EspIdfWebTransport final : public HttpServerTransport,
+                                 public HttpStreamingServerTransport {
 public:
     EspIdfWebTransport();
     ~EspIdfWebTransport();
@@ -39,6 +41,9 @@ public:
     bool addRoute(const char* path, HttpMethod method,
                   HttpRouteHandler handler, void* context,
                   const HttpRouteOptions& options) override;
+    bool addStreamingRoute(const char* path, HttpMethod method,
+                           HttpStreamHandler handler, void* context,
+                           size_t maxContentLength) override;
     bool setNotFoundHandler(HttpNotFoundHandler handler,
                             void* context = nullptr) override;
     bool setRealtimeEndpoint(const char* path);
@@ -55,14 +60,19 @@ public:
     bool tryClearRealtimeRecovery(Identity::RuntimeIdentity runtime,
                                   RealtimeStreamPosition coherentPosition);
 
-    // Same-port repeat is idempotent. Different-port repeat fails. Failed
-    // starts leave no running server; stop allows retry with frozen routes.
+    // Same-port repeat is idempotent. Different-port repeat fails. A failed
+    // partial URI registration leaves this instance terminal.
     bool begin(uint16_t port) override;
+    // A recoverable attempt for the living owner. A false result means the
+    // server may still hold every borrowed callback context; retry before
+    // destroying any of them. stop() itself never returns in that state.
+    bool tryStop();
     void stop() override;
     bool isRunning() const override { return accepting_.load(); }
 
 private:
     static esp_err_t dispatch(httpd_req_t* request);
+    static esp_err_t streamDispatch(httpd_req_t* request);
     static esp_err_t notFound(httpd_req_t* request, httpd_err_code_t error);
     static esp_err_t realtimeDispatch(httpd_req_t* request);
     static void realtimeWork(void* argument);
@@ -74,6 +84,8 @@ private:
     // bounded body buffer here avoids adding 1537 bytes to each dispatch frame.
     // The bytes remain borrowed and callback-scoped.
     char normalBody_[HTTP_NORMAL_BODY_CAPACITY + 1U] {};
+    // The HTTPD task is serial; this storage adds no large callback frame.
+    uint8_t streamBody_[1024U] {};
     static constexpr size_t REALTIME_PATH_CAPACITY = HttpRouteRegistry::MAX_PATH_LENGTH;
     static constexpr size_t REALTIME_WORK_CAPACITY = 4U;
     static constexpr size_t REALTIME_PAYLOAD_CAPACITY = 256U;
@@ -108,6 +120,7 @@ private:
     httpd_handle_t server_ = nullptr;
     uint16_t port_ = 0U;
     std::atomic<bool> accepting_ {false};
+    bool registrationFailed_ = false;
     StaticSemaphore_t realtimeMutexStorage_ {};
     SemaphoreHandle_t realtimeMutex_ = nullptr;
 };
