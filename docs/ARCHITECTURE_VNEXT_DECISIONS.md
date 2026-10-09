@@ -2229,15 +2229,15 @@ baseline jest przypięty w `aquaOneCore/platformio.ini` do pioarduino
 `platform-espressif32` 53.03.13, Arduino-ESP32 3.1.3 i ESP-IDF base 5.3.2 dla
 `esp32dev`. F9.6C dało HIL PASS dla Wemos D1 mini ESP32 (ESP32-D0WD-V3 rev 3.1,
 4 MB flash, bez PSRAM); nie jest to gwarancja dla każdego ESP32 board.
-CURRENT Arduino `WebServer` może pozostać legacy HTTP do migracji w Phase 9,
+Przed migracją część produktów używała Arduino `WebServer` jako legacy HTTP,
 lecz F8.1 uznało go za **NOT FEASIBLE WITH CURRENT STACK** dla WEB-001: nie
 zapewnia równoległego HTTP+WS na jednym listenerze/porcie.
 
 Phase 8 pozostaje historycznym feasibility evidence, przypiętym w
 `spikes/web_transport_f8_2/platformio.ini` do `platformio/espressif32@6.13.0`,
 Arduino-ESP32 2.0.17 i ESP-IDF 4.4.7. Nie jest to Current production contract.
-Pozostałe product projects zachowują własne nieprzypięte deklaracje do
-następnego, odrębnego TOOLCHAIN-2.
+Luma, Hydro i Doser przypięły zgodną wersję pioarduino 53.03.13 w swoich
+profilach produkcyjnych; inne profile wymagają osobnej oceny TOOLCHAIN-2.
 
 F8.2 potwierdziło compile/link obu kandydatów. F8.3A dało **IDF HIL PASS**:
 jeden port 80 obsługiwał HTTP i 1/2 trwałe WS, równoległe GET, reconnect i
@@ -2255,7 +2255,7 @@ ocenioną alternatywą, możliwą do ponownej ewaluacji po zmianie platformy lub
 uzyskaniu nowych dowodów.
 
 WEB-001 ma HIL proof dla IDF: jeden fizyczny listener/port z HTTP i trwałymi
-WS. Handlery działają w tasku serwera; Phase 9 musi dodać serializowane
+WS. Handlery działają w tasku serwera; Phase 9 dodała serializowane
 przejście do Application, bez bezpośredniego wywoływania Domain lub hardware.
 Pełny HTTP snapshot jest źródłem stanu, WS powiadamia o zmianach, a po reconnect
 następuje pełny HTTP resync. Docelowa polityka ograniczeń body/ramki, kolejek,
@@ -2263,8 +2263,8 @@ drop/disconnect i slow client, wire protocol, API/schema, Auth oraz TLS nie są
 ustalone przez WEB-103. WEB-102 i RT-101 mają częściowo zaakceptowane foundation,
 z pozostałym zakresem otwartym; WEB-101 i SEC-101 pozostają DECISION REQUIRED.
 Szczegółowe porównanie, pomiary i ograniczenia zawiera
-`WEB_TRANSPORT_SPIKE_F8_3C_COMPARISON.md`. F8.4 zamyka Phase 8; Phase 9 jest
-następnym etapem implementacji, bez zmiany statusu produkcyjnego Web.
+`WEB_TRANSPORT_SPIKE_F8_3C_COMPARISON.md`. F8.4 zamknął Phase 8; obecny
+status produkcyjnego Web i Core Realtime ustala audyt F9.8A poniżej.
 
 ### WEB-102 — HTTP composition i Application boundary — PARTIALLY ACCEPTED — TARGET
 
@@ -2505,8 +2505,8 @@ Jeden mutex transportu chroni technical state i nie jest trzymany przez stop,
 Domain/Application callbacks ani snapshot builders. Foundation nie używa heap
 na swoich granicach. Evidence: native 402/402 PASS; esp32dev compile/link PASS
 z runtime SKIPPED; F9.6C classic ESP32 HIL PASS na Current baseline, w tym
-rzeczywiste `Busy`, recovery i StreamStart/resync. F9.6 jest READY TO CHECKPOINT
-po finalnym review; RT-101 i EVT-102 pozostają PARTIALLY ACCEPTED — TARGET, a
+rzeczywiste `Busy`, recovery i StreamStart/resync. F9.6 został następnie
+zacommitowany w `a0b6c3f`; RT-101 i EVT-102 pozostają PARTIALLY ACCEPTED — TARGET, a
 finalny wire, heartbeat, Auth, limity i product migration są otwarte.
 
 ### SEC-001 — Auth i Safety
@@ -2728,6 +2728,25 @@ and product restart integration are CURRENT. Production Doser Web has one
 was not tested. SEC-101, SYS-107 and MNT-102 remain open; product OTA is
 transitional pending Phase 11 common OTA. Details:
 docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md.
+
+## F9.8A — Phase 9 closure audit
+
+F9.1–F9.7 są CLOSED. F9.6B/C/D mają rzeczywisty checkpoint `a0b6c3f`:
+Core WS/Realtime z `RuntimeIdentity`, `StreamStart`, koherentną kohortą
+HTTP/watermark, sticky recovery i bounded backpressure przeszedł classic ESP32
+HIL. Luma, Hydro i Doser mają jeden natywny produkcyjny HTTP listener każdy;
+Doser ma także lokalne streaming OTA. Wszystkie trzy produkty pozostają bez
+produkcyjnego endpointu WS, `RealtimeSnapshot` kohorty i powiadomień.
+
+Według F9.1 i opcjonalnej polityki kompozycji F9.7A ten brak produktowego WS
+nie jest nowym warunkiem wyjścia z Phase 9. F9.8A wybrał **A — PHASE 9 CLOSABLE
+NOW**, bez stwierdzenia, że produktowe Realtime jest CURRENT. Phase 9 pozostaje
+IN PROGRESS do osobnego F9.8B FINAL PHASE-9 CLOSURE CHECKPOINT; Phase 10 jest
+NOT STARTED. Przed jakimkolwiek produkcyjnym WS/HA klientem konieczne są
+osobne product server composition, koherentne HTTP resync resources,
+zatwierdzony external wire mapping oraz Auth/visibility gate. RT-101, WEB-101,
+SEC-101, SYS-107 i MNT-102 zachowują otwarte granice. Szczegóły i matryca
+dowodów: `docs/WEB_F9_8A_PHASE9_CLOSURE_AUDIT.md`.
 
 ## SPIKE REQUIRED
 

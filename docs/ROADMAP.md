@@ -23,7 +23,7 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 6. **FAZA 6 — Diagnostics / Registry (CLOSED)**: dostarczono typed diagnostics foundation i statyczny registry do enumeracji.
 7. **FAZA 7 — Time / Network adaptation (CLOSED)**: dostarczono CURRENT monotonic i wall clock foundation, RTC jako offline UTC source, opcjonalną synchronizację NTP oraz optional Network startup, runtime i live Health.
 8. **FAZA 8 — HTTP + WebSocket feasibility spike (CLOSED)**: F8.1–F8.3C zamknęły feasibility i wybrały `esp_http_server` jako WEB-103 ACCEPTED — TARGET dla przebadanej bazy; production Web nie został zmigrowany.
-9. **FAZA 9 — Production Web + Realtime (IN PROGRESS)**: migracje produkcyjnego Web dla Luma, Hydro i Doser są zakończone; implementacja Realtime i dalszy zakres Phase 9 pozostają wymagane.
+9. **FAZA 9 — Production Web + Realtime (IN PROGRESS; READY FOR F9.8B CLOSURE)**: Core Realtime foundation i F9.6 classic ESP32 HIL są zakończone, podobnie jak produkcyjne migracje HTTP Luma, Hydro i Doser. F9.8A uznał fazę za możliwą do zamknięcia; końcowy checkpoint F9.8B pozostaje. Produkty nie komponują jeszcze WS.
 10. **FAZA 10 — Home Assistant Integration**: custom integration `aquaOne`, lokalny HTTP API client, WebSocket/Realtime client, Config Flow, Zeroconf/mDNS, Luma reference adapter, reconnect/resync i product-aware entity mapping. Plan: F10.1 architecture/client library; F10.2 Luma read-only; F10.3 Realtime reconnect/resync; F10.4 Luma commands; F10.5 Hydro adapter; F10.6 Doser MQTT replacement.
 11. **FAZA 11 — OTA / Backup / Restore / Factory Reset**: wspólne workflow i recovery.
 12. **FAZA 12 — UI Shell**: wspólny shell/design system po stabilizacji kontraktów. Shared Web Theme v1 jest już CURRENT foundation, ale nie zamyka całej fazy.
@@ -33,7 +33,8 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 ## Obecny stan prac
 
 W repozytorium istnieją używane moduły System, Config/Storage, Logging, Diagnostics,
-Network, Web i Time. Web jest synchroniczną legacy foundation; obecny WebSocket nie istnieje.
+Network, Web i Time. Core ma natywny HTTPD z opcjonalną WS capability i spójnym
+Realtime resync; Luma, Hydro i Doser używają natywnego HTTP w produkcji, bez produktowego WS.
 Doser, Luma i Hydro są klientami CURRENT do późniejszej oceny, a nie wzorcem Architecture
 vNext. Fundamenty Commands/Safety (Phase 3), Events/Alarms (Phase 4), Maintenance (Phase 5)
 oraz Diagnostics/Registry (Phase 6) są dostępne CURRENT: typed `DiagnosticProvider<Snapshot>` z
@@ -48,7 +49,9 @@ alarm registry, severity, physical persistence schema, history/counters, bogatsz
 i transport również pozostają TARGET/FUTURE. Descriptor schema, stable/global diagnostic IDs,
 transport visibility/projection, timestamp conventions, richer diagnostic/failure metadata,
 hardware-specific diagnostics, migracja legacy `DiagnosticsService` i real Domain migration
-pozostają TARGET/FUTURE. Realtime, Home Assistant integration, wspólne OTA i Backup/Restore również pozostają TARGET/FUTURE; Doser ma już lokalne produkcyjne OTA.
+pozostają TARGET/FUTURE. Produktowa kompozycja Realtime, Home Assistant integration,
+wspólne OTA i Backup/Restore również pozostają TARGET/FUTURE; Core Realtime jest CURRENT,
+a Doser ma lokalne produkcyjne OTA.
 
 Phase 7 CURRENT rozdziela monotonic timing od UTC `WallClock`: prawidłowy RTC działa offline,
 NTP tylko opcjonalnie synchronizuje RTC, a Network pozostaje opcjonalną infrastrukturą bez
@@ -70,6 +73,17 @@ was not tested. Doser MQTT/Discovery remains LEGACY CURRENT until F10.6; Phase 1
 has not started. Product-local OTA is transitional until Phase 11 common OTA.
 SEC-101 remains OPEN and SYS-107 remains OPEN/transitional. Evidence and limits:
 docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md.
+
+## F9.8A — Phase 9 closure audit
+
+F9.8A wybrał **A — PHASE 9 CLOSABLE NOW** na podstawie zaakceptowanego zakresu
+F9.1–F9.7 i F9.7A: produkcyjny WS w konkretnym produkcie nie był warunkiem
+wyjścia z Phase 9. Core WS/resync jest CURRENT i przeszedł F9.6 HIL; żaden z
+trzech produktów nie ma obecnie endpointu WS ani koherentnej kohorty resync.
+Phase 9 pozostaje IN PROGRESS do osobnego F9.8B FINAL PHASE-9 CLOSURE CHECKPOINT.
+SEC-101, WEB-101 i pozostały RT-101 są otwarte; nie stanowią automatycznie
+warunku tego checkpointu. Phase 10 jest NOT STARTED. Szczegóły i granice:
+docs/WEB_F9_8A_PHASE9_CLOSURE_AUDIT.md.
 
 ## Zasady bramki
 
