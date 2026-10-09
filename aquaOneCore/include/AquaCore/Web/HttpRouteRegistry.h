@@ -28,6 +28,32 @@ struct HttpRouteRequest {
     const char* path;
     const char* body;
     size_t bodyLength;
+    // Borrowed for this callback only. It must never enter an Application request.
+    const WebRequestContext* context;
+
+    bool hasHeader(const char* name) const {
+        return context != nullptr && name != nullptr && name[0] != '\0' &&
+               context->hasHeader(name);
+    }
+    // Returns the full header length. On insufficient capacity, output is empty.
+    bool copyHeader(const char* name, char* output, size_t capacity,
+                    size_t& length) const {
+        length = 0U;
+        if (output != nullptr && capacity != 0U) output[0] = '\0';
+        if (context == nullptr || name == nullptr || name[0] == '\0' ||
+            !context->hasHeader(name))
+            return false;
+        length = context->copyHeader(name, output, capacity);
+        return output != nullptr && capacity != 0U && length < capacity &&
+               (length == 0U || output[0] != '\0');
+    }
+    bool authenticateBasic(const char* user, const char* password) const {
+        return context != nullptr && user != nullptr && password != nullptr &&
+               context->authenticateBasic(user, password);
+    }
+    bool requestBasicAuthentication(const char* realm) const {
+        return context != nullptr && context->requestBasicAuthentication(realm);
+    }
 };
 
 using HttpRouteHandler = void (*)(

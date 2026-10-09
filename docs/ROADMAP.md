@@ -62,10 +62,11 @@ Znany dług legacy: `test_network` ma nieaktualną fixture `StorageService`, ada
 
 ## F9.7F1 — Doser native Web gate
 
-F9.7F1 is CLOSED as a design/audit gate. F9.7F prepares native Doser adapters,
-Basic Auth and Application-owned restart without production cutover. F9.7G must
-add streaming OTA, safe maintenance ownership and physical S3 OTA HIL before an
-atomic single-server cutover. Deferring OTA to Phase 11 defers the whole Doser
+F9.7F1 and F9.7F2 are CLOSED. F9.7F2 implements and tests native Doser adapters,
+Basic Auth and an Application-owned restart foundation without production cutover.
+Doser production Web and MQTT remain LEGACY CURRENT. F9.7G is REQUIRED NEXT and
+must add streaming OTA, safe maintenance ownership and physical S3 OTA HIL before
+an atomic single-server cutover. Deferring OTA to Phase 11 defers the whole Doser
 production Web migration; it never permits a partial two-server migration.
 
 ## Zasady bramki

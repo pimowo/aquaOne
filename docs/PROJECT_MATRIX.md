@@ -1,7 +1,7 @@
 # Project Matrix — Status i Integracja Core
 
 **Snapshot date:** 2026-10-09
-**Snapshot base commit:** `085e5c3` plus local F9.7E2/F9.7E3 checkpoint candidate
+**Snapshot base commit:** `f0d4992` plus local F9.7F2 checkpoint candidate
 
 Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla wskazanego
 commita. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
@@ -301,10 +301,11 @@ aquaOneCore    ███████░░░░░ 🟢 STABLE   (7/7 modułów
 ## Doser F9.7F1 gate
 
 Doser Web is LEGACY CURRENT: one `Esp32WebBackend` + `WebService` +
-`WebManager` owns restart and authenticated multipart OTA. F9.7F is a native
-design/implementation preparation gate only; legacy remains the sole production
-owner. F9.7G must provide streaming OTA before one atomic native production
-cutover. Doser MQTT/Discovery remains LEGACY CURRENT until F10.6.
+`WebManager` owns restart and authenticated multipart OTA. F9.7F1 and F9.7F2
+are CLOSED: the native foundation, Basic Auth boundary, projections and restart
+bridge are implemented and tested, while legacy remains the sole production owner.
+F9.7G must provide streaming OTA before one atomic native production cutover.
+Doser MQTT/Discovery remains LEGACY CURRENT until F10.6.
 
 ## Architecture vNext perspective
 

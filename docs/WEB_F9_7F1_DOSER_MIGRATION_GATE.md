@@ -1,6 +1,8 @@
 # F9.7F1 — Doser native Web migration gate
 
-> Status: DESIGN/AUDIT GATE. F9.7F is implementable without production cutover. F9.7G is required before atomic Doser production cutover.
+> Status: F9.7F1 and F9.7F2 are CLOSED. F9.7G is REQUIRED NEXT before atomic Doser production cutover.
+
+> F9.7F2 implemented and tested TOOLCHAIN-2, callback-scoped native header/Basic Auth, an Application-owned restart bridge, published Core projections and authenticated `GET /update`. Production remains LEGACY CURRENT. Native `POST /update` is absent, so F9.7G still blocks cutover. Doser's two storage records have no single Core storage status; the foundation reports storage health as `unknown`. Production Toolchain/Storage/GPIO sanity HIL passed on a bare ESP32-S3: no physical pumps or output stages were connected, native routes were not tested on hardware, exact pre/post pump-field equality was not captured, and the final NVS state was stable with no observed Storage failure or default reset.
 
 ## CURRENT production Web
 
@@ -78,11 +80,11 @@ Current identity is `esp32-s3-devkitc-1` for ESP32-S3 Super Mini, 4 MB flash, `d
 | SPIFFS | `0x290000` | `0x160000` / 1,441,792 B |
 | coredump | `0x3f0000` | `0x10000` / 64 KiB |
 
-No reliable current Doser firmware-size artifact exists in the worktree. F9.7F implementation must build and compare its image with one 1,310,720-byte OTA slot before F9.7G; this gate does not infer fit.
+The F9.7F2 production image is 1,085,528 B, leaving 225,192 B (about 17.18%) in one 1,310,720-byte OTA slot. F9.7G must remeasure image size and headroom after implementing native OTA.
 
 ## Native gaps, tests and security
 
-Current native transport lacks product-ready Basic Auth, header access, `WWW-Authenticate` and route-level auth-before-effects. F9.7F needs the smallest Core-neutral capability; product passwords stay outside Core.
+F9.7F2 adds the smallest Core-neutral capability for callback-scoped header access, Basic Auth and `WWW-Authenticate`; product passwords remain outside Core. It does not establish a platform-wide credential standard or close SEC-101.
 
 It also lacks multipart framing, owned chunk handoff, declared-size policy, backpressure, disconnect/inactivity cleanup, END response lifecycle and fixed-memory upload semantics. F9.7G must stream only, never buffer firmware in RAM. Chunk size, total limit and timeouts remain DECISION REQUIRED until measured. HTTPD may authenticate/frame/receive bounded chunks and transfer ownership; it must not manually run subsystem loops, mutate pumps/domain state, or directly write firmware outside the serialized owner.
 
@@ -90,8 +92,8 @@ It also lacks multipart framing, owned chunk handoff, declared-size policy, back
 
 Keep `test_web_bridge` semantics: auth, restart delay/pump stop, metadata, START/CHUNK/END/ABORT, failure cleanup and next-upload behavior. Rewrite only its legacy transport harness. F9.7F tests cover native auth before effects, current duplicate restart semantics, projections, routes, one listener, thread isolation and bridge full/timeout. F9.7G tests cover invalid START, partition/size checks, partial/multi chunks, write/end failure, ABORT, disconnect, timeout, concurrent START/backpressure, cleanup, pump safety, maintenance, success/restart/reconnect and bounded memory.
 
-F9.7F needs TOOLCHAIN-2 compile and native semantics, optionally bare-board restart HIL. F9.7G needs safe physical S3 OTA HIL: valid image, invalid metadata/size, abort/disconnect, upgrade, boot/version verification and Web recovery. SEC-101 remains open. Basic Auth must be preserved and OTA remains authenticated, but does not solve platform-wide SEC-101. MQTT, `MqttManager` and `HaDiscovery` remain LEGACY CURRENT until F10.6.
+F9.7F2 passed TOOLCHAIN-2 compile, native semantics and bare-board production Toolchain/Storage/GPIO sanity HIL. F9.7G needs safe physical S3 OTA HIL: valid image, invalid metadata/size, abort/disconnect, upgrade, boot/version verification and Web recovery. SEC-101 remains open. Basic Auth must be preserved and OTA remains authenticated, but does not solve platform-wide SEC-101. MQTT, `MqttManager` and `HaDiscovery` remain LEGACY CURRENT until F10.6.
 
 ## Decision
 
-**F9.7F IMPLEMENTABLE. F9.7G is mandatory before atomic Doser production cutover.**
+**F9.7F1 and F9.7F2 CLOSED. F9.7G is mandatory before atomic Doser production cutover.**

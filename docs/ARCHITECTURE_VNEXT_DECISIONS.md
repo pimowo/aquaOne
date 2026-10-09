@@ -2709,15 +2709,15 @@ Hydro hardware HIL remains future work.
 
 ## F9.7F1 — Doser native Web migration gate
 
-F9.7F1 records Doser's one legacy `Esp32WebBackend`/`WebService`/`WebManager`
-owner, including Basic Auth, restart and multipart OTA. F9.7F may prepare
+F9.7F1 and F9.7F2 are CLOSED. They record Doser's one legacy
+`Esp32WebBackend`/`WebService`/`WebManager` production owner and implement the
 native projections, normal/admin adapters, an auth boundary and an
-Application-owned restart workflow, but does not cut production over. F9.7G
-must provide streaming OTA, cleanup/backpressure, pump/restart safety and S3
-OTA HIL before the native owner atomically replaces legacy Web. Two listeners,
-a legacy OTA-only listener and silent OTA removal are forbidden. Deferring OTA
-to Phase 11/MNT-102 defers the entire Doser production cutover. MQTT and
-Discovery remain LEGACY CURRENT through F10.6. Details:
+Application-owned restart foundation without production cutover. F9.7G must
+provide streaming OTA, cleanup/backpressure, pump/restart safety and S3 OTA HIL
+before the native owner atomically replaces legacy Web. Two listeners, a legacy
+OTA-only listener and silent OTA removal are forbidden. Deferring OTA to Phase
+11/MNT-102 defers the entire Doser production cutover. MQTT and Discovery remain
+LEGACY CURRENT through F10.6. Details:
 `docs/WEB_F9_7F1_DOSER_MIGRATION_GATE.md`.
 
 ## SPIKE REQUIRED

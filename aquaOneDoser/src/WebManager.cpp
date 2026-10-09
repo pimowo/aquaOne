@@ -1,4 +1,5 @@
 #include "WebManager.h"
+#include "DoserUpdatePage.h"
 
 #include "DoserWebRuntime.h"
 
@@ -16,10 +17,6 @@ using AquaCore::Web::WebUploadEvent;
 using AquaCore::Web::WebUploadStatus;
 
 namespace {
-const char UPDATE_PAGE[] PROGMEM = R"HTML(
-<!doctype html><html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Aktualizacja PMW AquaDoser</title><style>body{font-family:system-ui;background:#eef4f7;padding:20px}.box{max-width:560px;margin:auto;background:#fff;padding:22px;border-radius:12px}button{padding:11px 16px;background:#126b86;color:#fff;border:0;border-radius:8px;font-weight:700}progress{width:100%;height:22px;margin-top:14px}</style></head><body><div class="box"><h1>PMW AquaDoser — Aktualizacja firmware</h1><p>Wybierz plik <code>firmware.bin</code> wygenerowany przez PlatformIO.</p><form id="f"><input id="file" type="file" accept=".bin,application/octet-stream" required><button>AKTUALIZUJ</button></form><progress id="p" value="0" max="100"></progress><p id="m"></p><p><a href="/">Powrót</a></p></div><script>document.getElementById('f').onsubmit=function(e){e.preventDefault();let file=document.getElementById('file').files[0];if(!file||!file.name.toLowerCase().endsWith('.bin')){m.textContent='Wybierz plik .bin';return}if(!confirm('Rozpocząć aktualizację firmware?'))return;let x=new XMLHttpRequest(),fd=new FormData();fd.append('firmware',file);x.open('POST','/update');x.setRequestHeader('X-Firmware-Size',file.size);x.upload.onprogress=e=>{if(e.lengthComputable)p.value=e.loaded*100/e.total};x.onload=()=>{m.textContent=x.responseText};x.onerror=()=>{m.textContent='Błąd połączenia podczas aktualizacji'};m.textContent='Wysyłanie...';x.send(fd)};</script></body></html>
-)HTML";
-
 void sendText(WebResponseWriter& response, uint16_t status, const char* text) {
     response.beginResponse(status, ContentType::PlainText);
     response.writeText(text);
@@ -85,7 +82,7 @@ void WebManager::handleRestart(const WebRequest& request, WebResponseWriter& res
 void WebManager::handleUpdatePage(const WebRequest& request, WebResponseWriter& response) {
     if (!authenticateAdmin(request, response)) return;
     response.beginResponse(200U, ContentType::Html);
-    response.write(UPDATE_PAGE, strlen_P(UPDATE_PAGE));
+    response.write(DOSER_UPDATE_PAGE, strlen_P(DOSER_UPDATE_PAGE));
     response.endResponse();
 }
 

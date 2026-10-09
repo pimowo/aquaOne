@@ -1,4 +1,5 @@
 #include "AquaCore/Web/EspIdfWebTransport.h"
+#include "AquaCore/Web/HttpBasicAuth.h"
 
 #include <limits.h>
 #include <string.h>
@@ -86,6 +87,67 @@ private:
     bool started_ = false;
     bool ended_ = false;
     bool failed_ = false;
+};
+
+// Borrowed only for one HTTPD callback; no raw request escapes to a route.
+class IdfRequestContext final : public WebRequestContext {
+public:
+    IdfRequestContext(httpd_req_t& request, IdfResponseWriter& response)
+        : request_(request), response_(response) {}
+
+    bool hasHeader(const char* name) const override {
+        if (name == nullptr || name[0] == '\0') return false;
+        if (httpd_req_get_hdr_value_len(&request_, name) != 0U) return true;
+        char empty[1U] {};
+        return httpd_req_get_hdr_value_str(&request_, name, empty,
+                                           sizeof(empty)) == ESP_OK;
+    }
+
+    size_t copyHeader(const char* name, char* output,
+                      size_t capacity) const override {
+        if (output != nullptr && capacity != 0U) output[0] = '\0';
+        if (name == nullptr || name[0] == '\0') return 0U;
+        const size_t length = httpd_req_get_hdr_value_len(&request_, name);
+        if (output == nullptr || capacity <= length) return length;
+        if (length != 0U &&
+            httpd_req_get_hdr_value_str(&request_, name, output, capacity) != ESP_OK)
+            output[0] = '\0';
+        return length;
+    }
+
+    bool authenticateBasic(const char* user,
+                           const char* password) const override {
+        if (user == nullptr || password == nullptr) return false;
+        const size_t length = httpd_req_get_hdr_value_len(
+            &request_, "Authorization");
+        if (length == 0U || length > HTTP_AUTHORIZATION_HEADER_CAPACITY)
+            return false;
+        char header[HTTP_AUTHORIZATION_HEADER_CAPACITY + 1U] {};
+        const bool copied = httpd_req_get_hdr_value_str(
+            &request_, "Authorization", header, sizeof(header)) == ESP_OK;
+        const bool accepted = copied &&
+            verifyHttpBasicAuthorization(header, length, user, password);
+        volatile char* wipe = header;
+        for (size_t i = 0U; i < sizeof(header); ++i) wipe[i] = '\0';
+        return accepted;
+    }
+
+    bool requestBasicAuthentication(const char* realm) const override {
+        if (!validHttpBasicRealm(realm)) return false;
+        const char prefix[] = "Basic realm=\"";
+        char challenge[sizeof(prefix) + HTTP_BASIC_REALM_CAPACITY + 1U] {};
+        const size_t realmLength = strlen(realm);
+        memcpy(challenge, prefix, sizeof(prefix) - 1U);
+        memcpy(challenge + sizeof(prefix) - 1U, realm, realmLength);
+        challenge[sizeof(prefix) - 1U + realmLength] = '"';
+        return httpd_resp_set_hdr(&request_, "WWW-Authenticate", challenge) == ESP_OK &&
+               response_.beginResponse(401U, ContentType::PlainText) &&
+               response_.writeText("Unauthorized") && response_.endResponse();
+    }
+
+private:
+    httpd_req_t& request_;
+    IdfResponseWriter& response_;
 };
 
 esp_err_t rejectUnreadBody(httpd_req_t* request, const char* status,
@@ -704,11 +766,13 @@ esp_err_t EspIdfWebTransport::dispatch(httpd_req_t* request) {
     owner->normalBody_[total] = '\0';
 
     IdfResponseWriter response(*request);
+    IdfRequestContext context(*request, response);
     const HttpRouteRequest view {
         route->method,
         request->uri,
         total == 0U ? nullptr : owner->normalBody_,
-        total
+        total,
+        &context
     };
     route->handler(route->context, view, response);
     return response.finish();

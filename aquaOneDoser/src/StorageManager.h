@@ -3,6 +3,7 @@
 #include <Preferences.h>
 #include <AquaCore/Config/PreferencesStorageBackend.h>
 #include <AquaCore/Config/StorageService.h>
+#include <AquaCore/Config/StorageRecord.h>
 #include "PumpConfig.h"
 
 class StorageManager {
@@ -54,9 +55,13 @@ private:
     static constexpr uint16_t SCHEMA_VERSION = 1U;
 
     AquaCore::Config::PreferencesStorageBackend<Preferences> configBackend_;
+    uint8_t configWorkspace_[AquaCore::Config::StorageRecord::HEADER_SIZE +
+                             sizeof(DoserConfigPayload)] {};
     AquaCore::Config::StorageService configStorage_;
 
     AquaCore::Config::PreferencesStorageBackend<Preferences> runtimeBackend_;
+    uint8_t runtimeWorkspace_[AquaCore::Config::StorageRecord::HEADER_SIZE +
+                              sizeof(DoserRuntimePayload)] {};
     AquaCore::Config::StorageService runtimeStorage_;
 
     PumpConfig persisted_[PUMP_COUNT]{};

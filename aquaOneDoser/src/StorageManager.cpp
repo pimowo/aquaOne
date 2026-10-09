@@ -20,8 +20,10 @@ bool validFloat(float value) {
 } // namespace
 
 StorageManager::StorageManager()
-    : configStorage_(configBackend_, NVS_NAMESPACE, "cfg_a", "cfg_b"),
-      runtimeStorage_(runtimeBackend_, NVS_NAMESPACE, "rt_a", "rt_b") {
+    : configStorage_(configBackend_, NVS_NAMESPACE, "cfg_a", "cfg_b",
+                     {configWorkspace_, sizeof(configWorkspace_)}),
+      runtimeStorage_(runtimeBackend_, NVS_NAMESPACE, "rt_a", "rt_b",
+                      {runtimeWorkspace_, sizeof(runtimeWorkspace_)}) {
 }
 
 StorageManager::~StorageManager() {

@@ -8,6 +8,7 @@
 #include "AquaCore/Web/WebService.h"
 
 #include "../../src/DoserWebRuntime.h"
+#include "../../src/DoserUpdatePage.cpp"
 #include "../../src/WebManager.cpp"
 
 using namespace AquaCore::Web;
