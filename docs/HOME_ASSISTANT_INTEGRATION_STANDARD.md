@@ -1,6 +1,6 @@
 # HOME_ASSISTANT_INTEGRATION_STANDARD.md
 
-**Status:** TARGET / ACTIVE DESIGN; F10.1B server prerequisite CURRENT
+**Status:** TARGET / ACTIVE DESIGN; F10.1B and F10.2 CURRENT; F10.3A design gate CLOSED
 **Scope:** aquaOne ecosystem
 **Decision:** HA-101 ACCEPTED
 **Version:** 1.0
@@ -202,3 +202,20 @@ F10.3 is REQUIRED NEXT only after review of the Luma server's product WebSocket,
 cohort and public wire contract. No HA WebSocket subscriber or Luma commands are
 CURRENT. F10.4 commands, F10.5 Hydro, F10.6 Doser MQTT replacement, `/api/capabilities`
 and Zeroconf remain future. SEC-101 remains OPEN.
+
+## F10.3A Realtime architecture gate (2026-10-09)
+
+[F10.3A](HA_F10_3A_REALTIME_ARCHITECTURE.md) selects **B - CORE PREREQUISITE
+REQUIRED**. Luma Realtime v1 uses `/ws/realtime` on the current HTTPD port,
+TEXT JSON StreamStart and notification frames, and an additive `realtime`
+watermark on `/api/lumasense/status`. `/api/system` remains the stable
+identity/API check outside the one-resource resync cohort. The existing API
+version axis advances to 1.1 only for a Luma server offering this contract;
+F10.2 polling clients continue to accept the additional status member.
+
+The Core transport's provisional binary StreamStart and fixed 18-byte marker
+slot require a reusable Core change before product composition. The current
+Luma and HA integrations remain polling-only. F10.3B Luma server work and its
+physical HIL follow that Core prerequisite; F10.3C HA client validation follows
+the server gate. SEC-101 remains OPEN and is nonblocking only for this read-only local
+notification scope; no command authority is added.

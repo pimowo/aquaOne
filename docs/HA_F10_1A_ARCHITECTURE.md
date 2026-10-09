@@ -8,6 +8,8 @@
 
 Phase 9 is CLOSED; Phase 10 is IN PROGRESS. **F10.3 Realtime reconnect/resync is REQUIRED NEXT**, after review of the Luma product server WebSocket, coherent cohort and public wire contract. F10.2 Luma read-only polling is CURRENT. Product WS, `/api/capabilities` and mDNS/Zeroconf remain future work. SEC-101 remains OPEN, and Doser MQTT/Discovery remains LEGACY CURRENT until F10.6.
 
+**F10.3A update:** the Realtime contract review is [closed with verdict B](HA_F10_3A_REALTIME_ARCHITECTURE.md). A named Core StreamStart/version prerequisite precedes F10.3B Luma server work; product WS and the HA WS subscriber remain future work.
+
 ## Baseline and authority
 
 Phase 0–9 are closed by [F9.8B](WEB_F9_8B_PHASE9_CLOSURE.md). Core native HTTP and optional Realtime/resync are CURRENT. Luma, Hydro and Doser have production native HTTP; none has production product WS, a `RealtimeSnapshot` cohort or product notifications. Doser has local streaming OTA and retains MQTT/Discovery as LEGACY CURRENT. Phase 10 starts with this architecture gate; no HA integration or shared Python client exists yet. Phase 11 remains FUTURE.

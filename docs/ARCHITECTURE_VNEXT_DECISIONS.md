@@ -2802,7 +2802,7 @@ CURRENT. SEC-101 remains OPEN; Doser MQTT/Discovery stays LEGACY CURRENT until F
 Nie wpisujemy do standardu konkretnych limitów ani timeoutów bez pomiarów.
 
 
-## F10.2 ? Luma read-only Home Assistant checkpoint (2026-10-09)
+## F10.2 - Luma read-only Home Assistant checkpoint (2026-10-09)
 
 F10.2 is CLOSED/CURRENT for the read-only Luma integration. The Python `aquaone`
 custom integration and pure tests are present. Operator-reported physical HIL in
@@ -2822,3 +2822,22 @@ product server WebSocket composition, coherent snapshot cohort and public wire
 contract. The HA integration remains polling-only; commands are not implemented.
 F10.4 commands, F10.5 Hydro and F10.6 Doser MQTT replacement remain future.
 `/api/capabilities` and Zeroconf/mDNS remain FUTURE; SEC-101 remains OPEN.
+
+## F10.3A - Luma Realtime/resync architecture gate (2026-10-09)
+
+F10.3A is CLOSED as a design gate with verdict **B - CORE PREREQUISITE REQUIRED**.
+The public Luma v1 route is `/ws/realtime` on the existing HTTPD listener;
+the wire is bounded TEXT JSON using `api_protocol_version` 1.1, a runtime-local
+identity, decimal-string sequence and `luma_status_changed` refresh hint.
+`/api/lumasense/status` is the sole coherent HTTP resync resource and gains
+additive `realtime` metadata. `/api/system` verifies stable identity/API but
+is not in the cohort. F10.2's parser tolerates the additive field.
+
+The present transport always sends its provisional 18-byte binary StreamStart;
+it requires a reusable Core TEXT JSON marker/slot change and a product-selectable
+API minor before Luma can expose this contract. Luma runtime identity, cohort,
+notification, recovery and recycle remain F10.3B product composition after
+that prerequisite. HA WS/resync remains F10.3C. Phase 10 is IN PROGRESS;
+product WS and HA Realtime are not CURRENT. SEC-101 remains OPEN and is
+nonblocking only for the scoped read-only local notifications. Detailed
+contract, size budgets and evidence plan: [F10.3A](HA_F10_3A_REALTIME_ARCHITECTURE.md).
