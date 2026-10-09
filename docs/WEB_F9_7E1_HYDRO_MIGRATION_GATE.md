@@ -1,5 +1,9 @@
 # F9.7E1 — Hydro native Web migration gate
 
+> Implementation status: F9.7E2 is closed after checkpoint. F9.7E3
+> bare-board Web/Application HIL passed with expected hardware limitations.
+> Full physical Hydro hardware HIL remains pending.
+
 **Verdict: PASS.** This is a docs-only audit. No source, test, PlatformIO,
 flash, HIL, staging, commit, or push change is part of E1.
 
@@ -155,3 +159,19 @@ criterion: no page/API projection returns existing password bytes.
 
 The delayed restart is a transitional Hydro product workflow. It does not
 implement or close SYS-107 or a shared Core restart framework.
+
+## E2/E3 checkpoint status
+
+E2 implementation is complete. SEC-002 is fixed for Hydro native settings:
+passwords are excluded from projections, password inputs render blank, and
+empty or missing secrets retain stored credentials. The `/api/settings` route
+accepts the 1,536-byte normal body boundary. Route oversize through 1,537 bytes
+uses a bounded 64-byte discard buffer before a bodyless 413; larger declared
+bodies fail-close after URI-handler entry without a Core drain. FIX1 established
+safe GPIO initialization before writes.
+
+Bare-board S3 HIL passed: a settings save returned a complete `200 OK` before
+the scheduled restart, STA returned, and the tested normal control series saw
+no 202 response with the product-local 1,000 ms wait. The physical pump, relay,
+buzzer, sensors, RTC/I2C peripherals and electrical safety remain outside this
+HIL and require future hardware assembly.

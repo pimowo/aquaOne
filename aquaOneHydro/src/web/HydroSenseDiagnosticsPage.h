@@ -1,21 +1,16 @@
 #pragma once
 
 #include <AquaCore/Web/WebPageProvider.h>
-#include <AquaCore/System/SystemService.h>
-#include <AquaCore/Network/NetworkService.h>
+#include <AquaCore/Web/PublishedSnapshot.h>
 
-#include "hydrosense/SystemStatus.h"
-#include "hydrosense/HydroSenseConfigStorage.h"
+#include "web/HydroWebTypes.h"
 
 class HydroSenseDiagnosticsPage final
     : public AquaCore::Web::WebPageProvider
 {
 public:
     HydroSenseDiagnosticsPage(
-        const AquaCore::SystemService& systemService,
-        const AquaCore::Network::NetworkService& networkService,
-        const HydroSenseConfigStorage& configStorage,
-        const SystemStatus& status
+        const AquaCore::Web::PublishedSnapshot<HydroDiagnosticsProjection>& projection
     );
 
     const char* route() const override;
@@ -60,15 +55,5 @@ private:
         uint32_t uptimeMs
     );
 
-    const AquaCore::SystemService&
-        systemService_;
-
-    const AquaCore::Network::NetworkService&
-        networkService_;
-
-    const HydroSenseConfigStorage&
-        configStorage_;
-
-    const SystemStatus&
-        status_;
+    const AquaCore::Web::PublishedSnapshot<HydroDiagnosticsProjection>& projection_;
 };

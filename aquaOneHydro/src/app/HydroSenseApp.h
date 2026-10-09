@@ -6,8 +6,12 @@
 #include <AquaCore/Network/Esp32NetworkBackend.h>
 #include <AquaCore/Network/NetworkService.h>
 
-#include <AquaCore/Web/Esp32WebBackend.h>
-#include <AquaCore/Web/WebService.h>
+#include <AquaCore/Web/EspIdfWebTransport.h>
+#include <AquaCore/Web/NativeWebService.h>
+#include <AquaCore/Web/Esp32SnapshotSynchronizer.h>
+#include <AquaCore/Web/Esp32ActionBridgeSynchronizer.h>
+#include <AquaCore/Web/CoreWebProjectionSources.h>
+#include <AquaCore/Web/CoreWebProjectionPublisher.h>
 
 #include "hardware/Pump.h"
 #include "hardware/FloatSensor.h"
@@ -24,16 +28,8 @@
 #include "hydrosense/BuzzerController.h"
 #include "hydrosense/SystemStatus.h"
 
-#include "web/HydroSenseDashboard.h"
-#include "web/HydroSenseApi.h"
-
-#include "web/HydroSenseSettingsPage.h"
-#include "web/HydroSenseSettingsApi.h"
-
-#include "web/HydroSenseControlPage.h"
-#include "web/HydroSenseControlApi.h"
-
-#include "web/HydroSenseDiagnosticsPage.h"
+#include "web/HydroNativeWeb.h"
+#include "web/HydroWebApplication.h"
 
 class HydroSenseApp
 {
@@ -115,29 +111,24 @@ private:
     // WEB
     // =========================================================
 
-    HydroSenseDashboard dashboard_;
-    HydroSenseApi api_;
+    AquaCore::Web::Esp32SnapshotSynchronizer snapshotSynchronizer_;
+    AquaCore::Web::PublishedSnapshot<AquaCore::Web::CoreSystemProjection> coreSystemSnapshot_;
+    AquaCore::Web::PublishedSnapshot<AquaCore::Web::CoreDiagnosticsProjection> coreDiagnosticsSnapshot_;
+    AquaCore::Web::PublishedSnapshot<SystemStatus> statusSnapshot_;
+    AquaCore::Web::PublishedSnapshot<HydroSettingsProjection> settingsSnapshot_;
+    AquaCore::Web::PublishedSnapshot<HydroDiagnosticsProjection> hydroDiagnosticsSnapshot_;
 
-    HydroSenseSettingsPage
-        settingsPage_;
+    AquaCore::Web::SystemServiceWebProjectionSource systemProjectionSource_;
+    HydroCoreDiagnosticsSource coreDiagnosticsSource_;
+    AquaCore::Web::CoreWebProjectionPublisher coreProjectionPublisher_;
 
-    HydroSenseSettingsApi
-        settingsApi_;
+    AquaCore::Web::Esp32ActionBridgeSynchronizer actionSynchronizer_;
+    HydroApplicationBridge applicationBridge_;
+    HydroWebApplication webApplication_;
 
-    HydroSenseControlPage
-        controlPage_;
-
-    HydroSenseControlApi
-        controlApi_;
-
-    HydroSenseDiagnosticsPage
-        diagnosticsPage_;
-
-    AquaCore::Web::Esp32WebBackend
-        webBackend_;
-
-    AquaCore::Web::WebService
-        webService_;
+    AquaCore::Web::EspIdfWebTransport webTransport_;
+    AquaCore::Web::NativeWebService webService_;
+    HydroNativeWeb nativeWeb_;
 
 
     // =========================================================

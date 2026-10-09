@@ -23,7 +23,7 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 6. **FAZA 6 — Diagnostics / Registry (CLOSED)**: dostarczono typed diagnostics foundation i statyczny registry do enumeracji.
 7. **FAZA 7 — Time / Network adaptation (CLOSED)**: dostarczono CURRENT monotonic i wall clock foundation, RTC jako offline UTC source, opcjonalną synchronizację NTP oraz optional Network startup, runtime i live Health.
 8. **FAZA 8 — HTTP + WebSocket feasibility spike (CLOSED)**: F8.1–F8.3C zamknęły feasibility i wybrały `esp_http_server` jako WEB-103 ACCEPTED — TARGET dla przebadanej bazy; production Web nie został zmigrowany.
-9. **FAZA 9 — Production Web + Realtime (REQUIRED NEXT)**: zaprojektowanie i migracja produkcyjnego Web na wybrany target oraz implementacja Realtime.
+9. **FAZA 9 — Production Web + Realtime (IN PROGRESS)**: migracje produkcyjnego Web dla Luma i Hydro są zakończone; implementacja Realtime i dalszy zakres Phase 9 pozostają wymagane.
 10. **FAZA 10 — Home Assistant Integration**: custom integration `aquaOne`, lokalny HTTP API client, WebSocket/Realtime client, Config Flow, Zeroconf/mDNS, Luma reference adapter, reconnect/resync i product-aware entity mapping. Plan: F10.1 architecture/client library; F10.2 Luma read-only; F10.3 Realtime reconnect/resync; F10.4 Luma commands; F10.5 Hydro adapter; F10.6 Doser MQTT replacement.
 11. **FAZA 11 — OTA / Backup / Restore / Factory Reset**: wspólne workflow i recovery.
 12. **FAZA 12 — UI Shell**: wspólny shell/design system po stabilizacji kontraktów. Shared Web Theme v1 jest już CURRENT foundation, ale nie zamyka całej fazy.

@@ -8,7 +8,7 @@ using AquaCore::Web::WebResponseWriter;
 using AquaCore::Web::writeHtmlEscaped;
 
 HydroSenseSettingsPage::HydroSenseSettingsPage(
-    const HydroSenseConfig& config
+    const AquaCore::Web::PublishedSnapshot<HydroSettingsProjection>& config
 )
     : config_(config)
 {
@@ -29,6 +29,12 @@ void HydroSenseSettingsPage::render(
 ) const
 {
     char number[32];
+    HydroSettingsProjection config {};
+    if (!config_.read(config))
+    {
+        response.writeText("<section class=\"card\"><h2>Ustawienia</h2><p>Konfiguracja chwilowo niedostepna.</p></section>");
+        return;
+    }
 
     response.writeText(
         "<form id=\"settingsForm\">"
@@ -46,7 +52,7 @@ void HydroSenseSettingsPage::render(
 
     writeChecked(
         response,
-        config_.floatActiveLow
+        config.floatActiveLow
     );
 
     response.writeText(
@@ -63,7 +69,7 @@ void HydroSenseSettingsPage::render(
 
     writeChecked(
         response,
-        config_.floatUsePullup
+        config.floatUsePullup
     );
 
     response.writeText(
@@ -83,7 +89,7 @@ void HydroSenseSettingsPage::render(
         sizeof(number),
         "%lu",
         static_cast<unsigned long>(
-            config_.floatDebounceMs
+            config.floatDebounceMs
         )
     );
 
@@ -110,7 +116,7 @@ void HydroSenseSettingsPage::render(
         sizeof(number),
         "%.1f",
         static_cast<double>(
-            config_.ultrasonicMinDistanceCm
+            config.ultrasonicMinDistanceCm
         )
     );
 
@@ -132,7 +138,7 @@ void HydroSenseSettingsPage::render(
         sizeof(number),
         "%.1f",
         static_cast<double>(
-            config_.ultrasonicMaxDistanceCm
+            config.ultrasonicMaxDistanceCm
         )
     );
 
@@ -154,7 +160,7 @@ void HydroSenseSettingsPage::render(
         sizeof(number),
         "%lu",
         static_cast<unsigned long>(
-            config_.ultrasonicTimeoutUs
+            config.ultrasonicTimeoutUs
         )
     );
 
@@ -181,7 +187,7 @@ void HydroSenseSettingsPage::render(
         sizeof(number),
         "%.1f",
         static_cast<double>(
-            config_.tankEmptyDistanceCm
+            config.tankEmptyDistanceCm
         )
     );
 
@@ -203,7 +209,7 @@ void HydroSenseSettingsPage::render(
         sizeof(number),
         "%.1f",
         static_cast<double>(
-            config_.tankFullDistanceCm
+            config.tankFullDistanceCm
         )
     );
 
@@ -225,7 +231,7 @@ void HydroSenseSettingsPage::render(
         sizeof(number),
         "%lu",
         static_cast<unsigned long>(
-            config_.tankSampleIntervalMs
+            config.tankSampleIntervalMs
         )
     );
 
@@ -247,7 +253,7 @@ void HydroSenseSettingsPage::render(
         sizeof(number),
         "%u",
         static_cast<unsigned>(
-            config_.tankMaxFailedSeries
+            config.tankMaxFailedSeries
         )
     );
 
@@ -274,7 +280,7 @@ void HydroSenseSettingsPage::render(
         sizeof(number),
         "%.1f",
         static_cast<double>(
-            config_.reserveLowPercent
+            config.reserveLowPercent
         )
     );
 
@@ -296,7 +302,7 @@ void HydroSenseSettingsPage::render(
         sizeof(number),
         "%.1f",
         static_cast<double>(
-            config_.reserveCriticalPercent
+            config.reserveCriticalPercent
         )
     );
 
@@ -318,7 +324,7 @@ void HydroSenseSettingsPage::render(
         sizeof(number),
         "%.1f",
         static_cast<double>(
-            config_.reserveHysteresisPercent
+            config.reserveHysteresisPercent
         )
     );
 
@@ -345,7 +351,7 @@ void HydroSenseSettingsPage::render(
         sizeof(number),
         "%lu",
         static_cast<unsigned long>(
-            config_.topupStartDelayMs
+            config.topupStartDelayMs
         )
     );
 
@@ -367,7 +373,7 @@ void HydroSenseSettingsPage::render(
         sizeof(number),
         "%lu",
         static_cast<unsigned long>(
-            config_.topupMaxPumpRuntimeMs
+            config.topupMaxPumpRuntimeMs
         )
     );
 
@@ -396,7 +402,7 @@ void HydroSenseSettingsPage::render(
 
     writeChecked(
         response,
-        config_.wifiStaEnabled
+        config.wifiStaEnabled
     );
 
     response.writeText(
@@ -412,7 +418,7 @@ void HydroSenseSettingsPage::render(
 
     writeValue(
         response,
-        config_.wifiSsid
+        config.wifiSsid
     );
 
     response.writeText(
@@ -423,11 +429,6 @@ void HydroSenseSettingsPage::render(
         "<span class=\"value\">"
         "<input type=\"password\" "
         "name=\"password\" maxlength=\"64\" value=\""
-    );
-
-    writeValue(
-        response,
-        config_.wifiPassword
     );
 
     response.writeText(
@@ -442,7 +443,7 @@ void HydroSenseSettingsPage::render(
 
     writeValue(
         response,
-        config_.wifiHostname
+        config.wifiHostname
     );
 
     response.writeText(
@@ -457,7 +458,7 @@ void HydroSenseSettingsPage::render(
 
     writeChecked(
         response,
-        config_.wifiAutoReconnect
+        config.wifiAutoReconnect
     );
 
     response.writeText(
@@ -477,7 +478,7 @@ void HydroSenseSettingsPage::render(
         sizeof(number),
         "%lu",
         static_cast<unsigned long>(
-            config_.wifiReconnectIntervalMs
+            config.wifiReconnectIntervalMs
         )
     );
 
@@ -500,7 +501,7 @@ void HydroSenseSettingsPage::render(
 
     writeChecked(
         response,
-        config_.wifiApEnabled
+        config.wifiApEnabled
     );
 
     response.writeText(
@@ -516,7 +517,7 @@ void HydroSenseSettingsPage::render(
 
     writeValue(
         response,
-        config_.wifiApSsid
+        config.wifiApSsid
     );
 
     response.writeText(
@@ -527,11 +528,6 @@ void HydroSenseSettingsPage::render(
         "<span class=\"value\">"
         "<input type=\"password\" "
         "name=\"apPassword\" maxlength=\"64\" value=\""
-    );
-
-    writeValue(
-        response,
-        config_.wifiApPassword
     );
 
     response.writeText(
@@ -595,6 +591,12 @@ void HydroSenseSettingsPage::render(
         "});"
 
         "const text=await r.text();"
+
+        "if(r.status===202){"
+        "msg.className='notice warn';"
+        "msg.textContent='Wynik zapisu jest nieznany. Sprawdz stan urzadzenia; nie ponawiaj automatycznie.';"
+        "return;"
+        "}"
 
         "if(!r.ok){"
         "throw new Error(text||'Blad zapisu');"

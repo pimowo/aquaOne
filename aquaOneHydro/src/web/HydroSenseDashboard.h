@@ -1,6 +1,7 @@
 #pragma once
 
 #include <AquaCore/Web/WebPageProvider.h>
+#include <AquaCore/Web/PublishedSnapshot.h>
 
 #include "hydrosense/SystemStatus.h"
 
@@ -9,7 +10,7 @@ class HydroSenseDashboard final
 {
 public:
     explicit HydroSenseDashboard(
-        const SystemStatus& status
+        const AquaCore::Web::PublishedSnapshot<SystemStatus>& status
     );
 
     const char* route() const override;
@@ -36,5 +37,5 @@ private:
         AlarmManager::Severity severity
     );
 
-    const SystemStatus& status_;
+    const AquaCore::Web::PublishedSnapshot<SystemStatus>& status_;
 };

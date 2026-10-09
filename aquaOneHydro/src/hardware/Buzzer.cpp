@@ -14,17 +14,12 @@ void Buzzer::configure(
 
 void Buzzer::begin()
 {
-    /*
-     * Tak jak przy pompie:
-     * najpierw wymuszamy stan bezpieczny,
-     * potem ustawiamy GPIO jako OUTPUT.
-     */
+    pinMode(pin_, OUTPUT);
+
     digitalWrite(
         pin_,
         activeHigh_ ? LOW : HIGH
     );
-
-    pinMode(pin_, OUTPUT);
 
     isOn_ = false;
 }

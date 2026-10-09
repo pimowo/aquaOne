@@ -2700,6 +2700,13 @@ The delayed restart remains a product workflow and does not close SYS-107.
 WEB-101 and SEC-101 remain open; SEC-002 is mandatory. Details are in
 `docs/WEB_F9_7E1_HYDRO_MIGRATION_GATE.md`.
 
+F9.7E2 closes this gate: Hydro owns one native HTTPD transport,
+projection-only pages/read APIs, and a capacity-four Application bridge for
+control and settings. The normal body storage is 1,536 bytes; Luma retains
+explicit 512-byte POST limits. Hydro remains polling-only. F9.7E3 bare-board
+Web/Application HIL passed with expected hardware limitations; full physical
+Hydro hardware HIL remains future work.
+
 ## SPIKE REQUIRED
 
 - WEB/RT: długotrwały slow client, saturacja kolejek i docelowa polityka backpressure poza ograniczonym HIL F8.3;

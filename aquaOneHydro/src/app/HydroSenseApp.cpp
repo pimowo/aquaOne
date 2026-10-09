@@ -65,46 +65,25 @@ HydroSenseApp::HydroSenseApp()
           networkBackend_
       ),
 
-      dashboard_(
-          status_
-      ),
-
-      api_(
-          status_
-      ),
-
-      settingsPage_(
-          config_
-      ),
-
-      settingsApi_(
-          config_,
-          configStorage_
-      ),
-
-      controlPage_(
-          status_
-      ),
-
-      controlApi_(
-          topupController_,
-          buzzerController_
-      ),
-
-      diagnosticsPage_(
-          systemService_,
-          networkService_,
-          configStorage_,
-          status_
-      ),
-
-      webBackend_(),
-
-      webService_(
-          webBackend_,
-          systemService_,
-          nullptr
-      )
+      snapshotSynchronizer_(),
+      coreSystemSnapshot_(snapshotSynchronizer_),
+      coreDiagnosticsSnapshot_(snapshotSynchronizer_),
+      statusSnapshot_(snapshotSynchronizer_),
+      settingsSnapshot_(snapshotSynchronizer_),
+      hydroDiagnosticsSnapshot_(snapshotSynchronizer_),
+      systemProjectionSource_(systemService_),
+      coreDiagnosticsSource_(systemService_, networkService_, configStorage_),
+      coreProjectionPublisher_(systemProjectionSource_, &coreDiagnosticsSource_,
+                               coreSystemSnapshot_, coreDiagnosticsSnapshot_),
+      actionSynchronizer_(),
+      applicationBridge_(actionSynchronizer_),
+      webApplication_(config_, configStorage_, topupController_, buzzerController_,
+                      status_, systemService_, statusSnapshot_, settingsSnapshot_,
+                      hydroDiagnosticsSnapshot_, applicationBridge_),
+      webTransport_(),
+      webService_(webTransport_, coreSystemSnapshot_, coreDiagnosticsSnapshot_),
+      nativeWeb_(webService_, statusSnapshot_, settingsSnapshot_,
+                 hydroDiagnosticsSnapshot_, applicationBridge_)
 {
 }
 
@@ -200,6 +179,9 @@ void HydroSenseApp::begin()
 
     updateStatus();
 
+    coreProjectionPublisher_.update();
+    webApplication_.publish();
+
     beginWeb();
 }
 
@@ -232,7 +214,13 @@ void HydroSenseApp::update()
 
     updateStatus();
 
-    webService_.update();
+    if (webApplication_.processOne())
+    {
+        updateStatus();
+    }
+
+    coreProjectionPublisher_.update();
+    webApplication_.publish();
 
     handleRestartRequest();
 }
@@ -292,10 +280,10 @@ void HydroSenseApp::handleRestartRequest()
 {
     if (
         !restartPending_ &&
-        settingsApi_.restartRequested()
+        webApplication_.restartRequested()
     )
     {
-        settingsApi_.clearRestartRequest();
+        webApplication_.clearRestartRequest();
 
         restartPending_ = true;
 
@@ -379,37 +367,7 @@ void HydroSenseApp::beginNetwork()
 
 void HydroSenseApp::beginWeb()
 {
-    if (!webService_.addPage(dashboard_))
-    {
-        return;
-    }
-
-    if (!webService_.addPage(controlPage_))
-    {
-        return;
-    }
-
-    if (!webService_.addPage(settingsPage_))
-    {
-        return;
-    }
-
-    if (!webService_.addPage(diagnosticsPage_))
-    {
-        return;
-    }
-
-    if (!webService_.addApi(api_))
-    {
-        return;
-    }
-
-    if (!webService_.addApi(controlApi_))
-    {
-        return;
-    }
-
-    if (!webService_.addApi(settingsApi_))
+    if (!nativeWeb_.registerRoutes())
     {
         return;
     }

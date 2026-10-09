@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Arduino.h>
+#include <type_traits>
 
 #include <AquaCore/Network/NetworkTypes.h>
 
@@ -84,3 +85,8 @@ struct SystemStatus
 
     uint32_t networkReconnectCount = 0;
 };
+
+static_assert(
+    std::is_trivially_copyable<SystemStatus>::value,
+    "Hydro SystemStatus must remain a bounded copied Web value"
+);

@@ -55,27 +55,27 @@ bool writeFloat(
 }
 
 HydroSenseApi::HydroSenseApi(
-    const SystemStatus& status
+    const AquaCore::Web::PublishedSnapshot<SystemStatus>& status
 )
     : status_(status)
 {
 }
 
-const char* HydroSenseApi::route() const
-{
-    return "/api/hydrosense";
-}
-
-HttpMethod HydroSenseApi::method() const
-{
-    return HttpMethod::Get;
-}
-
 void HydroSenseApi::handle(
-    const WebRequest&,
+    void* context,
+    const AquaCore::Web::HttpRouteRequest&,
     WebResponseWriter& response
 )
 {
+    const HydroSenseApi* self = static_cast<const HydroSenseApi*>(context);
+    SystemStatus status {};
+    if (self == nullptr || !self->status_.read(status))
+    {
+        response.beginResponse(503, ContentType::Json);
+        response.writeText("{\"error\":\"status unavailable\"}");
+        response.endResponse();
+        return;
+    }
     response.beginResponse(
         200,
         ContentType::Json
@@ -87,14 +87,14 @@ void HydroSenseApi::handle(
     response.writeText("\"serviceMode\":");
     writeBool(
         response,
-        status_.serviceMode
+        status.serviceMode
     );
 
 
     response.writeText(",\"floatSensorActive\":");
     writeBool(
         response,
-        status_.floatSensorActive
+        status.floatSensorActive
     );
 
 
@@ -103,19 +103,19 @@ void HydroSenseApi::handle(
     response.writeText("\"on\":");
     writeBool(
         response,
-        status_.pumpOn
+        status.pumpOn
     );
 
     response.writeText(",\"allowed\":");
     writeBool(
         response,
-        status_.pumpAllowed
+        status.pumpAllowed
     );
 
     response.writeText(",\"locked\":");
     writeBool(
         response,
-        status_.pumpLocked
+        status.pumpLocked
     );
 
     response.writeText(",\"state\":");
@@ -123,7 +123,7 @@ void HydroSenseApi::handle(
     writeJsonString(
         response,
         topupStateName(
-            status_.topupState
+            status.topupState
         )
     );
 
@@ -135,31 +135,31 @@ void HydroSenseApi::handle(
     response.writeText("\"valid\":");
     writeBool(
         response,
-        status_.tankValid
+        status.tankValid
     );
 
     response.writeText(",\"sensorFault\":");
     writeBool(
         response,
-        status_.tankSensorFault
+        status.tankSensorFault
     );
 
     response.writeText(",\"distanceCm\":");
     writeFloat(
         response,
-        status_.tankDistanceCm
+        status.tankDistanceCm
     );
 
     response.writeText(",\"levelCm\":");
     writeFloat(
         response,
-        status_.tankLevelCm
+        status.tankLevelCm
     );
 
     response.writeText(",\"levelPercent\":");
     writeFloat(
         response,
-        status_.tankLevelPercent
+        status.tankLevelPercent
     );
 
     response.writeText(",\"reserve\":");
@@ -167,7 +167,7 @@ void HydroSenseApi::handle(
     writeJsonString(
         response,
         reserveStateName(
-            status_.reserveState
+            status.reserveState
         )
     );
 
@@ -179,7 +179,7 @@ void HydroSenseApi::handle(
     response.writeText("\"active\":");
     writeBool(
         response,
-        status_.hasAlarm
+        status.hasAlarm
     );
 
     response.writeText(",\"code\":");
@@ -187,7 +187,7 @@ void HydroSenseApi::handle(
     writeJsonString(
         response,
         alarmCodeName(
-            status_.alarmCode
+            status.alarmCode
         )
     );
 
@@ -196,7 +196,7 @@ void HydroSenseApi::handle(
     writeJsonString(
         response,
         severityName(
-            status_.alarmSeverity
+            status.alarmSeverity
         )
     );
 
@@ -204,7 +204,7 @@ void HydroSenseApi::handle(
 
     writeBool(
         response,
-        status_.buzzerMuted
+        status.buzzerMuted
     );
 
     response.writeText("}");

@@ -1,15 +1,16 @@
 #pragma once
 
 #include <AquaCore/Web/WebPageProvider.h>
+#include <AquaCore/Web/PublishedSnapshot.h>
 
-#include "hydrosense/HydroSenseConfig.h"
+#include "web/HydroWebTypes.h"
 
 class HydroSenseSettingsPage final
     : public AquaCore::Web::WebPageProvider
 {
 public:
     explicit HydroSenseSettingsPage(
-        const HydroSenseConfig& config
+        const AquaCore::Web::PublishedSnapshot<HydroSettingsProjection>& config
     );
 
     const char* route() const override;
@@ -30,5 +31,5 @@ private:
         const char* value
     );
 
-    const HydroSenseConfig& config_;
+    const AquaCore::Web::PublishedSnapshot<HydroSettingsProjection>& config_;
 };

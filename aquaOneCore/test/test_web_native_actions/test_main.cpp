@@ -79,12 +79,28 @@ public:
     }
     bool write(const char* data, size_t length) override {
         body.append(data, length);
+        bodyBytesSent += length;
         return true;
     }
-    bool endResponse() override { ended = true; return true; }
+    bool endResponse() override {
+        headersSent = true;
+        ended = true;
+        return true;
+    }
     uint16_t status = 0U;
     std::string body;
+    size_t bodyBytesSent = 0U;
+    size_t contentLength = 0U;
+    bool headersSent = false;
+    bool connectionClose = false;
     bool ended = false;
+};
+
+enum class FakeRequestOutcome : uint8_t {
+    None,
+    ResponseCompleteKeepAlive,
+    ResponseCompleteCloseRequested,
+    ResponseAbandonedClose
 };
 
 class FakeTransport final : public HttpServerTransport {
@@ -117,27 +133,73 @@ public:
     Writer request(const char* path, HttpMethod method,
                    const char* body = nullptr, size_t length = 0U) {
         Writer writer;
+        lastRequestOutcome = FakeRequestOutcome::None;
+        lastDeclaredLength = length;
+        lastRequestBodyBytesRead = 0U;
+        lastDiscardedBytes = 0U;
+        lastDiscardRecvCalls = 0U;
+        lastCallbackSucceeded = false;
         for (size_t i = 0U; i < registry.size(); ++i) {
             const HttpRouteRegistry::Route* candidate = registry.routeAt(i);
             if (candidate->method != method ||
                 std::strcmp(candidate->path, path) != 0) continue;
             if (length > candidate->options.maxBodyLength) {
-                writer.beginResponse(413U, ContentType::PlainText);
-                writer.writeText("too large");
-                writer.endResponse();
+                // Match the production 64-byte discard loop and its 1537-byte
+                // total cap. A failed recv closes without claiming a 413.
+                if (length > HTTP_NORMAL_BODY_CAPACITY + 1U) {
+                    lastRequestOutcome = FakeRequestOutcome::ResponseAbandonedClose;
+                    return writer;
+                }
+                size_t remaining = length;
+                while (remaining != 0U) {
+                    ++lastDiscardRecvCalls;
+                    if (body == nullptr || lastDiscardedBytes >= failDiscardAfterBytes) {
+                        lastRequestOutcome = FakeRequestOutcome::ResponseAbandonedClose;
+                        return writer;
+                    }
+                    size_t received = remaining < 64U ? remaining : 64U;
+                    if (received > receiveChunkLimit) received = receiveChunkLimit;
+                    const size_t beforeFailure =
+                        failDiscardAfterBytes - lastDiscardedBytes;
+                    if (received > beforeFailure) received = beforeFailure;
+                    if (received == 0U) {
+                        lastRequestOutcome = FakeRequestOutcome::ResponseAbandonedClose;
+                        return writer;
+                    }
+                    lastDiscardedBytes += received;
+                    remaining -= received;
+                }
+                writer.contentLength = 0U;
+                writer.connectionClose = true;
+                const bool sent =
+                    writer.beginResponse(413U, ContentType::PlainText) &&
+                    writer.endResponse();
+                // ESP_OK permits cleanup only after the declared body is gone.
+                // Connection: close asks the client to end the session.
+                lastCallbackSucceeded = sent;
+                lastRequestOutcome = sent
+                    ? FakeRequestOutcome::ResponseCompleteCloseRequested
+                    : FakeRequestOutcome::ResponseAbandonedClose;
                 return writer;
             }
             if (length != 0U) std::memcpy(storage, body, length);
+            lastRequestBodyBytesRead = length;
             storage[length] = '\0';
             const HttpRouteRequest request {
                 method, path, length == 0U ? nullptr : storage, length
             };
             ++handlerCalls;
             candidate->handler(candidate->context, request, writer);
+            lastCallbackSucceeded = writer.ended;
+            lastRequestOutcome = writer.ended
+                ? FakeRequestOutcome::ResponseCompleteKeepAlive
+                : FakeRequestOutcome::ResponseAbandonedClose;
             return writer;
         }
         writer.beginResponse(404U, ContentType::PlainText);
         writer.endResponse();
+        lastCallbackSucceeded = true;
+        lastRequestOutcome = FakeRequestOutcome::ResponseCompleteKeepAlive;
         return writer;
     }
 
@@ -146,9 +208,37 @@ public:
     size_t addAttempts = 0U;
     size_t beginCalls = 0U;
     size_t handlerCalls = 0U;
+    size_t lastDeclaredLength = 0U;
+    size_t lastRequestBodyBytesRead = 0U;
+    size_t lastDiscardedBytes = 0U;
+    size_t lastDiscardRecvCalls = 0U;
+    size_t receiveChunkLimit = 64U;
+    size_t failDiscardAfterBytes = static_cast<size_t>(-1);
+    FakeRequestOutcome lastRequestOutcome = FakeRequestOutcome::None;
+    bool lastCallbackSucceeded = false;
     bool failNextAdd = false;
     bool running = false;
 };
+
+void assertCompletePayloadTooLarge(const FakeTransport& transport,
+                                   const Writer& writer, size_t declaredLength) {
+    TEST_ASSERT_EQUAL_UINT16(413U, writer.status);
+    TEST_ASSERT_TRUE(writer.headersSent);
+    TEST_ASSERT_TRUE(writer.ended);
+    TEST_ASSERT_EQUAL_UINT(0U, writer.contentLength);
+    TEST_ASSERT_EQUAL_UINT(0U, writer.bodyBytesSent);
+    TEST_ASSERT_EQUAL_UINT(0U, writer.body.size());
+    TEST_ASSERT_TRUE(writer.connectionClose);
+    TEST_ASSERT_EQUAL_UINT(declaredLength, transport.lastDeclaredLength);
+    TEST_ASSERT_EQUAL_UINT(0U, transport.lastRequestBodyBytesRead);
+    TEST_ASSERT_EQUAL_UINT(declaredLength, transport.lastDiscardedBytes);
+    TEST_ASSERT_TRUE(transport.lastDiscardRecvCalls > 0U);
+    TEST_ASSERT_TRUE(transport.lastCallbackSucceeded);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(FakeRequestOutcome::ResponseCompleteCloseRequested),
+        static_cast<uint8_t>(transport.lastRequestOutcome)
+    );
+}
 
 struct BodyCapture {
     char value[HTTP_NORMAL_BODY_CAPACITY + 1U] {};
@@ -193,6 +283,14 @@ void test_route_body_policy_and_callback_view() {
         "/small", HttpMethod::Post, captureBody, &capture,
         HttpRouteOptions {8U}
     ));
+    TEST_ASSERT_TRUE(transport.addRoute(
+        "/hydro-control-like", HttpMethod::Post, captureBody, &capture,
+        HttpRouteOptions {32U}
+    ));
+    TEST_ASSERT_TRUE(transport.addRoute(
+        "/luma-like", HttpMethod::Post, captureBody, &capture,
+        HttpRouteOptions {512U}
+    ));
     const char small[9] = {'a', '\0', 'b', 'c', 'd', 'e', 'f', 'g', 'h'};
     Writer writer = transport.request("/small", HttpMethod::Post, small, 8U);
     TEST_ASSERT_EQUAL_UINT16(200U, writer.status);
@@ -200,24 +298,103 @@ void test_route_body_policy_and_callback_view() {
     TEST_ASSERT_EQUAL_CHAR('b', capture.value[2U]);
     const size_t smallCalls = transport.handlerCalls;
     writer = transport.request("/small", HttpMethod::Post, small, 9U);
-    TEST_ASSERT_EQUAL_UINT16(413U, writer.status);
+    assertCompletePayloadTooLarge(transport, writer, 9U);
     TEST_ASSERT_EQUAL_UINT(smallCalls, transport.handlerCalls);
 
-    char exact[HTTP_NORMAL_BODY_CAPACITY];
-    std::memset(exact, 'x', sizeof(exact));
+    char controlBody[33U];
+    std::memset(controlBody, 'c', sizeof(controlBody));
     writer = transport.request(
-        "/body", HttpMethod::Post, exact, sizeof(exact)
+        "/hydro-control-like", HttpMethod::Post, controlBody, 32U
     );
     TEST_ASSERT_EQUAL_UINT16(200U, writer.status);
-    TEST_ASSERT_EQUAL_UINT(sizeof(exact), capture.length);
-    TEST_ASSERT_EQUAL_CHAR('x', capture.value[sizeof(exact) - 1U]);
+    TEST_ASSERT_EQUAL_UINT(32U, capture.length);
+    const size_t controlCalls = transport.handlerCalls;
+    writer = transport.request(
+        "/hydro-control-like", HttpMethod::Post,
+        controlBody, sizeof(controlBody)
+    );
+    assertCompletePayloadTooLarge(transport, writer, 33U);
+    TEST_ASSERT_EQUAL_UINT(controlCalls, transport.handlerCalls);
+
+    char lumaBody[513U];
+    std::memset(lumaBody, 'l', sizeof(lumaBody));
+    writer = transport.request(
+        "/luma-like", HttpMethod::Post, lumaBody, 512U
+    );
+    TEST_ASSERT_EQUAL_UINT16(200U, writer.status);
+    TEST_ASSERT_EQUAL_UINT(512U, capture.length);
+    const size_t lumaCalls = transport.handlerCalls;
+    writer = transport.request(
+        "/luma-like", HttpMethod::Post, lumaBody, sizeof(lumaBody)
+    );
+    assertCompletePayloadTooLarge(transport, writer, 513U);
+    TEST_ASSERT_EQUAL_UINT(lumaCalls, transport.handlerCalls);
+
+    char exact[HTTP_NORMAL_BODY_CAPACITY + 1U];
+    std::memset(exact, 'x', sizeof(exact));
+    writer = transport.request(
+        "/body", HttpMethod::Post, exact, HTTP_NORMAL_BODY_CAPACITY
+    );
+    TEST_ASSERT_EQUAL_UINT16(200U, writer.status);
+    TEST_ASSERT_EQUAL_UINT(HTTP_NORMAL_BODY_CAPACITY, capture.length);
+    TEST_ASSERT_EQUAL_CHAR(
+        'x', capture.value[HTTP_NORMAL_BODY_CAPACITY - 1U]
+    );
 
     const size_t calls = transport.handlerCalls;
     writer = transport.request(
-        "/body", HttpMethod::Post, exact, sizeof(exact) + 1U
+        "/body", HttpMethod::Post, exact, sizeof(exact)
     );
-    TEST_ASSERT_EQUAL_UINT16(413U, writer.status);
+    assertCompletePayloadTooLarge(transport, writer, 1537U);
+    TEST_ASSERT_TRUE(transport.lastDiscardRecvCalls > 1U);
     TEST_ASSERT_EQUAL_UINT(calls, transport.handlerCalls);
+
+    // Metadata-only gross oversize: no 1 MB payload is allocated or read.
+    writer = transport.request("/body", HttpMethod::Post, nullptr, 1024U * 1024U);
+    TEST_ASSERT_EQUAL_UINT(1024U * 1024U, transport.lastDeclaredLength);
+    TEST_ASSERT_EQUAL_UINT(0U, writer.status);
+    TEST_ASSERT_FALSE(writer.headersSent);
+    TEST_ASSERT_FALSE(writer.ended);
+    TEST_ASSERT_EQUAL_UINT(0U, transport.lastDiscardedBytes);
+    TEST_ASSERT_EQUAL_UINT(0U, transport.lastDiscardRecvCalls);
+    TEST_ASSERT_EQUAL_UINT(0U, transport.lastRequestBodyBytesRead);
+    TEST_ASSERT_FALSE(transport.lastCallbackSucceeded);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(FakeRequestOutcome::ResponseAbandonedClose),
+        static_cast<uint8_t>(transport.lastRequestOutcome)
+    );
+    TEST_ASSERT_EQUAL_UINT(calls, transport.handlerCalls);
+}
+
+void test_oversize_partial_discard_and_recv_failure() {
+    FakeTransport transport;
+    BodyCapture capture;
+    TEST_ASSERT_TRUE(transport.addRoute(
+        "/body", HttpMethod::Post, captureBody, &capture,
+        HttpRouteOptions {HTTP_NORMAL_BODY_CAPACITY}
+    ));
+    char body[HTTP_NORMAL_BODY_CAPACITY + 1U] {};
+    transport.receiveChunkLimit = 32U;
+    Writer writer = transport.request("/body", HttpMethod::Post,
+                                      body, sizeof(body));
+    assertCompletePayloadTooLarge(transport, writer, sizeof(body));
+    TEST_ASSERT_EQUAL_UINT(49U, transport.lastDiscardRecvCalls);
+    TEST_ASSERT_EQUAL_UINT(0U, transport.handlerCalls);
+
+    transport.failDiscardAfterBytes = 96U;
+    writer = transport.request("/body", HttpMethod::Post, body, sizeof(body));
+    TEST_ASSERT_EQUAL_UINT(sizeof(body), transport.lastDeclaredLength);
+    TEST_ASSERT_EQUAL_UINT(96U, transport.lastDiscardedBytes);
+    TEST_ASSERT_EQUAL_UINT(4U, transport.lastDiscardRecvCalls);
+    TEST_ASSERT_EQUAL_UINT(0U, writer.status);
+    TEST_ASSERT_FALSE(writer.headersSent);
+    TEST_ASSERT_FALSE(writer.ended);
+    TEST_ASSERT_FALSE(transport.lastCallbackSucceeded);
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(FakeRequestOutcome::ResponseAbandonedClose),
+        static_cast<uint8_t>(transport.lastRequestOutcome)
+    );
+    TEST_ASSERT_EQUAL_UINT(0U, transport.handlerCalls);
 }
 
 void test_zero_limit_is_bodyless_and_zero_view_is_null() {
@@ -233,7 +410,7 @@ void test_zero_limit_is_bodyless_and_zero_view_is_null() {
     TEST_ASSERT_EQUAL_UINT(0U, capture.length);
     const size_t calls = transport.handlerCalls;
     writer = transport.request("/bodyless", HttpMethod::Post, "x", 1U);
-    TEST_ASSERT_EQUAL_UINT16(413U, writer.status);
+    assertCompletePayloadTooLarge(transport, writer, 1U);
     TEST_ASSERT_EQUAL_UINT(calls, transport.handlerCalls);
 }
 
@@ -598,6 +775,7 @@ void test_invalid_token_after_acceptance_preserves_acceptance() {
 int main(int, char**) {
     UNITY_BEGIN();
     RUN_TEST(test_route_body_policy_and_callback_view);
+    RUN_TEST(test_oversize_partial_discard_and_recv_failure);
     RUN_TEST(test_zero_limit_is_bodyless_and_zero_view_is_null);
     RUN_TEST(test_product_routes_reservations_and_freeze);
     RUN_TEST(test_partial_product_registration_failure_blocks_begin);

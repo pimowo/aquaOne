@@ -1,26 +1,22 @@
 #pragma once
 
-#include <AquaCore/Web/WebApiProvider.h>
+#include <AquaCore/Web/PublishedSnapshot.h>
+#include <AquaCore/Web/HttpRouteRegistry.h>
 
 #include "hydrosense/SystemStatus.h"
 
 class HydroSenseApi final
-    : public AquaCore::Web::WebApiProvider
 {
 public:
     explicit HydroSenseApi(
-        const SystemStatus& status
+        const AquaCore::Web::PublishedSnapshot<SystemStatus>& status
     );
 
-    const char* route() const override;
-
-    AquaCore::Web::HttpMethod
-    method() const override;
-
-    void handle(
-        const AquaCore::Web::WebRequest& request,
+    static void handle(
+        void* context,
+        const AquaCore::Web::HttpRouteRequest& request,
         AquaCore::Web::WebResponseWriter& response
-    ) override;
+    );
 
 private:
     static const char* topupStateName(
@@ -39,5 +35,5 @@ private:
         AlarmManager::Severity severity
     );
 
-    const SystemStatus& status_;
+    const AquaCore::Web::PublishedSnapshot<SystemStatus>& status_;
 };

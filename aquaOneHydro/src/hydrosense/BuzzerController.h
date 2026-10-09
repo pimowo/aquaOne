@@ -4,8 +4,10 @@
 
 #include "hardware/Buzzer.h"
 #include "hydrosense/AlarmManager.h"
+#include "web/HydroWebAuthorities.h"
 
 class BuzzerController
+    : public HydroBuzzerActions
 {
 public:
     BuzzerController(
@@ -16,7 +18,7 @@ public:
     void begin();
     void update();
 
-    void mute();
+    void mute() override;
     bool isMuted() const;
 
 private:

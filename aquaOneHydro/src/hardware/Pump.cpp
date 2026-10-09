@@ -7,10 +7,8 @@ Pump::Pump(uint8_t pin)
 
 void Pump::begin()
 {
-    // Najpierw ustaw bezpieczny stan logiczny,
-    // dopiero potem konfiguruj pin jako wyjście.
-    digitalWrite(pin_, LOW);
     pinMode(pin_, OUTPUT);
+    digitalWrite(pin_, LOW);
 
     isOn_ = false;
 }

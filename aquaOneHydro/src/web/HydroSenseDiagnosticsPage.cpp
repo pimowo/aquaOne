@@ -8,15 +8,9 @@ using AquaCore::Web::WebResponseWriter;
 
 HydroSenseDiagnosticsPage::
 HydroSenseDiagnosticsPage(
-    const AquaCore::SystemService& systemService,
-    const AquaCore::Network::NetworkService& networkService,
-    const HydroSenseConfigStorage& configStorage,
-    const SystemStatus& status
+    const AquaCore::Web::PublishedSnapshot<HydroDiagnosticsProjection>& projection
 )
-    : systemService_(systemService),
-      networkService_(networkService),
-      configStorage_(configStorage),
-      status_(status)
+    : projection_(projection)
 {
 }
 
@@ -37,10 +31,17 @@ void HydroSenseDiagnosticsPage::render(
 ) const
 {
     char number[32];
+    HydroDiagnosticsProjection projection {};
+    if (!projection_.read(projection))
+    {
+        response.writeText("<section class=\"card\"><h2>Diagnostyka</h2><p>Dane chwilowo niedostepne.</p></section>");
+        return;
+    }
+    const SystemStatus& status = projection.status;
 
     const AquaCore::Config::StorageStatus
         storageStatus =
-            configStorage_.status();
+            projection.storage;
 
 
     // =========================================================
@@ -59,7 +60,7 @@ void HydroSenseDiagnosticsPage::render(
     );
 
     response.writeText(
-        systemService_.isReady()
+        projection.system.ready
             ? "<span class=\"tag ok\">GOTOWY</span>"
             : "<span class=\"tag err\">BŁĄD</span>"
     );
@@ -74,7 +75,7 @@ void HydroSenseDiagnosticsPage::render(
 
     writeUptime(
         response,
-        systemService_.uptimeMs()
+        projection.system.uptimeMs
     );
 
     response.writeText(
@@ -87,7 +88,7 @@ void HydroSenseDiagnosticsPage::render(
 
     response.writeText(
         AquaCore::restartReasonName(
-            systemService_.restartReason()
+            projection.system.restartReason
         )
     );
 
@@ -100,9 +101,7 @@ void HydroSenseDiagnosticsPage::render(
     );
 
     response.writeText(
-        systemService_
-            .deviceIdentity()
-            .firmwareVersion
+        projection.system.identity.firmwareVersion
     );
 
     response.writeText(
@@ -114,7 +113,7 @@ void HydroSenseDiagnosticsPage::render(
     );
 
     response.writeText(
-        systemService_.aquaCoreVersion()
+        projection.system.aquaCoreVersion
     );
 
     response.writeText(
@@ -236,7 +235,7 @@ void HydroSenseDiagnosticsPage::render(
 
     response.writeText(
         networkStateName(
-            networkService_.state()
+            status.networkState
         )
     );
 
@@ -249,7 +248,7 @@ void HydroSenseDiagnosticsPage::render(
     );
 
     response.writeText(
-        networkService_.isConnected()
+        status.wifiConnected
             ? "<span class=\"tag ok\">POŁĄCZONO</span>"
             : "<span class=\"tag warn\">BRAK</span>"
     );
@@ -264,7 +263,7 @@ void HydroSenseDiagnosticsPage::render(
 
     writeIp(
         response,
-        networkService_.ipAddress()
+        status.ipAddress
     );
 
     response.writeText(
@@ -275,14 +274,14 @@ void HydroSenseDiagnosticsPage::render(
         "<span class=\"value\">"
     );
 
-    if (networkService_.isConnected())
+    if (status.wifiConnected)
     {
         std::snprintf(
             number,
             sizeof(number),
             "%ld dBm",
             static_cast<long>(
-                networkService_.rssi()
+                status.wifiRssi
             )
         );
 
@@ -306,7 +305,7 @@ void HydroSenseDiagnosticsPage::render(
         sizeof(number),
         "%lu",
         static_cast<unsigned long>(
-            networkService_.reconnectCount()
+            status.networkReconnectCount
         )
     );
 
@@ -321,7 +320,7 @@ void HydroSenseDiagnosticsPage::render(
     );
 
     response.writeText(
-        networkService_.isApActive()
+        status.accessPointActive
             ? "<span class=\"tag ok\">AKTYWNY</span>"
             : "<span class=\"tag warn\">WYŁĄCZONY</span>"
     );
@@ -336,8 +335,7 @@ void HydroSenseDiagnosticsPage::render(
 
     writeIp(
         response,
-        networkService_
-            .accessPointIpAddress()
+        status.accessPointIpAddress
     );
 
     response.writeText(
@@ -359,7 +357,7 @@ void HydroSenseDiagnosticsPage::render(
     );
 
     response.writeText(
-        status_.floatSensorActive
+        status.floatSensorActive
             ? "AKTYWNY"
             : "NIEAKTYWNY"
     );
@@ -373,7 +371,7 @@ void HydroSenseDiagnosticsPage::render(
     );
 
     response.writeText(
-        status_.tankValid
+        status.tankValid
             ? "<span class=\"tag ok\">POPRAWNY</span>"
             : "<span class=\"tag warn\">BRAK</span>"
     );
@@ -387,7 +385,7 @@ void HydroSenseDiagnosticsPage::render(
     );
 
     response.writeText(
-        status_.tankSensorFault
+        status.tankSensorFault
             ? "<span class=\"tag err\">TAK</span>"
             : "<span class=\"tag ok\">NIE</span>"
     );
@@ -405,7 +403,7 @@ void HydroSenseDiagnosticsPage::render(
         sizeof(number),
         "%.1f cm",
         static_cast<double>(
-            status_.tankDistanceCm
+            status.tankDistanceCm
         )
     );
 
@@ -424,7 +422,7 @@ void HydroSenseDiagnosticsPage::render(
         sizeof(number),
         "%.1f %%",
         static_cast<double>(
-            status_.tankLevelPercent
+            status.tankLevelPercent
         )
     );
 
@@ -450,7 +448,7 @@ void HydroSenseDiagnosticsPage::render(
 
     response.writeText(
         topupStateName(
-            status_.topupState
+            status.topupState
         )
     );
 
@@ -463,7 +461,7 @@ void HydroSenseDiagnosticsPage::render(
     );
 
     response.writeText(
-        status_.pumpOn
+        status.pumpOn
             ? "<span class=\"tag warn\">ON</span>"
             : "<span class=\"tag ok\">OFF</span>"
     );
@@ -477,7 +475,7 @@ void HydroSenseDiagnosticsPage::render(
     );
 
     response.writeText(
-        status_.pumpAllowed
+        status.pumpAllowed
             ? "TAK"
             : "NIE"
     );
@@ -491,7 +489,7 @@ void HydroSenseDiagnosticsPage::render(
     );
 
     response.writeText(
-        status_.pumpLocked
+        status.pumpLocked
             ? "<span class=\"tag err\">AKTYWNY</span>"
             : "<span class=\"tag ok\">BRAK</span>"
     );
@@ -505,7 +503,7 @@ void HydroSenseDiagnosticsPage::render(
     );
 
     response.writeText(
-        status_.serviceMode
+        status.serviceMode
             ? "<span class=\"tag warn\">ON</span>"
             : "OFF"
     );
@@ -529,7 +527,7 @@ void HydroSenseDiagnosticsPage::render(
     );
 
     response.writeText(
-        status_.hasAlarm
+        status.hasAlarm
             ? "<span class=\"tag err\">TAK</span>"
             : "<span class=\"tag ok\">NIE</span>"
     );
@@ -544,7 +542,7 @@ void HydroSenseDiagnosticsPage::render(
 
     response.writeText(
         alarmCodeName(
-            status_.alarmCode
+            status.alarmCode
         )
     );
 
@@ -558,7 +556,7 @@ void HydroSenseDiagnosticsPage::render(
 
     response.writeText(
         severityName(
-            status_.alarmSeverity
+            status.alarmSeverity
         )
     );
 
@@ -571,7 +569,7 @@ void HydroSenseDiagnosticsPage::render(
     );
 
     response.writeText(
-        status_.buzzerMuted
+        status.buzzerMuted
             ? "TAK"
             : "NIE"
     );
@@ -655,6 +653,21 @@ HydroSenseDiagnosticsPage::storageResultName(
 
         case StorageOperationResult::Failure:
             return "FAILURE";
+
+        case StorageOperationResult::NoChange:
+            return "NO_CHANGE";
+
+        case StorageOperationResult::InvalidArgument:
+            return "INVALID_ARGUMENT";
+
+        case StorageOperationResult::ValidationFailure:
+            return "VALIDATION_FAILURE";
+
+        case StorageOperationResult::BackendFailure:
+            return "BACKEND_FAILURE";
+
+        case StorageOperationResult::VerifyFailure:
+            return "VERIFY_FAILURE";
     }
 
     return "UNKNOWN";

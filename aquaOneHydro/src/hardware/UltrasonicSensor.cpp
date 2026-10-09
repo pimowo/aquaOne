@@ -22,9 +22,8 @@ void UltrasonicSensor::configure(
 
 void UltrasonicSensor::begin()
 {
-    digitalWrite(trigPin_, LOW);
-
     pinMode(trigPin_, OUTPUT);
+    digitalWrite(trigPin_, LOW);
     pinMode(echoPin_, INPUT);
 
     distanceCm_ = 0.0f;

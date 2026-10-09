@@ -1,7 +1,7 @@
 # Project Matrix — Status i Integracja Core
 
-**Snapshot date:** 2026-10-06
-**Snapshot base commit:** `ca8516d` plus local F9.7D checkpoint candidate
+**Snapshot date:** 2026-10-09
+**Snapshot base commit:** `085e5c3` plus local F9.7E2/F9.7E3 checkpoint candidate
 
 Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla wskazanego
 commita. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
@@ -22,6 +22,16 @@ polling-only with a transitional Application bridge. Real HTTP/Wi-Fi evidence is
 sanitized in `docs/WEB_F9_7D2_LUMA_HIL.md`. WEB-101 remains DECISION REQUIRED
 and SEC-101 remains OPEN. The 250 ms wait is provisional: HIL recorded no 202,
 with p95 504.565 ms and maximum 561.396 ms host-observed HTTP latency.
+
+## F9.7E2/F9.7E3 update
+
+Hydro now uses one `EspIdfWebTransport` plus `NativeWebService`. Pages and read
+APIs consume fixed published projections; control and settings use a
+fixed-capacity Application bridge with at most one request processed per loop.
+Hydro stays polling-only. The global normal POST storage is 1,536 bytes for
+Hydro settings, while all three Luma POST routes retain explicit 512-byte
+limits. F9.7E3 bare-board Web/Application HIL passed with expected hardware
+limitations; full physical Hydro hardware HIL remains future work.
 
 ## Legenda
 
@@ -94,29 +104,29 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Aspekt | Status | Notatki |
 |--------|--------|---------|
 | **Platforma** | ESP32-S3 DevKit-C1 | |
-| **Status** | 🟢 Funkcjonalny | Dobra architektura, przystosowana na Core |
+| **Status** | F9.7E2 CLOSED | Native HTTP cutover checkpointed; F9.7E3 bare-board Web/Application HIL passed with expected hardware limitations |
 | **Architektura** | app/hardware/hydrosense/web | Czysta separacja |
 | | | |
 | **Używane moduły Core** | | |
 | System | ✅ READY | systemService (boot info) |
 | Config | ✅ READY | HydroSenseConfigStorage adapter |
 | Logging | ❌ NOT USED | Brak logowania |
-| Diagnostics | ❌ NOT USED | HydroSenseDiagnosticsPage (local) |
+| Diagnostics | CORE VIA ADAPTER | Native `/api/diagnostics` uses a typed projection of System, Network and Storage facts; the product diagnostics page remains local |
 | Network | ✅ READY | NetworkService (WiFi) |
-| Web | ✅ READY | WebService + custom providers |
+| Web | F9.7E2 CURRENT | One `EspIdfWebTransport` + `NativeWebService`; projection-only reads and bounded Application bridge; polling-only |
 | Time | 〰️ NOT NEEDED | Brak wymagań czasowych |
 | | | |
 | **Elementy lokalne** | | |
 | Logika | TopupController, WaterTank, AlarmManager | Domena: zawór+czujniki |
 | Hardware | Pump, FloatSensor, UltrasonicSensor, Button, Buzzer | |
-| Web UI | Dashboard, SettingsPage, ControlPage | |
+| Web UI | Dashboard, SettingsPage, ControlPage, DiagnosticsPage | Shared aquaOne Theme v1; polling-only, without WebSocket/Auth/OTA |
 | | | |
 | **Brakujące integracje** | | |
 | Logging | Opcjonalnie można dodać AquaCore::Logger | Not priority |
 | Home Assistant | FUTURE HA/API adapter | Po native Web/Realtime; brak planu MQTT |
 | | | |
-| **Migracja do Core** | 🟢 READY | Już dobra architektura |
-| **Ryzyko** | ✅ Niskie | Proste dodatki (Logger) |
+| **Migracja do Core** | F9.7E2 CLOSED | Native Web cutover is CURRENT after bare-board Web/Application HIL and checkpoint |
+| **Ryzyko** | 🟡 Średnie | Product-local 1000 ms action wait remains transitional; full physical Hydro hardware HIL is pending |
 
 ---
 

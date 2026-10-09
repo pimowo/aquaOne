@@ -3,7 +3,7 @@
 using AquaCore::Web::WebResponseWriter;
 
 HydroSenseControlPage::HydroSenseControlPage(
-    const SystemStatus& status
+    const AquaCore::Web::PublishedSnapshot<SystemStatus>& status
 )
     : status_(status)
 {
@@ -23,6 +23,13 @@ void HydroSenseControlPage::render(
     WebResponseWriter& response
 ) const
 {
+    SystemStatus status {};
+    if (!status_.read(status))
+    {
+        response.writeText("<section class=\"card\"><h2>Sterowanie</h2><p>Stan chwilowo niedostepny.</p></section>");
+        return;
+    }
+
     response.writeText(
         "<section class=\"card\">"
         "<h2>Stan</h2>"
@@ -33,7 +40,7 @@ void HydroSenseControlPage::render(
     );
 
     response.writeText(
-        status_.serviceMode
+        status.serviceMode
             ? "<span class=\"tag warn\">SERVICE</span>"
             : "<span class=\"tag ok\">NORMAL</span>"
     );
@@ -47,7 +54,7 @@ void HydroSenseControlPage::render(
     );
 
     response.writeText(
-        status_.pumpOn
+        status.pumpOn
             ? "<span class=\"tag warn\">WŁĄCZONA</span>"
             : "<span class=\"tag ok\">WYŁĄCZONA</span>"
     );
@@ -62,7 +69,7 @@ void HydroSenseControlPage::render(
 
     response.writeText(
         topupStateName(
-            status_.topupState
+            status.topupState
         )
     );
 
@@ -75,7 +82,7 @@ void HydroSenseControlPage::render(
     );
 
     response.writeText(
-        status_.pumpLocked
+        status.pumpLocked
             ? "<span class=\"tag err\">AKTYWNY</span>"
             : "<span class=\"tag ok\">BRAK</span>"
     );
@@ -89,7 +96,7 @@ void HydroSenseControlPage::render(
     );
 
     response.writeText(
-        status_.buzzerMuted
+        status.buzzerMuted
             ? "Wyciszony"
             : "Aktywny"
     );
@@ -109,7 +116,7 @@ void HydroSenseControlPage::render(
     );
 
     response.writeText(
-        status_.serviceMode
+        status.serviceMode
             ? "active"
             : ""
     );
@@ -119,7 +126,7 @@ void HydroSenseControlPage::render(
     );
 
     response.writeText(
-        status_.serviceMode
+        status.serviceMode
             ? "Wyłącz SERVICE"
             : "Włącz SERVICE"
     );
@@ -136,7 +143,7 @@ void HydroSenseControlPage::render(
         "type=\"button\" class=\"danger\" "
     );
 
-    if (!status_.pumpLocked)
+    if (!status.pumpLocked)
     {
         response.writeText(
             "disabled"
@@ -183,6 +190,12 @@ void HydroSenseControlPage::render(
         "});"
 
         "const text=await r.text();"
+
+        "if(r.status===202){"
+        "msg.className='notice warn';"
+        "msg.textContent='Wynik akcji jest nieznany. Sprawdz stan urzadzenia; nie ponawiaj automatycznie.';"
+        "return;"
+        "}"
 
         "if(!r.ok){"
         "throw new Error(text||'Błąd');"

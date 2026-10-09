@@ -65,6 +65,11 @@ const char* storageResultName(Config::StorageOperationResult result) {
         case Config::StorageOperationResult::NotAttempted: return "not_attempted";
         case Config::StorageOperationResult::Success: return "success";
         case Config::StorageOperationResult::Failure: return "failure";
+        case Config::StorageOperationResult::NoChange: return "no_change";
+        case Config::StorageOperationResult::InvalidArgument: return "invalid_argument";
+        case Config::StorageOperationResult::ValidationFailure: return "validation_failure";
+        case Config::StorageOperationResult::BackendFailure: return "backend_failure";
+        case Config::StorageOperationResult::VerifyFailure: return "verify_failure";
     }
     return "not_attempted";
 }

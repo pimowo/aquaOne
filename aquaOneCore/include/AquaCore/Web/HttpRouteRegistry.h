@@ -8,7 +8,9 @@
 namespace AquaCore {
 namespace Web {
 
-constexpr size_t HTTP_NORMAL_BODY_CAPACITY = 512U;
+// CURRENT implementation capacity. Product routes still declare their own
+// lower wire limits; this does not make 1536 bytes a platform-wide default.
+constexpr size_t HTTP_NORMAL_BODY_CAPACITY = 1536U;
 
 struct HttpRouteOptions {
     constexpr explicit HttpRouteOptions(size_t maximum = 0U)

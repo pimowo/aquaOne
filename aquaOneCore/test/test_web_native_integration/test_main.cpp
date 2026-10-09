@@ -331,6 +331,32 @@ void testDiagnosticsCompatibilityAndIndependence() {
     TEST_ASSERT_EQUAL_UINT16(200U, stillSystem.status);
 }
 
+void testDiagnosticsDetailedStorageResults() {
+    Fixture f;
+    TEST_ASSERT_TRUE(f.service.begin(f.enabledConfig()));
+
+    struct ExpectedResult {
+        Config::StorageOperationResult result;
+        const char* text;
+    };
+    const ExpectedResult expected[] = {
+        {Config::StorageOperationResult::NoChange, "no_change"},
+        {Config::StorageOperationResult::InvalidArgument, "invalid_argument"},
+        {Config::StorageOperationResult::ValidationFailure, "validation_failure"},
+        {Config::StorageOperationResult::BackendFailure, "backend_failure"},
+        {Config::StorageOperationResult::VerifyFailure, "verify_failure"}
+    };
+
+    for (const ExpectedResult& item : expected) {
+        f.diagnosticsSource.value.value.storage.lastSaveResult = item.result;
+        TEST_ASSERT_TRUE(f.publisher.update().diagnosticsPublished);
+        const Writer response = f.transport.request("/api/diagnostics");
+        TEST_ASSERT_EQUAL_UINT16(200U, response.status);
+        const std::string field = std::string("\"lastSave\":\"") + item.text + "\"";
+        assertContains(response.body, field.c_str());
+    }
+}
+
 void testRootCssAndNotFound() {
     Fixture f;
     TEST_ASSERT_TRUE(f.service.begin(f.enabledConfig()));
@@ -511,6 +537,7 @@ void runTests() {
     RUN_TEST(testRoutesAndNoPost);
     RUN_TEST(testSystemUnavailableAndSnapshotIndependence);
     RUN_TEST(testDiagnosticsCompatibilityAndIndependence);
+    RUN_TEST(testDiagnosticsDetailedStorageResults);
     RUN_TEST(testRootCssAndNotFound);
     RUN_TEST(testBorrowedStaticPagesUseBuiltInRootAndSharedShell);
     RUN_TEST(testLifecycleDisabledFailureRetryAndRestart);

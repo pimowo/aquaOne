@@ -91,8 +91,8 @@ The target sequence is:
 8. enter live mode.
 
 A CURRENT polling-only product MAY use periodic HTTP snapshots until its Realtime cutover.
-Luma is CURRENT native HTTP and polling-only; Hydro remains on legacy Web before F9.7E2;
-Doser remains on its legacy MQTT and MQTT Discovery implementation.
+Luma and Hydro are CURRENT native HTTP and polling-only; Doser remains on its
+legacy MQTT and MQTT Discovery implementation.
 
 ## 7. Version and compatibility contract
 

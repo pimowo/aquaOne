@@ -190,7 +190,9 @@ LumaNativeWeb::LumaNativeWeb(
 
 bool LumaNativeWeb::registerRoutes() {
     if (registered_) return true;
-    const HttpRouteOptions body512 {HTTP_NORMAL_BODY_CAPACITY};
+    // Luma's three POST contracts stay at 512 bytes even though the shared
+    // transport storage is larger for Hydro settings.
+    const HttpRouteOptions body512 {512U};
     if (!web_.addPage(dashboardPage_) ||
         !web_.addPage(controlPage_) ||
         !web_.addPage(diagnosticsPage_) ||

@@ -71,7 +71,7 @@ private:
 
     HttpRouteRegistry routes_;
     // ESP-IDF URI callbacks run serially on the HTTP server task. Keeping the
-    // bounded body buffer here avoids adding 513 bytes to each dispatch frame.
+    // bounded body buffer here avoids adding 1537 bytes to each dispatch frame.
     // The bytes remain borrowed and callback-scoped.
     char normalBody_[HTTP_NORMAL_BODY_CAPACITY + 1U] {};
     static constexpr size_t REALTIME_PATH_CAPACITY = HttpRouteRegistry::MAX_PATH_LENGTH;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <AquaCore/Web/WebPageProvider.h>
+#include <AquaCore/Web/PublishedSnapshot.h>
 
 #include "hydrosense/SystemStatus.h"
 
@@ -9,7 +10,7 @@ class HydroSenseControlPage final
 {
 public:
     explicit HydroSenseControlPage(
-        const SystemStatus& status
+        const AquaCore::Web::PublishedSnapshot<SystemStatus>& status
     );
 
     const char* route() const override;
@@ -24,5 +25,5 @@ private:
         TopupController::State state
     );
 
-    const SystemStatus& status_;
+    const AquaCore::Web::PublishedSnapshot<SystemStatus>& status_;
 };

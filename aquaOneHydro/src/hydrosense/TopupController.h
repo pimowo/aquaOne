@@ -4,8 +4,10 @@
 
 #include "hardware/Pump.h"
 #include "hardware/FloatSensor.h"
+#include "web/HydroWebAuthorities.h"
 
 class TopupController
+    : public HydroTopupActions
 {
 public:
     enum class State
@@ -30,9 +32,9 @@ public:
     void begin();
     void update();
 
-    void setServiceMode(bool enabled);
+    void setServiceMode(bool enabled) override;
 
-    bool isServiceMode() const;
+    bool isServiceMode() const override;
 
     void setPumpAllowed(bool allowed);
 
@@ -42,7 +44,7 @@ public:
 
     bool isLocked() const;
 
-    void resetLockout();
+    void resetLockout() override;
 
 private:
     void enterState(State newState);

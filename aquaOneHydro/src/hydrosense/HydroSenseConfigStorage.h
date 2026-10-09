@@ -4,11 +4,14 @@
 #include <Preferences.h>
 
 #include <AquaCore/Config/PreferencesStorageBackend.h>
+#include <AquaCore/Config/StorageRecord.h>
 #include <AquaCore/Config/StorageService.h>
 
 #include "hydrosense/HydroSenseConfig.h"
+#include "web/HydroWebAuthorities.h"
 
-class HydroSenseConfigStorage
+class HydroSenseConfigStorage final
+    : public HydroConfigPersistence
 {
 public:
     HydroSenseConfigStorage();
@@ -21,12 +24,16 @@ public:
 
     bool save(
         const HydroSenseConfig& config
-    );
+    ) override;
 
     bool hasValidConfig() const;
 
     AquaCore::Config::StorageStatus
-    status() const;
+    status() const override;
+
+    static bool validateConfig(
+        const HydroSenseConfig& config
+    );
 
 private:
     static constexpr uint16_t
@@ -37,18 +44,14 @@ private:
         size_t payloadSize
     );
 
-    static bool validateConfig(
-        const HydroSenseConfig& config
-    );
-
-    static bool isNullTerminated(
-        const char* text,
-        size_t capacity
-    );
-
     AquaCore::Config::
         PreferencesStorageBackend<Preferences>
             backend_;
+
+    uint8_t workspace_[
+        AquaCore::Config::StorageRecord::HEADER_SIZE +
+        sizeof(HydroSenseConfig)
+    ] {};
 
     AquaCore::Config::StorageService
         storage_;

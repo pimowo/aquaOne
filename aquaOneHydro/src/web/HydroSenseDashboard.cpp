@@ -58,7 +58,7 @@ const char* networkStateName(
 }
 
 HydroSenseDashboard::HydroSenseDashboard(
-    const SystemStatus& status
+    const AquaCore::Web::PublishedSnapshot<SystemStatus>& status
 )
     : status_(status)
 {
@@ -79,6 +79,12 @@ void HydroSenseDashboard::render(
 ) const
 {
     char number[32];
+    SystemStatus status {};
+    if (!status_.read(status))
+    {
+        response.writeText("<section class=\"card\"><h2>HydroSense</h2><p>Stan chwilowo niedostepny.</p></section>");
+        return;
+    }
 
     response.writeText(
         "<div class=\"grid\">"
@@ -97,7 +103,7 @@ void HydroSenseDashboard::render(
     );
 
     response.writeText(
-        status_.floatSensorActive
+        status.floatSensorActive
             ? "<span class=\"tag warn\">NISKI POZIOM</span>"
             : "<span class=\"tag ok\">OK</span>"
     );
@@ -111,7 +117,7 @@ void HydroSenseDashboard::render(
     );
 
     response.writeText(
-        status_.serviceMode
+        status.serviceMode
             ? "<span class=\"tag warn\">SERVICE</span>"
             : "<span class=\"tag ok\">NORMAL</span>"
     );
@@ -134,7 +140,7 @@ void HydroSenseDashboard::render(
     );
 
     response.writeText(
-        status_.tankValid
+        status.tankValid
             ? "<span class=\"tag ok\">OK</span>"
             : "<span class=\"tag err\">BRAK</span>"
     );
@@ -152,7 +158,7 @@ void HydroSenseDashboard::render(
         sizeof(number),
         "%.1f %%",
         static_cast<double>(
-            status_.tankLevelPercent
+            status.tankLevelPercent
         )
     );
 
@@ -171,7 +177,7 @@ void HydroSenseDashboard::render(
         sizeof(number),
         "%.1f cm",
         static_cast<double>(
-            status_.tankLevelCm
+            status.tankLevelCm
         )
     );
 
@@ -190,7 +196,7 @@ void HydroSenseDashboard::render(
         sizeof(number),
         "%.1f cm",
         static_cast<double>(
-            status_.tankDistanceCm
+            status.tankDistanceCm
         )
     );
 
@@ -206,7 +212,7 @@ void HydroSenseDashboard::render(
 
     response.writeText(
         reserveStateName(
-            status_.reserveState
+            status.reserveState
         )
     );
 
@@ -229,7 +235,7 @@ void HydroSenseDashboard::render(
 
     response.writeText(
         topupStateName(
-            status_.topupState
+            status.topupState
         )
     );
 
@@ -242,7 +248,7 @@ void HydroSenseDashboard::render(
     );
 
     response.writeText(
-        status_.pumpOn
+        status.pumpOn
             ? "<span class=\"tag warn\">WŁĄCZONA</span>"
             : "<span class=\"tag ok\">WYŁĄCZONA</span>"
     );
@@ -256,7 +262,7 @@ void HydroSenseDashboard::render(
     );
 
     response.writeText(
-        status_.pumpAllowed
+        status.pumpAllowed
             ? "<span class=\"tag ok\">TAK</span>"
             : "<span class=\"tag err\">NIE</span>"
     );
@@ -270,7 +276,7 @@ void HydroSenseDashboard::render(
     );
 
     response.writeText(
-        status_.pumpLocked
+        status.pumpLocked
             ? "<span class=\"tag err\">AKTYWNY</span>"
             : "<span class=\"tag ok\">BRAK</span>"
     );
@@ -293,7 +299,7 @@ void HydroSenseDashboard::render(
     );
 
     response.writeText(
-        status_.hasAlarm
+        status.hasAlarm
             ? "<span class=\"tag err\">ALARM</span>"
             : "<span class=\"tag ok\">BRAK</span>"
     );
@@ -308,7 +314,7 @@ void HydroSenseDashboard::render(
 
     response.writeText(
         alarmCodeName(
-            status_.alarmCode
+            status.alarmCode
         )
     );
 
@@ -322,7 +328,7 @@ void HydroSenseDashboard::render(
 
     response.writeText(
         severityName(
-            status_.alarmSeverity
+            status.alarmSeverity
         )
     );
 
@@ -335,7 +341,7 @@ void HydroSenseDashboard::render(
     );
 
     response.writeText(
-        status_.buzzerMuted
+        status.buzzerMuted
             ? "Wyciszony"
             : "Aktywny"
     );
@@ -358,7 +364,7 @@ void HydroSenseDashboard::render(
     );
 
     response.writeText(
-        status_.wifiConnected
+        status.wifiConnected
             ? "<span class=\"tag ok\">POŁĄCZONO</span>"
             : "<span class=\"tag warn\">NIEPOŁĄCZONO</span>"
     );
@@ -373,7 +379,7 @@ void HydroSenseDashboard::render(
 
     response.writeText(
         networkStateName(
-            status_.networkState
+            status.networkState
         )
     );
 
@@ -385,11 +391,11 @@ void HydroSenseDashboard::render(
         "<span class=\"value\">"
     );
 
-    if (status_.ipAddress.isSet())
+    if (status.ipAddress.isSet())
     {
         writeIp(
             response,
-            status_.ipAddress
+            status.ipAddress
         );
     }
     else
@@ -405,14 +411,14 @@ void HydroSenseDashboard::render(
         "<span class=\"value\">"
     );
 
-    if (status_.wifiConnected)
+    if (status.wifiConnected)
     {
         std::snprintf(
             number,
             sizeof(number),
             "%ld dBm",
             static_cast<long>(
-                status_.wifiRssi
+                status.wifiRssi
             )
         );
 
@@ -432,7 +438,7 @@ void HydroSenseDashboard::render(
     );
 
     response.writeText(
-        status_.accessPointActive
+        status.accessPointActive
             ? "<span class=\"tag ok\">AKTYWNY</span>"
             : "<span class=\"tag warn\">WYŁĄCZONY</span>"
     );
@@ -445,11 +451,11 @@ void HydroSenseDashboard::render(
         "<span class=\"value\">"
     );
 
-    if (status_.accessPointIpAddress.isSet())
+    if (status.accessPointIpAddress.isSet())
     {
         writeIp(
             response,
-            status_.accessPointIpAddress
+            status.accessPointIpAddress
         );
     }
     else
@@ -470,7 +476,7 @@ void HydroSenseDashboard::render(
         sizeof(number),
         "%lu",
         static_cast<unsigned long>(
-            status_.networkReconnectCount
+            status.networkReconnectCount
         )
     );
 

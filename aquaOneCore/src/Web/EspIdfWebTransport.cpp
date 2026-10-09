@@ -7,6 +7,9 @@ namespace AquaCore {
 namespace Web {
 namespace {
 
+constexpr size_t HTTP_OVERSIZE_DRAIN_LIMIT = HTTP_NORMAL_BODY_CAPACITY + 1U;
+constexpr size_t OVERSIZE_DISCARD_CHUNK_SIZE = 64U;
+
 const char* statusLine(uint16_t code) {
     switch (code) {
         case 200U: return "200 OK";
@@ -87,12 +90,32 @@ private:
 
 esp_err_t rejectUnreadBody(httpd_req_t* request, const char* status,
                            const char* message) {
-    httpd_resp_set_status(request, status);
-    httpd_resp_set_type(request, "text/plain; charset=utf-8");
-    httpd_resp_send(request, message, HTTPD_RESP_USE_STRLEN);
-    // The body was not fully consumed. Returning failure makes HTTPD close the
-    // session, so unread bytes cannot be parsed as the next request.
+    // Returning success would make HTTPD purge unread bytes before reuse.
+    (void)httpd_resp_send_custom_err(request, status, message);
     return ESP_FAIL;
+}
+
+esp_err_t rejectOversizeBody(httpd_req_t* request) {
+    // Only the maximum normal body plus one byte is drained. Gross oversize
+    // fails closed without a response; HTTPD must not purge an unbounded body.
+    if (request->content_len > HTTP_OVERSIZE_DRAIN_LIMIT) return ESP_FAIL;
+
+    char discard[OVERSIZE_DISCARD_CHUNK_SIZE];
+    size_t remaining = request->content_len;
+    while (remaining != 0U) {
+        const size_t chunk = remaining < sizeof(discard)
+            ? remaining : sizeof(discard);
+        const ssize_t received = httpd_req_recv(request, discard, chunk);
+        if (received <= 0 || static_cast<size_t>(received) > chunk)
+            return ESP_FAIL;
+        remaining -= static_cast<size_t>(received);
+    }
+
+    // With no unread body, ESP_OK cannot trigger an unbounded HTTPD purge.
+    if (httpd_resp_set_status(request, "413 Payload Too Large") != ESP_OK ||
+        httpd_resp_set_hdr(request, "Connection", "close") != ESP_OK)
+        return ESP_FAIL;
+    return httpd_resp_send(request, nullptr, 0);
 }
 
 // Provisional internal F9.6B marker encoding used only to exercise the
@@ -661,8 +684,7 @@ esp_err_t EspIdfWebTransport::dispatch(httpd_req_t* request) {
         return httpd_resp_send_500(request);
     }
     if (request->content_len > route->options.maxBodyLength) {
-        return rejectUnreadBody(request, "413 Payload Too Large",
-                                "Request body exceeds route limit");
+        return rejectOversizeBody(request);
     }
 
     size_t total = 0U;
