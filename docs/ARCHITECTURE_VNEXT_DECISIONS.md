@@ -2841,3 +2841,17 @@ that prerequisite. HA WS/resync remains F10.3C. Phase 10 is IN PROGRESS;
 product WS and HA Realtime are not CURRENT. SEC-101 remains OPEN and is
 nonblocking only for the scoped read-only local notifications. Detailed
 contract, size budgets and evidence plan: [F10.3A](HA_F10_3A_REALTIME_ARCHITECTURE.md).
+
+## F10.3 Core prerequisite checkpoint (2026-10-09)
+
+The F10.3A public contract is now supported by the reusable Core prerequisite:
+bounded WebSocket TEXT JSON StreamStart and per-product API version selection
+with default 1.0. Physical classic ESP32 Core HIL passed, production Luma was
+restored at API 1.0, and the operator confirmed recovery of the existing HA
+device with 13/13 entities available and no duplicates. Sanitized evidence and
+the candidate SHA-256 manifest are recorded in
+[`HA_F10_3_CORE_PREREQUISITE_HIL.md`](HA_F10_3_CORE_PREREQUISITE_HIL.md).
+
+F10.3A and the Core prerequisite are CLOSED/CURRENT. Luma, Hydro and Doser
+remain API 1.0. Product Luma Realtime and HA WebSocket resync are NOT CURRENT.
+F10.3B Luma server Realtime composition is REQUIRED NEXT.

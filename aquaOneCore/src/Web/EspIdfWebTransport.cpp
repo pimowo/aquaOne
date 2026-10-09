@@ -1,5 +1,6 @@
 #include "AquaCore/Web/EspIdfWebTransport.h"
 #include "AquaCore/Web/HttpBasicAuth.h"
+#include "AquaCore/Web/RealtimeStreamStartWire.h"
 #include "HttpCoreReservedPaths.h"
 #include "HttpServerStopLifecycle.h"
 #include "HttpStreamingReceive.h"
@@ -210,26 +211,6 @@ void streamOversize(void* context) {
 
 bool stopHttpd(httpd_handle_t handle, void*) {
     return httpd_stop(handle) == ESP_OK;
-}
-
-// Provisional internal F9.6B marker encoding used only to exercise the
-// transport path. It is not the final RT-101 wire format.
-void encodeUint64(uint64_t value, uint8_t* output) {
-    for (size_t i = 0U; i < 8U; ++i) {
-        output[i] = static_cast<uint8_t>((value >> (i * 8U)) & 0xFFU);
-    }
-}
-
-size_t encodeStreamStart(const RealtimeStreamStartState& state,
-                         uint8_t* output, size_t capacity) {
-    if (!state.isAvailable() || output == nullptr || capacity < 18U) return 0U;
-    output[0] = 1U;
-    encodeUint64(state.runtimeIdentity().value(), &output[1]);
-    output[9] = state.position().isBeforeFirst() ? 1U : 2U;
-    encodeUint64(state.position().hasSequence() ?
-                     state.position().sequence().value() : 0U,
-                 &output[10]);
-    return 18U;
 }
 
 } // namespace
@@ -632,9 +613,8 @@ esp_err_t EspIdfWebTransport::realtimeDispatch(httpd_req_t* request) {
         work.token = token;
         work.state = owner->streamStartState_;
         work.recoveryGeneration = owner->realtimeRecovery_.generation();
-        work.length = encodeStreamStart(work.state, work.payload,
-                                        sizeof(work.payload));
-        if (work.length == 0U ||
+        if (!encodeRealtimeStreamStart(work.state, work.payload,
+                                       sizeof(work.payload), work.length) ||
             httpd_queue_work(owner->server_, streamStartWork, &work) != ESP_OK) {
             work.inUse.store(false);
             owner->realtimeClients_.release(token);
@@ -767,7 +747,7 @@ void EspIdfWebTransport::streamStartWork(void* argument) {
         httpd_ws_get_fd_info(server, fd) == HTTPD_WS_CLIENT_WEBSOCKET;
     if (active) {
         httpd_ws_frame_t frame {};
-        frame.type = HTTPD_WS_TYPE_BINARY;
+        frame.type = HTTPD_WS_TYPE_TEXT;
         frame.payload = work->payload;
         frame.len = work->length;
         sent = httpd_ws_send_frame_async(server, fd, &frame) == ESP_OK;

@@ -1,7 +1,7 @@
 # Project Matrix — Status i Integracja Core
 
 **Snapshot date:** 2026-10-09
-**Snapshot scope:** F10.3A Luma Realtime design gate after F10.2 read-only checkpoint
+**Snapshot scope:** F10.3 Core prerequisite checkpoint after physical Core HIL
 
 Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla bieżącego
 checkpointu. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
@@ -10,8 +10,8 @@ F9.8B: Phase 9 is CLOSED. Core Realtime WS/resync is CURRENT and passed classic
 ESP32 HIL; Luma, Hydro and Doser production HTTP is native, while product
 WS/cohorts/notifications are absent. Phase 10 is IN PROGRESS: F10.1A is CLOSED,
 F10.1B server identity/API and F10.2 Luma read-only integration are CLOSED/CURRENT;
-F10.3A Realtime architecture gate is CLOSED with a Core prerequisite required
-next, before F10.3B Luma server and F10.3C HA client.
+F10.3A architecture gate and Core prerequisite are CLOSED/CURRENT; F10.3B Luma server
+Realtime composition is REQUIRED NEXT, before F10.3C HA client.
 See `docs/WEB_F9_8B_PHASE9_CLOSURE.md` and the detailed
 `docs/WEB_F9_8A_PHASE9_CLOSURE_AUDIT.md`; F10.1A decision:
 `docs/HA_F10_1A_ARCHITECTURE.md`; F10.2 evidence:
@@ -308,7 +308,7 @@ aquaOneCore    ███████░░░░░ 🟢 STABLE   (7/7 modułów
 
 ### Doser
 - Status: 🟡 Integracja hybrydowa; native Web i streaming OTA CURRENT; G5 bare-board HIL PASS 2026-10-09 (bez pomp i stopni wykonawczych)
-- Następny krok: Phase 10 jest IN PROGRESS; F10.1A/F10.1B/F10.2 CLOSED, F10.3A design CLOSED; Core StreamStart/version prerequisite poprzedza F10.3B Luma server Realtime. Doser MQTT/Discovery migracja pozostaje F10.6.
+- Następny krok: Phase 10 jest IN PROGRESS; F10.1A/F10.1B/F10.2 CLOSED, F10.3A design CLOSED; Core prerequisite CLOSED/CURRENT; F10.3B Luma server Realtime composition is REQUIRED NEXT. Doser MQTT/Discovery migracja pozostaje F10.6.
 - Ryzyko: Średnie/wysokie; wymagane punkty regresji i testy sprzętowe
 
 ### Clima
@@ -351,3 +351,15 @@ F10.3A selected a common TEXT JSON Realtime contract and a one-resource Luma
 resync cohort. Verdict B requires reusable Core StreamStart/version work before
 Luma product composition. This design gate did not implement WS or change the
 current F10.2 polling integration. See `docs/HA_F10_3A_REALTIME_ARCHITECTURE.md`.
+
+## F10.3 Core prerequisite checkpoint
+
+F10.3A and the reusable Core prerequisite are CLOSED/CURRENT after native and
+production checks, classic ESP32 Core Realtime HIL, production Luma restoration,
+and operator-confirmed Home Assistant recovery (same Luma, 13/13 entities,
+no duplicate entry/device/entities). Core StreamStart is public TEXT JSON;
+generic notification frames remain selectable TEXT/BINARY. Per-product API
+version selection defaults to 1.0. Luma, Hydro and Doser remain API 1.0, with
+no product Realtime endpoint or status watermark. F10.3B Luma server Realtime
+composition is REQUIRED NEXT; F10.3C remains the later HA Realtime client gate.
+Evidence: `docs/HA_F10_3_CORE_PREREQUISITE_HIL.md`.

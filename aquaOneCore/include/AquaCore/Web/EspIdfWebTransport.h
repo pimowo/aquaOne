@@ -11,6 +11,7 @@
 #include "AquaCore/Web/HttpStreamingServerTransport.h"
 #include "AquaCore/Web/Realtime.h"
 #include "AquaCore/Web/RealtimeResync.h"
+#include "AquaCore/Web/RealtimeStreamStartWire.h"
 
 namespace AquaCore {
 namespace Web {
@@ -106,7 +107,7 @@ private:
         RealtimeClientToken token {};
         RealtimeStreamStartState state {};
         RealtimeRecoveryState::Generation recoveryGeneration = 0U;
-        uint8_t payload[18U] {};
+        uint8_t payload[STREAM_START_WIRE_CAPACITY] {};
         size_t length = 0U;
         std::atomic<bool> inUse {false};
     };

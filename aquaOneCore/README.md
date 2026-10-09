@@ -551,7 +551,9 @@ The legacy `WebService`/`Esp32WebBackend` remains available for compatibility;
 product WS composition and endpoint Auth policy remain separate open work.
 F10.1B CURRENT `GET /api/system` adds canonical `device_type`, `device_id` and
 `api_protocol_version` (`major: 1`, `minor: 0`) while retaining legacy fields.
-Luma, Hydro and Doser publish their canonical product tokens; SEC-101 remains OPEN.
+`DEFAULT_API_PROTOCOL_VERSION` is 1.0; Core projection composition can supply a
+per-product version without global mutable state. Luma, Hydro and Doser remain
+at 1.0; SEC-101 remains OPEN.
 
 **CURRENT F9.4 foundation:** `WebActionBridge<Command, Capacity>` accepts an
 owned, bounded typed command into a fixed FIFO and invokes the existing
@@ -638,7 +640,14 @@ reports when lifecycle recycle should be considered. A runtime-local recovery
 generation invalidates notification and StreamStart work captured before a
 sticky cycle, including after clear. One transport mutex protects technical state; it is never held
 across `httpd_stop()`, Domain/Application callbacks or snapshot builders.
-The marker byte encoding is an internal compile fixture, not final RT-101 wire.
+**CURRENT StreamStart wire:** `RealtimeStreamStartWire.h` serializes the
+immutable Core StreamStart state as compact WebSocket TEXT JSON. Runtime identity
+uses the canonical 16-character uppercase hexadecimal formatter; sequence is a
+decimal string. The bounded 128-byte caller payload includes a spare NUL byte,
+but the returned frame length excludes it. Failure clears length and leaves the
+caller buffer unchanged; encoding performs no dynamic allocation. Generic
+notification frames remain caller-selected TEXT or BINARY. This public Core
+capability does not mean any product has composed a Realtime endpoint.
 F9.6B has native 402/402 PASS and ESP32 compile/link PASS with runtime skipped.
 F9.6C adds PASS evidence on the pinned Current baseline for Wemos D1 mini
 ESP32 (`esp32dev`, ESP32-D0WD-V3 rev 3.1, 4 MB flash, no PSRAM), including

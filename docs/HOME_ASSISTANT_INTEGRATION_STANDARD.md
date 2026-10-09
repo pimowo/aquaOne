@@ -1,6 +1,6 @@
 # HOME_ASSISTANT_INTEGRATION_STANDARD.md
 
-**Status:** TARGET / ACTIVE DESIGN; F10.1B and F10.2 CURRENT; F10.3A design gate CLOSED
+**Status:** TARGET / ACTIVE DESIGN; F10.1B, F10.2 and F10.3 Core prerequisite CURRENT; F10.3B REQUIRED NEXT
 **Scope:** aquaOne ecosystem
 **Decision:** HA-101 ACCEPTED
 **Version:** 1.0
@@ -213,9 +213,12 @@ identity/API check outside the one-resource resync cohort. The existing API
 version axis advances to 1.1 only for a Luma server offering this contract;
 F10.2 polling clients continue to accept the additional status member.
 
-The Core transport's provisional binary StreamStart and fixed 18-byte marker
-slot require a reusable Core change before product composition. The current
-Luma and HA integrations remain polling-only. F10.3B Luma server work and its
-physical HIL follow that Core prerequisite; F10.3C HA client validation follows
-the server gate. SEC-101 remains OPEN and is nonblocking only for this read-only local
-notification scope; no command authority is added.
+F10.3A is CLOSED and the reusable Core prerequisite is CLOSED/CURRENT. Core
+StreamStart is bounded TEXT JSON, generic notification transport retains
+TEXT/BINARY selection, and per-product API version selection defaults to 1.0.
+The classic ESP32 Core HIL and production Luma/HA restoration evidence are in
+[F10.3 Core prerequisite HIL](HA_F10_3_CORE_PREREQUISITE_HIL.md). Luma, Hydro
+and Doser remain API 1.0; product Realtime remains polling-only/not CURRENT.
+F10.3B Luma server composition is REQUIRED NEXT; F10.3C HA client validation
+follows the server gate. SEC-101 remains OPEN and is nonblocking only for this
+read-only local notification scope; no command authority is added.

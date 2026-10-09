@@ -24,7 +24,7 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 7. **FAZA 7 — Time / Network adaptation (CLOSED)**: dostarczono CURRENT monotonic i wall clock foundation, RTC jako offline UTC source, opcjonalną synchronizację NTP oraz optional Network startup, runtime i live Health.
 8. **FAZA 8 — HTTP + WebSocket feasibility spike (CLOSED)**: F8.1–F8.3C zamknęły feasibility i wybrały `esp_http_server` jako WEB-103 ACCEPTED — TARGET dla przebadanej bazy; production Web nie został zmigrowany.
 9. **FAZA 9 — Production Web + Realtime (CLOSED)**: Core native HTTP/Realtime foundation, F9.6 classic ESP32 HIL oraz produkcyjne migracje HTTP Luma, Hydro i Doser są zakończone. Produkty pozostają bez kompozycji WS. Końcowy checkpoint: F9.8B.
-10. **FAZA 10 - Home Assistant Integration (IN PROGRESS: F10.1A CLOSED; F10.1B CLOSED/CURRENT; F10.2 CLOSED/CURRENT; F10.3A CLOSED design, CORE PREREQUISITE REQUIRED NEXT)**: custom integration `aquaOne`, local HTTP API client, future WebSocket/Realtime client, Config Flow, Zeroconf/mDNS and product-aware entity mapping. F10.1B publishes stable identity and API protocol version. F10.2 delivered the read-only Luma integration, confirmed by real HA HIL. F10.3A chose the public Realtime contract and identified a reusable Core StreamStart/version prerequisite before F10.3B Luma server work; F10.3C HA client follows. F10.4 Luma commands, F10.5 Hydro adapter and F10.6 Doser MQTT replacement remain later. Decisions: [F10.1A](HA_F10_1A_ARCHITECTURE.md), [F10.3A](HA_F10_3A_REALTIME_ARCHITECTURE.md); [F10.2 HIL](HA_F10_2_LUMA_READONLY_HIL.md).
+10. **FAZA 10 - Home Assistant Integration (IN PROGRESS: F10.1A CLOSED; F10.1B CLOSED/CURRENT; F10.2 CLOSED/CURRENT; F10.3A CLOSED; F10.3 Core prerequisite CLOSED/CURRENT; F10.3B REQUIRED NEXT)**: custom integration `aquaOne`, local HTTP API client, future WebSocket/Realtime client, Config Flow, Zeroconf/mDNS and product-aware entity mapping. F10.1B publishes stable identity and API protocol version. F10.2 delivered the read-only Luma integration, confirmed by real HA HIL. F10.3A chose the public Realtime contract; its Core StreamStart/version prerequisite is CLOSED/CURRENT after review and classic ESP32 HIL; F10.3B Luma server work is REQUIRED NEXT; F10.3C HA client follows. F10.4 Luma commands, F10.5 Hydro adapter and F10.6 Doser MQTT replacement remain later. Decisions: [F10.1A](HA_F10_1A_ARCHITECTURE.md), [F10.3A](HA_F10_3A_REALTIME_ARCHITECTURE.md); [F10.2 HIL](HA_F10_2_LUMA_READONLY_HIL.md).
 11. **FAZA 11 — OTA / Backup / Restore / Factory Reset (FUTURE)**: wspólne workflow i recovery.
 12. **FAZA 12 — UI Shell (FUTURE; foundation częściowo CURRENT)**: wspólny shell/design system po stabilizacji kontraktów. Shared Web Theme v1 jest już CURRENT foundation, ale nie zamyka całej fazy.
 13. **FAZA 13 — Reference Empty Device (FUTURE)**: minimalny klient weryfikujący platformę bez domeny.
@@ -52,8 +52,8 @@ hardware-specific diagnostics, migracja legacy `DiagnosticsService` i real Domai
 pozostają TARGET/FUTURE. Produktowa kompozycja Realtime, HA commands, wspólne OTA
 i Backup/Restore pozostają TARGET/FUTURE; Core Realtime jest CURRENT, a Doser ma
 lokalne produkcyjne OTA. F10.1B server identity/API oraz F10.2 Luma HA read-only
-polling są CURRENT. F10.3A design gate jest CLOSED; nazwany Core prerequisite
-poprzedza F10.3B Luma server Realtime, a F10.3C HA client pozostaje późniejszy.
+polling są CURRENT. F10.3A design gate i Core prerequisite są CLOSED/CURRENT;
+F10.3B Luma server Realtime composition jest REQUIRED NEXT, a F10.3C HA client pozostaje późniejszy.
 
 Phase 7 CURRENT rozdziela monotonic timing od UTC `WallClock`: prawidłowy RTC działa offline,
 NTP tylko opcjonalnie synchronizuje RTC, a Network pozostaje opcjonalną infrastrukturą bez

@@ -562,6 +562,31 @@ void testSystemServiceSourceRequiresReadyAuthority() {
     TEST_ASSERT_TRUE(source.read(value));
     TEST_ASSERT_TRUE(value.ready);
     TEST_ASSERT_EQUAL_UINT32(91U, value.uptimeMs);
+    TEST_ASSERT_EQUAL_UINT16(1U, value.apiProtocolVersion.major);
+    TEST_ASSERT_EQUAL_UINT16(0U, value.apiProtocolVersion.minor);
+
+    SystemServiceWebProjectionSource upgraded(system, canonical, {1U, 1U});
+    CoreSystemProjection upgradedValue {};
+    TEST_ASSERT_TRUE(upgraded.read(upgradedValue));
+    TEST_ASSERT_EQUAL_UINT16(1U, upgradedValue.apiProtocolVersion.major);
+    TEST_ASSERT_EQUAL_UINT16(1U, upgradedValue.apiProtocolVersion.minor);
+    TEST_ASSERT_TRUE(source.read(value));
+    TEST_ASSERT_EQUAL_UINT16(0U, value.apiProtocolVersion.minor);
+}
+
+void testProductSelectedVersionSerializesAndInvalidMajorFailsClosed() {
+    Fixture f;
+    TEST_ASSERT_TRUE(f.service.begin(f.enabledConfig()));
+    f.systemSource.value.apiProtocolVersion = {1U, 1U};
+    TEST_ASSERT_TRUE(f.publisher.update().systemPublished);
+    Writer upgraded = f.transport.request("/api/system");
+    TEST_ASSERT_EQUAL_UINT16(200U, upgraded.status);
+    TEST_ASSERT_TRUE(hasApiProtocolVersion(upgraded.body.c_str(), 1, 1));
+
+    f.systemSource.value.apiProtocolVersion = {0U, 1U};
+    TEST_ASSERT_TRUE(f.publisher.update().systemPublished);
+    Writer invalid = f.transport.request("/api/system");
+    TEST_ASSERT_EQUAL_UINT16(503U, invalid.status);
 }
 
 System::StartupStepResult success(void*) {
@@ -620,6 +645,7 @@ void runTests() {
     RUN_TEST(testLifecycleDisabledFailureRetryAndRestart);
     RUN_TEST(testPartialRegistrationIsTerminalAndRuntimeLossIsRecoverable);
     RUN_TEST(testSystemServiceSourceRequiresReadyAuthority);
+    RUN_TEST(testProductSelectedVersionSerializesAndInvalidMajorFailsClosed);
     RUN_TEST(testSys106HandoffKeepsHistoryAndRecoversLiveHealth);
 }
 

@@ -2,6 +2,7 @@
 
 #include "AquaCore/Web/PublishedSnapshot.h"
 #include "AquaCore/Web/RealtimeResync.h"
+#include "AquaCore/Web/RealtimeStreamStartWire.h"
 
 using namespace AquaCore;
 using namespace AquaCore::Web;
@@ -16,6 +17,85 @@ public:
 } }
 
 namespace {
+
+Identity::RuntimeIdentity runtime(uint64_t value);
+RealtimeStreamPosition position(uint64_t value);
+
+void assertStreamStart(uint64_t sequence, const char* expected) {
+    RealtimeStreamStartState state;
+    TEST_ASSERT_TRUE(RealtimeStreamStartState::fromValues(
+        runtime(UINT64_C(0x0123456789ABCDEF)), position(sequence), state));
+    uint8_t output[STREAM_START_WIRE_CAPACITY] {};
+    size_t length = 99U;
+    TEST_ASSERT_TRUE(encodeRealtimeStreamStart(state, output, sizeof(output), length));
+    TEST_ASSERT_EQUAL_STRING(expected, reinterpret_cast<const char*>(output));
+    TEST_ASSERT_EQUAL_UINT32(strlen(expected), length);
+    TEST_ASSERT_EQUAL_UINT8(0U, output[length]);
+    if (sequence == UINT64_MAX) {
+        TEST_ASSERT_EQUAL_UINT32(STREAM_START_WIRE_MAX_LENGTH, length);
+    }
+
+    uint8_t exact[STREAM_START_WIRE_CAPACITY] {};
+    size_t exactLength = 99U;
+    TEST_ASSERT_TRUE(encodeRealtimeStreamStart(state, exact, length + 1U, exactLength));
+    TEST_ASSERT_EQUAL_UINT32(length, exactLength);
+    uint8_t shortOutput[STREAM_START_WIRE_CAPACITY];
+    memset(shortOutput, 0xA5, sizeof(shortOutput));
+    size_t shortLength = 99U;
+    TEST_ASSERT_FALSE(encodeRealtimeStreamStart(state, shortOutput, length, shortLength));
+    TEST_ASSERT_EQUAL_UINT32(0U, shortLength);
+    for (size_t i = 0U; i < sizeof(shortOutput); ++i) {
+        TEST_ASSERT_EQUAL_UINT8(0xA5U, shortOutput[i]);
+    }
+}
+
+void test_stream_start_wire_exact_frames_and_bounds() {
+    RealtimeStreamStartState baseline;
+    TEST_ASSERT_TRUE(RealtimeStreamStartState::fromValues(
+        runtime(UINT64_C(0x0123456789ABCDEF)),
+        RealtimeStreamPosition::beforeFirst(), baseline));
+    uint8_t output[STREAM_START_WIRE_CAPACITY] {};
+    size_t length = 99U;
+    TEST_ASSERT_TRUE(encodeRealtimeStreamStart(baseline, output, sizeof(output), length));
+    TEST_ASSERT_EQUAL_STRING(
+        "{\"type\":\"stream_start\",\"runtime_id\":\"0123456789ABCDEF\",\"position\":{\"kind\":\"before_first\"}}",
+        reinterpret_cast<const char*>(output));
+    TEST_ASSERT_EQUAL_UINT32(90U, length);
+    TEST_ASSERT_EQUAL_UINT8(0U, output[length]);
+    size_t exactLength = 99U;
+    TEST_ASSERT_TRUE(encodeRealtimeStreamStart(baseline, output, length + 1U, exactLength));
+    TEST_ASSERT_EQUAL_UINT32(length, exactLength);
+    size_t shortLength = 99U;
+    TEST_ASSERT_FALSE(encodeRealtimeStreamStart(baseline, output, length, shortLength));
+    TEST_ASSERT_EQUAL_UINT32(0U, shortLength);
+
+    assertStreamStart(1U,
+        "{\"type\":\"stream_start\",\"runtime_id\":\"0123456789ABCDEF\",\"position\":{\"kind\":\"at\",\"sequence\":\"1\"}}");
+    assertStreamStart(10U,
+        "{\"type\":\"stream_start\",\"runtime_id\":\"0123456789ABCDEF\",\"position\":{\"kind\":\"at\",\"sequence\":\"10\"}}");
+    assertStreamStart(UINT64_MAX,
+        "{\"type\":\"stream_start\",\"runtime_id\":\"0123456789ABCDEF\",\"position\":{\"kind\":\"at\",\"sequence\":\"18446744073709551615\"}}");
+}
+
+void test_stream_start_wire_invalid_inputs_leave_storage_unchanged() {
+    RealtimeStreamStartState state;
+    uint8_t output[STREAM_START_WIRE_CAPACITY];
+    memset(output, 0xA5, sizeof(output));
+    size_t length = 99U;
+    TEST_ASSERT_FALSE(encodeRealtimeStreamStart(state, output, sizeof(output), length));
+    TEST_ASSERT_EQUAL_UINT32(0U, length);
+    TEST_ASSERT_FALSE(RealtimeStreamStartState::fromValues(
+        Identity::RuntimeIdentity(), RealtimeStreamPosition::beforeFirst(), state));
+    TEST_ASSERT_FALSE(RealtimeStreamStartState::fromValues(
+        runtime(1U), RealtimeStreamPosition(), state));
+    TEST_ASSERT_FALSE(encodeRealtimeStreamStart(state, output, sizeof(output), length));
+    TEST_ASSERT_EQUAL_UINT8(0xA5U, output[0]);
+    TEST_ASSERT_TRUE(RealtimeStreamStartState::fromValues(
+        runtime(1U), RealtimeStreamPosition::beforeFirst(), state));
+    length = 99U;
+    TEST_ASSERT_FALSE(encodeRealtimeStreamStart(state, nullptr, sizeof(output), length));
+    TEST_ASSERT_EQUAL_UINT32(0U, length);
+}
 
 Identity::RuntimeIdentity runtime(uint64_t value) {
     Identity::RuntimeIdentity output;
@@ -508,6 +588,8 @@ int main(int, char**) {
     RUN_TEST(test_client_gate_connecting_gap_and_generation);
     RUN_TEST(test_connecting_boundary_and_bounded_client_cleanup);
     RUN_TEST(test_recovery_state_is_sticky_and_clear_is_position_checked);
+    RUN_TEST(test_stream_start_wire_exact_frames_and_bounds);
+    RUN_TEST(test_stream_start_wire_invalid_inputs_leave_storage_unchanged);
     return UNITY_END();
 }
 

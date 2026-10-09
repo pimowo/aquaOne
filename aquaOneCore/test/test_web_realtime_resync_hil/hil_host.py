@@ -74,9 +74,9 @@ class RawWebSocket:
             payload = self._read_exact(length)
         if opcode == 8:
             raise EOFError("WS close frame")
-        if opcode != 2:
+        if opcode not in (1, 2):
             raise HilFailure(f"unexpected opcode {opcode}")
-        return parse_frame(payload)
+        return parse_frame(payload, opcode)
 
     def close(self):
         try:
@@ -86,15 +86,34 @@ class RawWebSocket:
         self.sock.close()
 
 
-def parse_frame(payload):
-    if len(payload) == 18 and payload[0] == 1:
-        return {
-            "type": "start",
-            "runtime": f"{struct.unpack_from('<Q', payload, 1)[0]:016x}",
-            "kind": "before-first" if payload[9] == 1 else "at",
-            "sequence": struct.unpack_from("<Q", payload, 10)[0],
-        }
-    if len(payload) == 256 and payload[0] == 2:
+def parse_frame(payload, opcode):
+    if opcode == 1:
+        try:
+            marker = json.loads(payload.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise HilFailure("invalid TEXT StreamStart JSON") from exc
+        if not isinstance(marker, dict) or set(marker) != {"type", "runtime_id", "position"}:
+            raise HilFailure("invalid StreamStart fields")
+        runtime = marker["runtime_id"]
+        position = marker["position"]
+        if marker["type"] != "stream_start" or not isinstance(runtime, str) or \
+                len(runtime) != 16 or any(c not in "0123456789ABCDEF" for c in runtime) or \
+                int(runtime, 16) == 0 or not isinstance(position, dict):
+            raise HilFailure("invalid StreamStart identity or position")
+        if position == {"kind": "before_first"}:
+            kind, sequence = "before-first", 0
+        elif set(position) == {"kind", "sequence"} and position["kind"] == "at" and \
+                isinstance(position["sequence"], str) and \
+                position["sequence"] and \
+                all(c in "0123456789" for c in position["sequence"]) and \
+                str(int(position["sequence"])) == position["sequence"] and \
+                0 < int(position["sequence"]) <= 0xFFFFFFFFFFFFFFFF:
+            kind, sequence = "at", int(position["sequence"])
+        else:
+            raise HilFailure("invalid StreamStart position")
+        return {"type": "start", "runtime": runtime.lower(),
+                "kind": kind, "sequence": sequence}
+    if opcode == 2 and len(payload) == 256 and payload[0] == 2:
         return {
             "type": "notification",
             "runtime": f"{struct.unpack_from('<Q', payload, 1)[0]:016x}",
@@ -102,7 +121,7 @@ def parse_frame(payload):
             "revision": struct.unpack_from("<I", payload, 17)[0],
             "checksum": struct.unpack_from("<I", payload, 21)[0],
         }
-    raise HilFailure(f"unknown frame length/type: {len(payload)}/{payload[:1]!r}")
+    raise HilFailure(f"unknown frame opcode/length/type: {opcode}/{len(payload)}/{payload[:1]!r}")
 
 
 class Harness:

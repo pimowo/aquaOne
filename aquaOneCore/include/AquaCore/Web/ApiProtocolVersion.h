@@ -11,7 +11,7 @@ struct ApiProtocolVersion {
 };
 
 // Independent of firmware, Core and future HA integration release versions.
-constexpr ApiProtocolVersion CURRENT_API_PROTOCOL_VERSION {1U, 0U};
+constexpr ApiProtocolVersion DEFAULT_API_PROTOCOL_VERSION {1U, 0U};
 
 } // namespace Web
 } // namespace AquaCore

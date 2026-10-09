@@ -14,13 +14,16 @@ class SystemServiceWebProjectionSource final
 public:
     SystemServiceWebProjectionSource(
         const SystemService& source,
-        const Identity::DeviceIdentity& canonicalIdentity
-    ) : source_(source), canonicalIdentity_(canonicalIdentity) {}
+        const Identity::DeviceIdentity& canonicalIdentity,
+        ApiProtocolVersion apiProtocolVersion = DEFAULT_API_PROTOCOL_VERSION
+    ) : source_(source), canonicalIdentity_(canonicalIdentity),
+        apiProtocolVersion_(apiProtocolVersion) {}
     bool read(CoreSystemProjection& out) const override;
 
 private:
     const SystemService& source_;
     const Identity::DeviceIdentity& canonicalIdentity_;
+    ApiProtocolVersion apiProtocolVersion_;
 };
 
 class DiagnosticsServiceWebProjectionSource final

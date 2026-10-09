@@ -19,7 +19,7 @@ struct CoreSystemProjection {
 
     DeviceIdentity identity {};
     Identity::DeviceIdentity canonicalIdentity {};
-    ApiProtocolVersion apiProtocolVersion {CURRENT_API_PROTOCOL_VERSION};
+    ApiProtocolVersion apiProtocolVersion {DEFAULT_API_PROTOCOL_VERSION};
     char aquaCoreVersion[CORE_VERSION_CAPACITY] {};
     uint32_t uptimeMs = 0U;
     RestartReason restartReason = RestartReason::Unknown;
