@@ -2800,3 +2800,25 @@ CURRENT. SEC-101 remains OPEN; Doser MQTT/Discovery stays LEGACY CURRENT until F
 - TEST: runtime evidence na fizycznym hardware dla wybranych scenariuszy.
 
 Nie wpisujemy do standardu konkretnych limitów ani timeoutów bez pomiarów.
+
+
+## F10.2 ? Luma read-only Home Assistant checkpoint (2026-10-09)
+
+F10.2 is CLOSED/CURRENT for the read-only Luma integration. The Python `aquaone`
+custom integration and pure tests are present. Operator-reported physical HIL in
+Home Assistant confirmed installation and restart loading, manual setup against the
+production classic ESP32 Luma, one device with 13 Polish-translated sensors,
+duplicate rejection, unavailable state during device power loss, automatic recovery,
+integration reload and normal Core restart. Invalid device time and health error
+were presented as semantic values while the sensors remained available.
+
+The exact Home Assistant Core version and exact passive HTTP request count were not
+captured. A live synthetic identity mismatch test was not run. These limits are
+recorded in [F10.2 HIL evidence](HA_F10_2_LUMA_READONLY_HIL.md); no unobserved results
+are inferred. No firmware or production source changes were part of this checkpoint.
+
+Phase 10 remains IN PROGRESS. F10.3 is REQUIRED NEXT after review of the Luma
+product server WebSocket composition, coherent snapshot cohort and public wire
+contract. The HA integration remains polling-only; commands are not implemented.
+F10.4 commands, F10.5 Hydro and F10.6 Doser MQTT replacement remain future.
+`/api/capabilities` and Zeroconf/mDNS remain FUTURE; SEC-101 remains OPEN.

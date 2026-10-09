@@ -180,6 +180,25 @@ firmware API or product Realtime changed at this gate; Doser MQTT remains LEGACY
 F10.1B is CLOSED/CURRENT after native tests and physical identity, stability and reboot
 checks on classic ESP32 Luma and ESP32-S3 Doser. The common system API now supplies the
 stable identity and version prerequisite for F10.2. Phase 10 remains IN PROGRESS;
-F10.2 read-only Luma integration is REQUIRED NEXT. The HA custom integration, product
-WebSocket, `/api/capabilities` and Zeroconf service are not CURRENT. SEC-101 remains OPEN;
+F10.2 Luma read-only integration is now CLOSED/CURRENT after real Home Assistant HIL.
+See [F10.2 evidence](HA_F10_2_LUMA_READONLY_HIL.md). Product WebSocket,
+`/api/capabilities` and Zeroconf service are not CURRENT. SEC-101 remains OPEN;
 Doser MQTT/Discovery remains LEGACY CURRENT until F10.6.
+
+
+## F10.2 Luma read-only checkpoint (2026-10-09)
+
+The `aquaone` custom integration installs and loads in the operator's Home Assistant
+environment, completes manual setup against the production classic ESP32 Luma, and
+creates one device with 13 read-only sensors. Operator-reported HIL covered duplicate
+setup rejection, unavailable state while the same device was powered off, automatic
+recovery, integration reload and normal Core restart. `timeValid=false` and health
+error were visible while entities remained available, confirming that device semantics
+are separate from transport availability. The exact HA Core version and passive HTTP
+request count were not captured; live synthetic identity mismatch was not run.
+
+The checkpoint closes F10.2 for its read-only scope. Phase 10 remains IN PROGRESS;
+F10.3 is REQUIRED NEXT only after review of the Luma server's product WebSocket,
+cohort and public wire contract. No HA WebSocket subscriber or Luma commands are
+CURRENT. F10.4 commands, F10.5 Hydro, F10.6 Doser MQTT replacement, `/api/capabilities`
+and Zeroconf remain future. SEC-101 remains OPEN.

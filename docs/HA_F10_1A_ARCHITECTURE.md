@@ -4,9 +4,9 @@
 **Baseline:** `46e7e7220d26ed11476fe0323e5d847957807ac3` (`main == origin/main`)
 **Verdict:** **B — SERVER PREREQUISITE REQUIRED.** F10.1B must publish a stable device identity and an explicit API compatibility contract before F10.2 creates HA config entries or entities. This is a design checkpoint only.
 
-**Current checkpoint (F10.1B, 2026-10-09): F10.1A CLOSED; F10.1B CLOSED/CURRENT.** The F10.1A audit and blocker table below record the state at that design gate. Common `GET /api/system` now publishes canonical `device_type` (`luma`, `hydro`, `doser`), `device_id` (12 uppercase hex characters from the ESP32 factory/default base MAC48) and `api_protocol_version` (`major: 1`, `minor: 0`) while retaining legacy fields. Luma's existing read-only status schema is covered by this API major. Physical identity and reboot stability passed on classic ESP32 Luma and ESP32-S3 Doser; the Luma test completed 9/9 cases and 13 stable system samples over 62.66 s. AP/STA states were not exhaustively toggled.
+**Current checkpoint (F10.2, 2026-10-09): F10.1A and F10.1B CLOSED; F10.2 CLOSED/CURRENT.** The historical F10.1A audit and blocker table below record the state at that design gate. Common `GET /api/system` now publishes canonical `device_type` (`luma`, `hydro`, `doser`), `device_id` (12 uppercase hex characters from the ESP32 factory/default base MAC48) and `api_protocol_version` (`major: 1`, `minor: 0`) while retaining legacy fields. Luma's existing read-only status schema is covered by this API major. Physical identity and reboot stability passed on classic ESP32 Luma and ESP32-S3 Doser; the Luma test completed 9/9 cases and 13 stable system samples over 62.66 s. AP/STA states were not exhaustively toggled.
 
-Phase 9 is CLOSED; Phase 10 is IN PROGRESS. **F10.2 Luma read-only integration is REQUIRED NEXT**; the HA custom integration is not implemented yet. Product WS, `/api/capabilities` and mDNS/Zeroconf remain future work. SEC-101 remains OPEN, and Doser MQTT/Discovery remains LEGACY CURRENT until F10.6.
+Phase 9 is CLOSED; Phase 10 is IN PROGRESS. **F10.3 Realtime reconnect/resync is REQUIRED NEXT**, after review of the Luma product server WebSocket, coherent cohort and public wire contract. F10.2 Luma read-only polling is CURRENT. Product WS, `/api/capabilities` and mDNS/Zeroconf remain future work. SEC-101 remains OPEN, and Doser MQTT/Discovery remains LEGACY CURRENT until F10.6.
 
 ## Baseline and authority
 
@@ -88,4 +88,14 @@ Future tests: pure client tests with fake HTTP responses for bounded JSON, timeo
 | NICE TO HAVE | Discovery service/TXT, configuration URL metadata, finer hardware/model description, read-only capability flags. | Manual flow and static adapter work without them. |
 | FUTURE | `/api/capabilities`, production product WS/cohort/wire/auth, dynamic entities, Hydro/Doser adapters, SEC-101 final auth and Doser MQTT retirement. | Needed at later gates, not for Luma polling. |
 
-**Exact next step:** F10.1B server identity/API prerequisite, scoped to the common system projection/serialization and Luma compatibility contract with tests and product composition evidence. After its checkpoint, implement the shared Python client and F10.2 Luma read-only flow/entities in the accepted F10 sequence. F10.1A does not implement F10.1B or F10.2.
+**Historical exact next step at the F10.1A gate:** F10.1B server identity/API prerequisite, scoped to the common system projection/serialization and Luma compatibility contract with tests and product composition evidence. After its checkpoint, implement the shared Python client and F10.2 Luma read-only flow/entities in the accepted F10 sequence. F10.1A does not implement F10.1B or F10.2.
+
+
+## F10.2 checkpoint outcome
+
+The operator-reported real HA HIL confirmed setup against production classic ESP32 Luma,
+one device and 13 sensors, duplicate rejection, unavailability during device power loss,
+automatic recovery, integration reload and Core restart. Invalid time and device health
+were shown as semantic values while entities remained available. Exact HA Core version
+and passive HTTP request count were not captured; synthetic live identity mismatch was
+not run. See [sanitized HIL evidence](HA_F10_2_LUMA_READONLY_HIL.md).

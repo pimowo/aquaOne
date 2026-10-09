@@ -1,7 +1,7 @@
 # Project Matrix — Status i Integracja Core
 
 **Snapshot date:** 2026-10-09
-**Snapshot scope:** F10.1B server identity/API checkpoint after F9.8B Phase 9 closure
+**Snapshot scope:** F10.2 Luma read-only Home Assistant checkpoint after F9.8B Phase 9 closure
 
 Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla bieżącego
 checkpointu. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
@@ -9,18 +9,24 @@ checkpointu. Nie definiuje architektury docelowej ani kolejności przyszłych pr
 F9.8B: Phase 9 is CLOSED. Core Realtime WS/resync is CURRENT and passed classic
 ESP32 HIL; Luma, Hydro and Doser production HTTP is native, while product
 WS/cohorts/notifications are absent. Phase 10 is IN PROGRESS: F10.1A is CLOSED,
-F10.1B server identity/API is CLOSED/CURRENT and F10.2 Luma read-only is REQUIRED NEXT.
-The HA custom integration is not implemented yet.
+F10.1B server identity/API and F10.2 Luma read-only integration are CLOSED/CURRENT;
+F10.3 Realtime reconnect/resync is REQUIRED NEXT after product WS contract review.
 See `docs/WEB_F9_8B_PHASE9_CLOSURE.md` and the detailed
 `docs/WEB_F9_8A_PHASE9_CLOSURE_AUDIT.md`; F10.1A decision:
-`docs/HA_F10_1A_ARCHITECTURE.md`.
+`docs/HA_F10_1A_ARCHITECTURE.md`; F10.2 evidence:
+`docs/HA_F10_2_LUMA_READONLY_HIL.md`.
 
 F10.1B CURRENT common `GET /api/system` adds canonical `device_type` (`luma`, `hydro`,
 `doser`), `device_id` from the factory/default base MAC48 of the current ESP32-family
 implementation, and `api_protocol_version` 1.0 while retaining legacy fields. Physical
 identity and reboot stability passed on classic ESP32 Luma and ESP32-S3 Doser. The
 Luma status schema remained available; SEC-101 remains OPEN. `/api/capabilities`,
-mDNS/Zeroconf and production product WS remain FUTURE.
+mDNS/Zeroconf and production product WS remain FUTURE. F10.2 adds a read-only
+Luma integration in `homeassistant/custom_components/aquaone`; physical HA Core
+version was not captured during HIL. The reported test demonstrated setup, 13 Polish-
+translated sensors, semantic health/time values, duplicate rejection, unavailable/recovery
+on device power loss, integration reload and Core restart. Exact passive HTTP request
+count and live identity-mismatch behavior were not measured.
 
 ## HA-101 target update
 
@@ -335,5 +341,6 @@ Docelowe rozszerzenia platformy obejmują Commands, Events, Alarms, Safety,
 Maintenance, Registry, produktową kompozycję Realtime, Home Assistant client integration,
 wspólne OTA, Backup/Restore, Factory Reset oraz pełną Application lifecycle/composition.
 Core Realtime foundation jest CURRENT, bez produkcyjnego WS w Luma/Hydro/Doser.
-Phase 9 jest CLOSED po F9.8B; Phase 10 jest IN PROGRESS po F10.1A i F10.1B,
-bez implementacji integracji HA. F10.2 Luma read-only jest REQUIRED NEXT.
+Phase 9 jest CLOSED po F9.8B; Phase 10 jest IN PROGRESS po F10.1A, F10.1B
+i F10.2. Luma HA read-only polling jest CURRENT; product Realtime, commands
+i pozosta?e adaptery produkt?w pozostaj? przysz?ym zakresem.

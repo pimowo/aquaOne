@@ -1,0 +1,36 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Połącz z aquaOne Luma",
+        "description": "Podaj lokalny adres urządzenia Luma.",
+        "data": {"host": "Nazwa hosta lub adres IP", "port": "Port"}
+      }
+    },
+    "error": {
+      "cannot_connect": "Nie można połączyć się z urządzeniem",
+      "invalid_device": "Urządzenie zwróciło nieprawidłową lub niedostępną odpowiedź",
+      "unsupported_protocol": "Urządzenie używa nieobsługiwanej wersji API",
+      "unsupported_product": "Ten produkt aquaOne nie jest jeszcze obsługiwany",
+      "unknown": "Wystąpił nieoczekiwany błąd"
+    },
+    "abort": {"already_configured": "To urządzenie jest już skonfigurowane", "already_in_progress": "Konfiguracja już trwa"}
+  },
+  "entity": {
+    "sensor": {
+      "mode": {"name": "Tryb", "state": {"normal": "Normalny", "service": "Serwisowy", "manual": "Ręczny", "channel_test": "Test kanału", "preview": "Podgląd", "simulation": "Symulacja", "off": "Wyłączony"}},
+      "active_profile": {"name": "Aktywny profil"},
+      "day_state": {"name": "Pora dnia", "state": {"day": "Dzień", "night": "Noc"}},
+      "time_valid": {"name": "Poprawność czasu", "state": {"valid": "Poprawny", "invalid": "Niepoprawny"}},
+      "overall_health": {"name": "Stan systemu", "state": {"ok": "Prawidłowy", "unknown": "Nieznany", "warning": "Ostrzeżenie", "error": "Błąd"}},
+      "channel_1_final_level": {"name": "Obliczone wyjście kanału 1"},
+      "channel_2_final_level": {"name": "Obliczone wyjście kanału 2"},
+      "channel_3_final_level": {"name": "Obliczone wyjście kanału 3"},
+      "channel_4_final_level": {"name": "Obliczone wyjście kanału 4"},
+      "channel_5_final_level": {"name": "Obliczone wyjście kanału 5"},
+      "channel_6_final_level": {"name": "Obliczone wyjście kanału 6"},
+      "channel_7_final_level": {"name": "Obliczone wyjście kanału 7"},
+      "channel_8_final_level": {"name": "Obliczone wyjście kanału 8"}
+    }
+  }
+}

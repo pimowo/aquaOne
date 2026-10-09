@@ -1,0 +1,36 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect an aquaOne Luma",
+        "description": "Enter the local address of your Luma device.",
+        "data": {"host": "Host or IP address", "port": "Port"}
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the device",
+      "invalid_device": "The device returned an invalid or inaccessible response",
+      "unsupported_protocol": "The device uses an unsupported API version",
+      "unsupported_product": "This aquaOne product is not supported yet",
+      "unknown": "An unexpected error occurred"
+    },
+    "abort": {"already_configured": "This device is already configured", "already_in_progress": "Setup is already in progress"}
+  },
+  "entity": {
+    "sensor": {
+      "mode": {"name": "Mode", "state": {"normal": "Normal", "service": "Service", "manual": "Manual", "channel_test": "Channel test", "preview": "Preview", "simulation": "Simulation", "off": "Off"}},
+      "active_profile": {"name": "Active profile"},
+      "day_state": {"name": "Day state", "state": {"day": "Day", "night": "Night"}},
+      "time_valid": {"name": "Time validity", "state": {"valid": "Valid", "invalid": "Invalid"}},
+      "overall_health": {"name": "System health", "state": {"ok": "OK", "unknown": "Unknown", "warning": "Warning", "error": "Error"}},
+      "channel_1_final_level": {"name": "Channel 1 calculated output"},
+      "channel_2_final_level": {"name": "Channel 2 calculated output"},
+      "channel_3_final_level": {"name": "Channel 3 calculated output"},
+      "channel_4_final_level": {"name": "Channel 4 calculated output"},
+      "channel_5_final_level": {"name": "Channel 5 calculated output"},
+      "channel_6_final_level": {"name": "Channel 6 calculated output"},
+      "channel_7_final_level": {"name": "Channel 7 calculated output"},
+      "channel_8_final_level": {"name": "Channel 8 calculated output"}
+    }
+  }
+}
