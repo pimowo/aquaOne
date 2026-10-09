@@ -501,18 +501,19 @@ snprintf(config.apPassword, sizeof(config.apPassword), "%s", "setup123");
 
 HTTP server with routing, provider pattern.
 
-**CURRENT:** `Esp32WebBackend` uses the legacy Arduino `WebServer` for HTTP.
-**TARGET (WEB-103):** native ESP-IDF `esp_http_server` on Arduino-ESP32 is
-selected for HTTP + WebSocket. Production migration is Phase 9; it is not yet
-implemented here.
+**Legacy adapter:** `Esp32WebBackend` continues to provide the Arduino
+`WebServer` API for compatibility and regression. The production Web migration
+for Luma, Hydro and Doser is complete: those products use native
+`EspIdfWebTransport` + `NativeWebService`. Core also provides optional WS and
+Realtime resync capability; no product currently composes a WS endpoint.
 
 **CURRENT ESP32 Core baseline:** `aquaOneCore/platformio.ini` pins pioarduino
 `platform-espressif32` 53.03.13 from its exact release asset. That release uses
 Arduino-ESP32 3.1.3 and ESP-IDF base 5.3.2 for the `esp32dev` profile. This is
 the baseline used by the F9.6C classic ESP32 HIL. Phase 8 remains historical
 feasibility evidence on `platformio/espressif32@6.13.0`, Arduino-ESP32 2.0.17
-and ESP-IDF 4.4.7. Product projects retain their independent unpinned platform
-declarations until TOOLCHAIN-2 aligns them with the accepted Core baseline.
+and ESP-IDF 4.4.7. Luma, Hydro and Doser production profiles also pin pioarduino
+53.03.13; unbuilt product profiles require their own TOOLCHAIN-2 assessment.
 
 **CURRENT F9.2 foundation:** `EspIdfWebTransport` is an application-owned
 `esp_http_server` transport alongside the legacy backend. It has fixed, bounded
@@ -520,19 +521,19 @@ GET/POST registration frozen before start, one HTTPD handle/port, a single 404
 handler, and begin/stop/restart lifecycle. Callbacks run in the HTTPD server
 task. The original F9.2 surface accepted bodyless routes only; F9.7C now adds
 the bounded normal-body contract described below. Snapshot publication,
-serialized actions, upload/Auth and Realtime semantics are separate layers. Most
-products still use `Esp32WebBackend` and the Arduino `WebServer`; the
-uncheckpointed F9.7D1 Luma candidate is the first native production cutover.
-Legacy body/upload behavior, including `maxBodyLength == 0`, requires an
-explicit compatibility decision during F9.7/WEB-102 migration.
+serialized actions, upload/Auth and Realtime semantics are separate layers.
+Luma, Hydro and Doser have since completed their native production HTTP
+cutovers; product Realtime remains uncomposed. Legacy body/upload behavior,
+including `maxBodyLength == 0`, remains part of the legacy adapter contract.
 
 **CURRENT F9.3 foundation:** `PublishedSnapshot<T>` lets one Application writer
 publish a bounded, self-contained typed Web projection. Readers obtain their own
 copy under a borrowed synchronizer, then serialize after unlock; before the
 first publish and after invalidation, the resource is unavailable. ESP32 uses
-an owner-held static FreeRTOS mutex. This projection is not Domain authority;
-watermark/resync and Realtime semantics are still later Phase 9 work. No product
-composition uses this foundation yet.
+an owner-held static FreeRTOS mutex. This projection is not Domain authority.
+F9.6 later added `RealtimeSnapshot<T>` watermarks and coherent resync cohorts.
+Luma, Hydro and Doser use published snapshots for HTTP, but none composes a
+product Realtime cohort or WS endpoint.
 
 **CURRENT F9.7B integration:** `NativeWebService` adds the built-in GET routes
 `/`, `/assets/aqua.css`, `/api/system` and `/api/diagnostics` over the narrow
@@ -542,9 +543,10 @@ the system and diagnostics projections through `CoreWebProjectionPublisher` in
 its serialized tick. The transitional source adapters are the only layer that
 reads `SystemService` and `DiagnosticsService`. `WebStartup` is an optional
 `INTERFACES_INIT` participant and `WebHealthProvider` contributes live Web
-health through SYS-106. The native HTTP path has no transport polling. Most
-products still use the legacy `WebService`/`Esp32WebBackend`; Auth and further
-product migration remain later Phase 9 work.
+health through SYS-106. The native HTTP path has no transport polling. F9.7
+subsequently migrated Luma, Hydro and Doser production HTTP to this transport.
+The legacy `WebService`/`Esp32WebBackend` remains available for compatibility;
+product WS composition and endpoint Auth policy remain separate open work.
 
 **CURRENT F9.4 foundation:** `WebActionBridge<Command, Capacity>` accepts an
 owned, bounded typed command into a fixed FIFO and invokes the existing
@@ -566,8 +568,9 @@ implementation capacity for the first small action cohort, not a platform or
 product-wide standard. `EspIdfWebTransport` receives partial body reads into
 owner-held fixed storage and exposes a callback-scoped, length-authoritative
 `HttpRouteRequest` view. Oversize bodies receive 413; incomplete/error receives
-400 and closes the session with unread bytes. Multipart/upload remains a
-separate future streaming path. A route must parse and copy a self-contained
+400 and closes the session with unread bytes. This generic normal-body
+foundation does not define multipart; Doser's product-local streaming OTA was
+added and HIL-verified in F9.7G. A route must parse and copy a self-contained
 typed command before crossing tasks. `NativeActionBoundary` reuses
 `WebActionBridge`: queue-full/pre-acceptance infrastructure failure suggests
 503, completed results are preserved, and accepted timeout remains outcome
@@ -578,7 +581,7 @@ paths. Legacy `WebRouteOptions` behavior remains unchanged; the
 final error envelope, compatibility statuses, Auth and product routes remain
 open under WEB-101/WEB-102.
 
-**CURRENT F9.7D1 candidate:** `NativeWebService::addPage()` borrows a small,
+**Historical F9.7D1 integration:** `NativeWebService::addPage()` borrows a small,
 fixed set of static/projection-safe `WebPageProvider` instances before begin.
 The root provider does not register another physical `/` route; the built-in
 root renders it inside the shared shell. Other pages are GET/bodyless and run
@@ -590,7 +593,7 @@ metadata lock. Accepted timeout does not cancel or retry. Luma uses this bridge
 to preserve its exact `FirmwareCommandResult`; `WebActionBridge` remains the
 separate CommandPipeline-backed primitive.
 
-**CURRENT F9.5 foundation:** one optional WS endpoint belongs to the same
+**CURRENT Core WS transport capability (F9.5, extended by F9.6):** one optional WS endpoint belongs to the same
 `EspIdfWebTransport` HTTPD handle. Application assigns its own RuntimeIdentity
 and Realtime stream sequence, copies a bounded prepared frame into an owned
 work slot, then queues work for the HTTPD task. Acceptance means only that
@@ -599,8 +602,9 @@ acknowledgement. The fixed four-slot pool and 256-byte payload are F9.5
 implementation capacities, not protocol limits. Publication and stop share a
 lifecycle mutex; stop releases it before blocking in `httpd_stop()` and reclaims
 slots only after server callbacks end. Incoming bounded frames are consumed and
-rejected without invoking Domain commands. EventSequence, wire envelope, Auth,
-snapshot watermark/resync and final backpressure policy remain deferred.
+rejected without invoking Domain commands. F9.6 subsequently added snapshot
+watermark/resync and measured backpressure recovery as described below.
+EventSequence, final wire envelope and Auth remain open.
 
 **CURRENT F9.6B foundation:** `RealtimeStreamPosition` represents either
 `BeforeFirst` or a legal `RealtimeStreamSequence`; sequence zero stays invalid,
@@ -710,11 +714,10 @@ Providery i własne trasy należy zarejestrować przed `web.begin()`.
 - `addPage(WebPageProvider&)` — Register provider
 - `addApi(WebApiProvider&)` — Register API provider
 
-**Zastosowanie:**
-- aquaOneLuma ✅
-- aquaOneHydro ✅
-- aquaOneGas ❌ (planned)
-- aquaOneDoser ✅ (jeden Esp32WebBackend/WebService + lokalny WebManager dla domain policy)
+**Status przykładu:** ten przykład dokumentuje legacy `WebService` API i nie
+opisuje bieżących produkcyjnych kompozycji Luma/Hydro/Doser. Te trzy produkty
+używają obecnie `EspIdfWebTransport` + `NativeWebService`; stare adaptery
+pozostają dostępne dla regresji/kompatybilności.
 
 ---
 

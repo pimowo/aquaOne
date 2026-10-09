@@ -1,14 +1,15 @@
 # Project Matrix — Status i Integracja Core
 
 **Snapshot date:** 2026-10-09
-**Snapshot base commit:** 1302d70 plus F9.8A documentation audit
+**Snapshot base commit:** 2259695 plus F9.8B closure
 
 Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla wskazanego
 commita. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
 
-F9.8A: Core Realtime WS/resync is CURRENT and passed classic ESP32 HIL; Luma,
-Hydro and Doser production HTTP is native, while product WS/cohorts/notifications
-are absent. Phase 9 is IN PROGRESS, ready for separate F9.8B closure. See
+F9.8B: Phase 9 is CLOSED. Core Realtime WS/resync is CURRENT and passed classic
+ESP32 HIL; Luma, Hydro and Doser production HTTP is native, while product
+WS/cohorts/notifications are absent. Phase 10 is REQUIRED NEXT, NOT STARTED.
+See `docs/WEB_F9_8B_PHASE9_CLOSURE.md` and the detailed
 `docs/WEB_F9_8A_PHASE9_CLOSURE_AUDIT.md`.
 
 ## HA-101 target update
@@ -99,7 +100,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Hardware | Relay drivers, PWM pump control | |
 | MQTT/HA | LEGACY CURRENT / LOCAL | Istniejące PubSubClient, MqttManager, HaDiscovery i około 205 encji pozostają do migracji Dosera; nie są TARGET Core ani docelowym modelem encji HA |
 | **Web W1/W1.5** | DONE, historyczny | Legacy `WebManager`/`DoserWebRuntime` pozostaje w drzewie dla regresji/cleanup, bez produkcyjnego ownership |
-| **Następny etap Web** | F9.7G4/G5 CLOSED | Produktowy WS wymaga osobnego cutover przed użyciem przez klienta; wspólne OTA dopiero Phase 11 |
+| **Web boundary** | F9.7G4/G5 CLOSED | Produktowy WS wymaga osobnego cutover przed użyciem przez klienta; wspólne OTA dopiero Phase 11 |
 | **Ryzyko dalszej migracji** | Średnie/wysokie | Lokalna domena działa i nie może zostać naruszona |
 
 ---
@@ -289,7 +290,7 @@ aquaOneCore    ███████░░░░░ 🟢 STABLE   (7/7 modułów
 
 ### Doser
 - Status: 🟡 Integracja hybrydowa; native Web i streaming OTA CURRENT; G5 bare-board HIL PASS 2026-10-09 (bez pomp i stopni wykonawczych)
-- Następny krok: F9.8B checkpoint zamknięcia Phase 9; produktowy WS wymaga osobnego zatwierdzonego zakresu, MQTT/Discovery pozostaje legacy do F10.6
+- Następny krok: Phase 10 jest REQUIRED NEXT, NOT STARTED; Doser MQTT/Discovery migracja w F10.6; produktowy WS wymaga osobnego zatwierdzonego zakresu
 - Ryzyko: Średnie/wysokie; wymagane punkty regresji i testy sprzętowe
 
 ### Clima
@@ -324,3 +325,4 @@ Docelowe rozszerzenia platformy obejmują Commands, Events, Alarms, Safety,
 Maintenance, Registry, produktową kompozycję Realtime, Home Assistant client integration,
 wspólne OTA, Backup/Restore, Factory Reset oraz pełną Application lifecycle/composition.
 Core Realtime foundation jest CURRENT, bez produkcyjnego WS w Luma/Hydro/Doser.
+Phase 9 jest CLOSED po F9.8B; Phase 10 jest REQUIRED NEXT, NOT STARTED.

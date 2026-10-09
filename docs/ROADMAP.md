@@ -23,12 +23,12 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 6. **FAZA 6 — Diagnostics / Registry (CLOSED)**: dostarczono typed diagnostics foundation i statyczny registry do enumeracji.
 7. **FAZA 7 — Time / Network adaptation (CLOSED)**: dostarczono CURRENT monotonic i wall clock foundation, RTC jako offline UTC source, opcjonalną synchronizację NTP oraz optional Network startup, runtime i live Health.
 8. **FAZA 8 — HTTP + WebSocket feasibility spike (CLOSED)**: F8.1–F8.3C zamknęły feasibility i wybrały `esp_http_server` jako WEB-103 ACCEPTED — TARGET dla przebadanej bazy; production Web nie został zmigrowany.
-9. **FAZA 9 — Production Web + Realtime (IN PROGRESS; READY FOR F9.8B CLOSURE)**: Core Realtime foundation i F9.6 classic ESP32 HIL są zakończone, podobnie jak produkcyjne migracje HTTP Luma, Hydro i Doser. F9.8A uznał fazę za możliwą do zamknięcia; końcowy checkpoint F9.8B pozostaje. Produkty nie komponują jeszcze WS.
-10. **FAZA 10 — Home Assistant Integration**: custom integration `aquaOne`, lokalny HTTP API client, WebSocket/Realtime client, Config Flow, Zeroconf/mDNS, Luma reference adapter, reconnect/resync i product-aware entity mapping. Plan: F10.1 architecture/client library; F10.2 Luma read-only; F10.3 Realtime reconnect/resync; F10.4 Luma commands; F10.5 Hydro adapter; F10.6 Doser MQTT replacement.
-11. **FAZA 11 — OTA / Backup / Restore / Factory Reset**: wspólne workflow i recovery.
-12. **FAZA 12 — UI Shell**: wspólny shell/design system po stabilizacji kontraktów. Shared Web Theme v1 jest już CURRENT foundation, ale nie zamyka całej fazy.
-13. **FAZA 13 — Reference Empty Device**: minimalny klient weryfikujący platformę bez domeny.
-14. **FAZA 14 — First real Domain migration**: wybór projektu dopiero po gotowej platformie.
+9. **FAZA 9 — Production Web + Realtime (CLOSED)**: Core native HTTP/Realtime foundation, F9.6 classic ESP32 HIL oraz produkcyjne migracje HTTP Luma, Hydro i Doser są zakończone. Produkty pozostają bez kompozycji WS. Końcowy checkpoint: F9.8B.
+10. **FAZA 10 — Home Assistant Integration (REQUIRED NEXT; NOT STARTED)**: custom integration `aquaOne`, lokalny HTTP API client, przyszły WebSocket/Realtime client, Config Flow, Zeroconf/mDNS, Luma reference adapter, reconnect/resync i product-aware entity mapping. Plan: F10.1 architecture/client library; F10.2 Luma read-only; F10.3 Realtime reconnect/resync; F10.4 Luma commands; F10.5 Hydro adapter; F10.6 Doser MQTT replacement. Każdy WS client wymaga wcześniej gotowego product server cutover.
+11. **FAZA 11 — OTA / Backup / Restore / Factory Reset (FUTURE)**: wspólne workflow i recovery.
+12. **FAZA 12 — UI Shell (FUTURE; foundation częściowo CURRENT)**: wspólny shell/design system po stabilizacji kontraktów. Shared Web Theme v1 jest już CURRENT foundation, ale nie zamyka całej fazy.
+13. **FAZA 13 — Reference Empty Device (FUTURE)**: minimalny klient weryfikujący platformę bez domeny.
+14. **FAZA 14 — First real Domain migration (FUTURE)**: wybór projektu dopiero po gotowej platformie.
 
 ## Obecny stan prac
 
@@ -80,10 +80,9 @@ F9.8A wybrał **A — PHASE 9 CLOSABLE NOW** na podstawie zaakceptowanego zakres
 F9.1–F9.7 i F9.7A: produkcyjny WS w konkretnym produkcie nie był warunkiem
 wyjścia z Phase 9. Core WS/resync jest CURRENT i przeszedł F9.6 HIL; żaden z
 trzech produktów nie ma obecnie endpointu WS ani koherentnej kohorty resync.
-Phase 9 pozostaje IN PROGRESS do osobnego F9.8B FINAL PHASE-9 CLOSURE CHECKPOINT.
-SEC-101, WEB-101 i pozostały RT-101 są otwarte; nie stanowią automatycznie
-warunku tego checkpointu. Phase 10 jest NOT STARTED. Szczegóły i granice:
-docs/WEB_F9_8A_PHASE9_CLOSURE_AUDIT.md.
+F9.8B zamknął Phase 9. SEC-101, WEB-101 i pozostały RT-101 pozostają otwarte,
+bez zmiany przyjętego zakresu wyjściowego. Phase 10 jest REQUIRED NEXT, NOT STARTED.
+Szczegóły i granice: docs/WEB_F9_8B_PHASE9_CLOSURE.md.
 
 ## Zasady bramki
 

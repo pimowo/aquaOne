@@ -2739,14 +2739,28 @@ Doser ma także lokalne streaming OTA. Wszystkie trzy produkty pozostają bez
 produkcyjnego endpointu WS, `RealtimeSnapshot` kohorty i powiadomień.
 
 Według F9.1 i opcjonalnej polityki kompozycji F9.7A ten brak produktowego WS
-nie jest nowym warunkiem wyjścia z Phase 9. F9.8A wybrał **A — PHASE 9 CLOSABLE
-NOW**, bez stwierdzenia, że produktowe Realtime jest CURRENT. Phase 9 pozostaje
-IN PROGRESS do osobnego F9.8B FINAL PHASE-9 CLOSURE CHECKPOINT; Phase 10 jest
-NOT STARTED. Przed jakimkolwiek produkcyjnym WS/HA klientem konieczne są
+nie był nowym warunkiem wyjścia z Phase 9. F9.8A wybrał **A — PHASE 9 CLOSABLE
+NOW**, bez stwierdzenia, że produktowe Realtime jest CURRENT. Końcowy status
+ustala F9.8B poniżej. Przed jakimkolwiek produkcyjnym WS/HA klientem konieczne są
 osobne product server composition, koherentne HTTP resync resources,
 zatwierdzony external wire mapping oraz Auth/visibility gate. RT-101, WEB-101,
 SEC-101, SYS-107 i MNT-102 zachowują otwarte granice. Szczegóły i matryca
 dowodów: `docs/WEB_F9_8A_PHASE9_CLOSURE_AUDIT.md`.
+
+## F9.8B — Final Phase 9 closure
+
+F9.8A verdict A został zweryfikowany względem bieżącego repozytorium. F9.8B
+zamyka Phase 9: Core native HTTP i Realtime capability są CURRENT, F9.6 HIL
+przeszedł, a Luma, Hydro i Doser mają natywne produkcyjne HTTP; Doser zachowuje
+produkcyjne streaming OTA. Żaden z tych produktów nie komponuje WS, kohorty
+RealtimeSnapshot ani notyfikacji. Produktowe Realtime nie jest CURRENT i nie
+było wymagane dla zamknięcia Phase 9.
+
+SEC-101, WEB-101 i pozostały RT-101 pozostają OPEN; SYS-107 i MNT-102 pozostają
+otwarte/przyszłe. Phase 10 jest REQUIRED NEXT, NOT STARTED i pozostaje zakresem
+klienta/integracji Home Assistant. Przed użyciem WS klienta wymagana będzie
+osobna produktowa kompozycja serwerowa wraz z zatwierdzonym wire, kohortą i Auth.
+Zapis końcowy: `docs/WEB_F9_8B_PHASE9_CLOSURE.md`.
 
 ## SPIKE REQUIRED
 
