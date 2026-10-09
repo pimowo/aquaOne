@@ -8,8 +8,7 @@
 #include "DoserMultipartFirmwareParser.h"
 #include "DoserOtaApplication.h"
 
-// Registered on the same physical transport as NativeWebService in G4.
-// This G3 candidate remains uncomposed in production.
+// Registered on the same physical transport as NativeWebService.
 class DoserNativeOtaRoute {
 public:
     DoserNativeOtaRoute(StreamingUploadBridge& bridge,

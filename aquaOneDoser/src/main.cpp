@@ -4,9 +4,12 @@
 #include <AquaCore/System/DeviceIdentity.h>
 #include <AquaCore/Logging/Logger.h>
 #include <AquaCore/Logging/SerialLogSink.h>
-#include <AquaCore/Web/Esp32WebBackend.h>
-#include <AquaCore/Web/WebConfig.h>
-#include <AquaCore/Web/WebService.h>
+#include <AquaCore/Web/CoreWebProjectionPublisher.h>
+#include <AquaCore/Web/CoreWebProjectionSources.h>
+#include <AquaCore/Web/Esp32ActionBridgeSynchronizer.h>
+#include <AquaCore/Web/Esp32SnapshotSynchronizer.h>
+#include <AquaCore/Web/EspIdfWebTransport.h>
+#include <AquaCore/Web/NativeWebService.h>
 
 #include "app_config.h"
 #include "secrets.h"
@@ -17,8 +20,12 @@
 #include "SchedulerManager.h"
 #include "TimeManager.h"
 #include "WiFiManager.h"
-#include "DoserWebRuntime.h"
-#include "WebManager.h"
+#include "DoserDiagnosticsProjection.h"
+#include "DoserNativeOtaRoute.h"
+#include "DoserNativeWeb.h"
+#include "DoserNativeWebStartup.h"
+#include "DoserOtaRuntime.h"
+#include "DoserRestartRuntime.h"
 
 AquaCore::SystemService systemService;
 AquaCore::SerialLogSink serialLogSink(Serial);
@@ -31,13 +38,40 @@ MqttManager mqttManager;
 DiagnosticsManager diagnosticsManager;
 SchedulerManager schedulerManager;
 WiFiManager wifiManager;
-WebManager webManager;
-DoserWebRuntime webRuntime(
-    timeManager, mqttManager, diagnosticsManager,
-    schedulerManager, wifiManager, pumpDriver
-);
-AquaCore::Web::Esp32WebBackend webBackend;
-AquaCore::Web::WebService webService(webBackend, systemService);
+
+// Reverse destruction stops HTTPD in nativeWebService before any borrowed
+// route, bridge, snapshot, synchronizer, or transport context is destroyed.
+AquaCore::Web::EspIdfWebTransport nativeTransport;
+AquaCore::Web::Esp32SnapshotSynchronizer systemSnapshotSync;
+AquaCore::Web::PublishedSnapshot<AquaCore::Web::CoreSystemProjection>
+    systemSnapshot(systemSnapshotSync);
+AquaCore::Web::Esp32SnapshotSynchronizer diagnosticsSnapshotSync;
+AquaCore::Web::PublishedSnapshot<AquaCore::Web::CoreDiagnosticsProjection>
+    diagnosticsSnapshot(diagnosticsSnapshotSync);
+AquaCore::Web::SystemServiceWebProjectionSource systemProjectionSource(systemService);
+DoserManagerDiagnosticsFacts diagnosticsFacts(
+    systemService, timeManager, wifiManager, diagnosticsManager);
+DoserDiagnosticsProjectionSource diagnosticsProjectionSource(diagnosticsFacts);
+AquaCore::Web::CoreWebProjectionPublisher projectionPublisher(
+    systemProjectionSource, &diagnosticsProjectionSource,
+    systemSnapshot, diagnosticsSnapshot);
+
+AquaCore::Web::Esp32ActionBridgeSynchronizer normalActionSync;
+DoserWebBridge webBridge(normalActionSync);
+DoserRestartRuntime restartRuntime(pumpDriver);
+DoserWebApplication webApplication(webBridge, restartRuntime);
+AquaCore::Web::Esp32ActionBridgeSynchronizer otaActionSync;
+StreamingUploadBridge uploadBridge(otaActionSync);
+AquaCore::Web::Esp32SnapshotSynchronizer capacitySnapshotSync;
+DoserOtaCapacitySnapshot capacitySnapshot(capacitySnapshotSync);
+DoserOtaRuntime otaRuntime(pumpDriver, schedulerManager);
+DoserOtaApplication otaApplication(
+    uploadBridge, otaRuntime, webApplication, capacitySnapshot);
+DoserNativeWebRoutes nativeRoutes(webBridge, WEB_USER, WEB_PASS, &uploadBridge);
+DoserNativeOtaRoute otaRoute(
+    uploadBridge, capacitySnapshot, otaRuntime, WEB_USER, WEB_PASS);
+AquaCore::Web::NativeWebService nativeWebService(
+    nativeTransport, systemSnapshot, diagnosticsSnapshot);
 unsigned long lastStatusPrint = 0;
 
 void setup() {
@@ -86,24 +120,27 @@ void setup() {
     schedulerManager.printNextDoses();
     diagnosticsManager.begin(timeManager, pumpManager, schedulerManager, mqttManager);
     mqttManager.begin(pumpManager, schedulerManager, timeManager, diagnosticsManager, pumpDriver);
-    const bool legacyRoutesOk = webManager.begin(webService, webRuntime, WEB_USER, WEB_PASS);
-    AquaCore::Web::WebConfig webConfig {};
-    webConfig.enabled = true;
-    webConfig.port = 80U;
-    webConfig.navigationMask = 0U;
-    const bool webOk = legacyRoutesOk && webService.begin(webConfig);
-    Serial.println(webOk ? "[WEB] Server started" : "[WEB] Server start failed");
+    webApplication.setOtaSessionView(&uploadBridge);
+    const bool webOk = startDoserNativeWeb(
+        nativeWebService, nativeTransport, projectionPublisher,
+        otaApplication, capacitySnapshot, nativeRoutes, otaRoute,
+        otaRuntime.availableFirmwareSpace());
+    Serial.println(webOk ? "[WEB] Native server started"
+                         : "[WEB] Native server start failed");
 }
 
 void loop() {
     pumpDriver.loop();
     wifiManager.loop();
     timeManager.loop();
-    webService.update();
-    webManager.loop();
+    otaApplication.processOne();
+    webApplication.processOne();
     schedulerManager.loop();
     diagnosticsManager.loop();
-    mqttManager.loop();
+    projectionPublisher.update();
+    if (!otaApplication.blocksMqttService()) mqttManager.loop();
+    otaApplication.serviceRestartWatchdog();
+    webApplication.serviceRestart();
 
     if (millis() - lastStatusPrint >= 10000) {
         lastStatusPrint = millis();

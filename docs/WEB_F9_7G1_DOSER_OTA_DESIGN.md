@@ -1,17 +1,17 @@
 # F9.7G1 — Doser native streaming OTA and atomic Web cutover
 
-**Status:** F9.7G1, F9.7G2 and F9.7G3 are CLOSED. Core streaming HTTP is CURRENT; the Doser native OTA application is an available, tested candidate, not active in production. F9.7G4 atomic production cutover is REQUIRED NEXT; F9.7G5 physical OTA HIL remains required afterward. Phase 9 remains in progress. Production Doser remains on legacy Web.
+**Status:** F9.7G1–F9.7G5 are CLOSED. Doser production Web is one `EspIdfWebTransport` + `NativeWebService` listener; authenticated native streaming `POST /update` is CURRENT. F9.7G5 bare-board ESP32-S3 HIL passed on 2026-10-09. Phase 9 remains IN PROGRESS. Doser MQTT/Discovery remains LEGACY CURRENT until F10.6; shared OTA remains Phase 11/MNT-102 FUTURE.
 
-## Scope and current baseline
+## Scope and historical G1 baseline
 
-Production Doser still composes one Esp32WebBackend, WebService and WebManager; the main loop calls
-webService.update(). F9.7F2 supplies tested native read/admin routes and an Application-owned restart
-foundation, but none is composed into production. F9.7G will replace the legacy listener atomically with one
-EspIdfWebTransport plus NativeWebService on port 80 and add authenticated streaming POST /update. There is no
-intermediate two-listener, second-port or OTA-only legacy configuration. Doser MQTT/Discovery remains legacy
+At the G1 design gate, production Doser composed one Esp32WebBackend, WebService and WebManager; the main loop
+called webService.update(). F9.7F2 supplied tested native read/admin routes and an Application-owned restart
+foundation without production composition. F9.7G4 replaced that listener atomically with one
+EspIdfWebTransport plus NativeWebService on port 80 and added authenticated streaming POST /update. No
+two-listener, second-port or OTA-only legacy configuration was checkpointed. Doser MQTT/Discovery remains legacy
 until F10.6.
 
-Current legacy GET /update authenticates and serves the 1,528-byte page. Its FormData form sends one firmware
+The legacy GET /update authenticated and served the 1,528-byte page. Its FormData form sent one firmware
 field to POST /update and sets X-Firmware-Size to file.size. On authorized upload START, WebManager clears any
 previous upload, checks the case-insensitive .bin suffix, parses size with Arduino String.toInt(), compares it
 with ESP.getFreeSketchSpace(), stops pumps, sets scheduler OTA state, then calls Update.begin(size, U_FLASH).
@@ -22,8 +22,8 @@ Failure responds 500 with “Aktualizacja nieudana: ” and the captured error. 
 replaces the active transfer. F9.7G deliberately changes that concurrency policy to one upload only and 409
 when a competing request reaches the handler while an upload is active.
 
-The existing page, FormData field, X-Firmware-Size and response text stay unchanged. No native GET /api/status
-is added. Native POST /update exists as a tested candidate but is not active in production.
+The page, FormData field, X-Firmware-Size and response text remain unchanged. No native GET /api/status
+was added. Native POST /update is active in production.
 
 ## Evidence from installed toolchains
 
@@ -323,4 +323,6 @@ backup, restore, factory reset and common UI/maintenance policy belong to Phase 
 
 ## Decision
 
-**F9.7G IMPLEMENTABLE — architecture resolved.** F9.7G2 Core streaming HTTP and F9.7G3 Doser OTA application are CLOSED. The tested native POST /update candidate awaits F9.7G4 atomic production cutover; F9.7G5 physical OTA HIL, including image/latency/heap measurements, remains required release evidence.
+**F9.7G CLOSED.** F9.7G4 installed one native production Web listener and native streaming OTA. F9.7G5 physical bare-board HIL passed without source or test changes. The legacy WebManager/DoserWebRuntime remains in the tree for regression or later cleanup and does not own production Web.
+
+F9.7G5 used a bare ESP32-S3 without pumps or output stages. The unchanged 1,093,120-byte firmware image (SHA-256 `77b8b1c6844c278b5a756115b6399166d6e02442537315ade65d65eece8d4e3a`) fit the 1,310,720-byte OTA slot. USB installation and real authenticated OTA passed. The OTA client received the complete expected HTTP 200 body before the controlled reboot, observed 1.172 s later. Valid `otadata` changed selection from `ota_0` to `ota_1`, and exactly 1,093,120 bytes read from `ota_1` matched the uploaded image hash. NVS read-only hashes before USB, before OTA and twice after OTA were identical. The 300.62 s post-OTA soak completed 84/84 requests with rising uptime, no serial reset/error event, and a further 31 s idle autonomy check passed. Error uploads, disconnect, timeout and fresh-session recovery passed. Free heap and HTTPD task stack high-water mark were NOT MEASURED because the existing runtime does not expose them. Physical pump output, voltage, flow, dose and calibration were NOT TESTED. No per-pump persisted-field comparison was available. SEC-101 and SYS-107 remain OPEN/transitional; product-local OTA remains transitional until Phase 11 common OTA.

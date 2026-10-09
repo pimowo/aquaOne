@@ -1,7 +1,7 @@
 # Project Matrix — Status i Integracja Core
 
 **Snapshot date:** 2026-10-09
-**Snapshot base commit:** d9e045e plus F9.7G3 checkpoint changes
+**Snapshot base commit:** 0b0413d plus F9.7G4/G5 checkpoint changes
 
 Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla wskazanego
 commita. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
@@ -76,7 +76,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Aspekt | Status | Notatki |
 |--------|--------|---------|
 | **Platforma** | ESP32-S3 Super Mini (4MB) | |
-| **Status** | 🟡 F9.7G3 CLOSED, integracja hybrydowa | Core streaming HTTP is current; tested Doser native OTA candidate is available; one legacy production Web owner remains |
+| **Status** | 🟡 F9.7G4/G5 CLOSED, integracja hybrydowa | Jeden natywny produkcyjny Web; real OTA i bare-board HIL PASS; MQTT pozostaje legacy |
 | **Architektura** | Composition root + lokalne managery/adapters | Migracja Core jest częściowa |
 | | | |
 | **Używane moduły Core** | | |
@@ -85,7 +85,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Logging | CORE DIRECT | `Logger` + `SerialLogSink`; lokalne logi `Serial` nadal istnieją |
 | Diagnostics | LOCAL | Lokalny `DiagnosticsManager` |
 | Network | CORE VIA ADAPTER | Lokalny `WiFiManager` deleguje do `NetworkService` i `Esp32NetworkBackend` |
-| Web | CORE DIRECT | Jeden `Esp32WebBackend` i `WebService`; lokalny `WebManager` posiada politykę restart/OTA |
+| Web | CORE DIRECT | Jeden `EspIdfWebTransport` i `NativeWebService`; lokalna Application obsługuje restart i streaming `POST /update` |
 | Time | CORE VIA ADAPTER | Lokalny `TimeManager` komponuje usługi RTC/NTP/resilient time Core |
 | | | |
 | **Elementy lokalne** | | |
@@ -93,8 +93,8 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Konfiguracja | `PumpConfig`, dokładnie 8 pomp | |
 | Hardware | Relay drivers, PWM pump control | |
 | MQTT/HA | LEGACY CURRENT / LOCAL | Istniejące PubSubClient, MqttManager, HaDiscovery i około 205 encji pozostają do migracji Dosera; nie są TARGET Core ani docelowym modelem encji HA |
-| **Web W1/W1.5** | DONE | Jeden serwer, auth, restart, OTA success/abort/cleanup/reconnect |
-| **Następny etap Web** | F9.7G4 REQUIRED NEXT | Atomic production cutover; F9.7G5 physical OTA HIL follows |
+| **Web W1/W1.5** | DONE, historyczny | Legacy `WebManager`/`DoserWebRuntime` pozostaje w drzewie dla regresji/cleanup, bez produkcyjnego ownership |
+| **Następny etap Web** | F9.7G4/G5 CLOSED | Realtime pozostaje zakresem Phase 9; wspólne OTA dopiero Phase 11 |
 | **Ryzyko dalszej migracji** | Średnie/wysokie | Lokalna domena działa i nie może zostać naruszona |
 
 ---
@@ -283,9 +283,8 @@ aquaOneCore    ███████░░░░░ 🟢 STABLE   (7/7 modułów
 - Ryzyko: Medium
 
 ### Doser
-- Status: 🟡 Integracja hybrydowa; W1/W1.5 Web DONE; hardware validation PASSED 2026-09-12;
-	evidence not yet persisted in repository
-- Następny krok: W2 Web, bez równoległego przepisywania domeny lub MQTT
+- Status: 🟡 Integracja hybrydowa; native Web i streaming OTA CURRENT; G5 bare-board HIL PASS 2026-10-09 (bez pomp i stopni wykonawczych)
+- Następny krok: pozostały zakres Phase 9/Realtime; MQTT/Discovery pozostaje legacy do F10.6
 - Ryzyko: Średnie/wysokie; wymagane punkty regresji i testy sprzętowe
 
 ### Clima
@@ -300,18 +299,14 @@ aquaOneCore    ███████░░░░░ 🟢 STABLE   (7/7 modułów
 
 ## Doser F9.7F1 gate
 
-Doser Web is LEGACY CURRENT: one `Esp32WebBackend` + `WebService` +
-`WebManager` owns restart and authenticated multipart OTA. F9.7F1 and F9.7F2
-are CLOSED: the native foundation, Basic Auth boundary, projections and restart
-bridge are implemented and tested, while legacy remains the sole production owner.
-F9.7G must provide streaming OTA before one atomic native production cutover.
-Doser MQTT/Discovery remains LEGACY CURRENT until F10.6.
-
-F9.7G1, F9.7G2 and F9.7G3 are CLOSED. Core-neutral streaming transport is
-CURRENT; Doser-local multipart parsing and the Application-owned Update lifecycle
-are available and tested, but native POST /update is not active in production.
-F9.7G4 atomic cutover is REQUIRED NEXT; F9.7G5 physical OTA HIL follows. Details
-are in docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md.
+F9.7F1/F2 and F9.7G1–G5 are CLOSED. Doser production Web now uses one
+`EspIdfWebTransport` + `NativeWebService` listener with native authenticated
+streaming `POST /update`. Legacy `WebManager`/`DoserWebRuntime` is not a production
+owner. F9.7G5 proved OTA slot switch, exact target image hash, NVS retention and
+300 s bare-board runtime stability. Physical pumps/output stages were not connected
+or tested. Doser MQTT/Discovery remains LEGACY CURRENT until F10.6. SEC-101
+remains OPEN, SYS-107 OPEN/transitional, and common OTA is Phase 11 FUTURE.
+Details are in docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md.
 
 ## Architecture vNext perspective
 

@@ -5,7 +5,7 @@
 class PumpDriver;
 class SchedulerManager;
 
-// Production-capable narrow adapter; G3 does not compose it in main.cpp.
+// Narrow Application-side Update and scheduler adapter.
 class DoserOtaRuntime final : public DoserOtaAuthority, public DoserOtaClock {
 public:
     DoserOtaRuntime(PumpDriver& pumps, SchedulerManager& scheduler)

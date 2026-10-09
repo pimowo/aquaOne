@@ -2709,24 +2709,24 @@ Hydro hardware HIL remains future work.
 
 ## F9.7F1 — Doser native Web migration gate
 
-F9.7F1 and F9.7F2 are CLOSED. They record Doser's one legacy
-`Esp32WebBackend`/`WebService`/`WebManager` production owner and implement the
+F9.7F1 and F9.7F2 are CLOSED. At their gate, Doser had one legacy
+`Esp32WebBackend`/`WebService`/`WebManager` production owner. F9.7F2 added
 native projections, normal/admin adapters, an auth boundary and an
-Application-owned restart foundation without production cutover. F9.7G must
-provide streaming OTA, cleanup/backpressure, pump/restart safety and S3 OTA HIL
-before the native owner atomically replaces legacy Web. Two listeners, a legacy
-OTA-only listener and silent OTA removal are forbidden. Deferring OTA to Phase
-11/MNT-102 defers the entire Doser production cutover. MQTT and Discovery remain
-LEGACY CURRENT through F10.6. Details:
+Application-owned restart foundation. F9.7G subsequently supplied streaming
+OTA, cleanup/backpressure, software pump/restart ordering and S3 OTA HIL, then
+atomically replaced the legacy listener. No two-listener or OTA-only legacy
+configuration was checkpointed. MQTT and Discovery remain LEGACY CURRENT
+through F10.6. Details:
 `docs/WEB_F9_7F1_DOSER_MIGRATION_GATE.md`.
 
-F9.7G1, F9.7G2 and F9.7G3 are CLOSED: Core streaming HTTP is CURRENT, and
-Doser-local bounded multipart parsing, a single-slot Application OTA bridge,
-generation/cancellation protection and integration with the existing product
-restart owner are available and tested candidates. Production Doser Web remains
-legacy; native POST /update is not active. F9.7G4 atomic listener replacement is
-REQUIRED NEXT, followed by F9.7G5 bare-board OTA HIL; SEC-101, SYS-107 and
-MNT-102 remain open. Details:
+F9.7G1–G5 are CLOSED. Core streaming HTTP, Doser-local bounded multipart
+parsing, a single-slot Application OTA bridge, generation/cancellation protection
+and product restart integration are CURRENT. Production Doser Web has one
+`EspIdfWebTransport` + `NativeWebService` listener and native streaming
+`POST /update`. G5 proved real OTA, slot switch, image hash, NVS retention and
+300 s stable bare-board runtime. Pumps/output stages were absent: physical dosing
+was not tested. SEC-101, SYS-107 and MNT-102 remain open; product OTA is
+transitional pending Phase 11 common OTA. Details:
 docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md.
 
 ## SPIKE REQUIRED

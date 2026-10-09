@@ -23,7 +23,7 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 6. **FAZA 6 — Diagnostics / Registry (CLOSED)**: dostarczono typed diagnostics foundation i statyczny registry do enumeracji.
 7. **FAZA 7 — Time / Network adaptation (CLOSED)**: dostarczono CURRENT monotonic i wall clock foundation, RTC jako offline UTC source, opcjonalną synchronizację NTP oraz optional Network startup, runtime i live Health.
 8. **FAZA 8 — HTTP + WebSocket feasibility spike (CLOSED)**: F8.1–F8.3C zamknęły feasibility i wybrały `esp_http_server` jako WEB-103 ACCEPTED — TARGET dla przebadanej bazy; production Web nie został zmigrowany.
-9. **FAZA 9 — Production Web + Realtime (IN PROGRESS)**: migracje produkcyjnego Web dla Luma i Hydro są zakończone; implementacja Realtime i dalszy zakres Phase 9 pozostają wymagane.
+9. **FAZA 9 — Production Web + Realtime (IN PROGRESS)**: migracje produkcyjnego Web dla Luma, Hydro i Doser są zakończone; implementacja Realtime i dalszy zakres Phase 9 pozostają wymagane.
 10. **FAZA 10 — Home Assistant Integration**: custom integration `aquaOne`, lokalny HTTP API client, WebSocket/Realtime client, Config Flow, Zeroconf/mDNS, Luma reference adapter, reconnect/resync i product-aware entity mapping. Plan: F10.1 architecture/client library; F10.2 Luma read-only; F10.3 Realtime reconnect/resync; F10.4 Luma commands; F10.5 Hydro adapter; F10.6 Doser MQTT replacement.
 11. **FAZA 11 — OTA / Backup / Restore / Factory Reset**: wspólne workflow i recovery.
 12. **FAZA 12 — UI Shell**: wspólny shell/design system po stabilizacji kontraktów. Shared Web Theme v1 jest już CURRENT foundation, ale nie zamyka całej fazy.
@@ -48,7 +48,7 @@ alarm registry, severity, physical persistence schema, history/counters, bogatsz
 i transport również pozostają TARGET/FUTURE. Descriptor schema, stable/global diagnostic IDs,
 transport visibility/projection, timestamp conventions, richer diagnostic/failure metadata,
 hardware-specific diagnostics, migracja legacy `DiagnosticsService` i real Domain migration
-pozostają TARGET/FUTURE. Realtime, Home Assistant integration, OTA i Backup/Restore również pozostają TARGET/FUTURE.
+pozostają TARGET/FUTURE. Realtime, Home Assistant integration, wspólne OTA i Backup/Restore również pozostają TARGET/FUTURE; Doser ma już lokalne produkcyjne OTA.
 
 Phase 7 CURRENT rozdziela monotonic timing od UTC `WallClock`: prawidłowy RTC działa offline,
 NTP tylko opcjonalnie synchronizuje RTC, a Network pozostaje opcjonalną infrastrukturą bez
@@ -62,18 +62,14 @@ Znany dług legacy: `test_network` ma nieaktualną fixture `StorageService`, ada
 
 ## F9.7F1 — Doser native Web gate
 
-F9.7F1 and F9.7F2 are CLOSED. F9.7F2 implements and tests native Doser adapters,
-Basic Auth and an Application-owned restart foundation without production cutover.
-Doser production Web and MQTT remain LEGACY CURRENT. F9.7G is IN PROGRESS:
-G3 delivered tested streaming OTA logic; G4 must atomically replace the legacy
-server, followed by G5 physical S3 OTA HIL. Deferring OTA to Phase 11 defers the whole Doser
-production Web migration; it never permits a partial two-server migration.
-
-F9.7G1 design gate, F9.7G2 Core streaming HTTP foundation and F9.7G3 tested
-Doser OTA application are CLOSED; the plan is recorded in
-docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md. F9.7G4 atomic production cutover is REQUIRED
-NEXT; F9.7G5 physical OTA HIL remains required afterward. Native POST /update
-is not active in production yet.
+F9.7F1/F2 and F9.7G1–G5 are CLOSED. G4 atomically replaced the legacy Doser Web
+listener with one `EspIdfWebTransport` + `NativeWebService`; native streaming
+`POST /update` is CURRENT. G5 real OTA and 300 s bare-board ESP32-S3 HIL passed
+without source/test changes. Pumps and output stages were absent, so physical dosing
+was not tested. Doser MQTT/Discovery remains LEGACY CURRENT until F10.6; Phase 10
+has not started. Product-local OTA is transitional until Phase 11 common OTA.
+SEC-101 remains OPEN and SYS-107 remains OPEN/transitional. Evidence and limits:
+docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md.
 
 ## Zasady bramki
 
