@@ -161,3 +161,12 @@ Phase 10 is **Home Assistant Integration**:
 Exact entity schemas, Zeroconf TXT keys, authentication details and availability timing need
 their dedicated Phase 10 decisions or measurements. This architecture checkpoint does not
 implement them.
+
+## F10.1A gate (2026-10-09)
+
+[F10.1A](HA_F10_1A_ARCHITECTURE.md) starts Phase 10 as a docs-only architecture gate
+and selects **B — SERVER PREREQUISITE REQUIRED**. The CURRENT `/api/system` does not
+publish canonical stable `device_id` or `api_protocol_version`, and its legacy
+`deviceType` values are not the IDN-101 product tokens. F10.1B must establish and
+publish those fields before F10.2 creates stable HA entries/entities. No integration,
+firmware API or product Realtime changed at this gate; Doser MQTT remains LEGACY CURRENT.

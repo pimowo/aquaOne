@@ -2762,6 +2762,17 @@ klienta/integracji Home Assistant. Przed użyciem WS klienta wymagana będzie
 osobna produktowa kompozycja serwerowa wraz z zatwierdzonym wire, kohortą i Auth.
 Zapis końcowy: `docs/WEB_F9_8B_PHASE9_CLOSURE.md`.
 
+## F10.1A — Home Assistant architecture gate
+
+Phase 10 is IN PROGRESS through a docs-only architecture gate; no HA implementation is
+CURRENT. [F10.1A](HA_F10_1A_ARCHITECTURE.md) selects **B — SERVER PREREQUISITE REQUIRED**:
+F10.1B must publish canonical stable `device_id`, IDN-101 `device_type` and
+`api_protocol_version` through the common system API, and document Luma status
+compatibility, before F10.2 creates HA config entries/entities. Static product-adapter
+capabilities suffice initially. Production product WS remains a later separate cutover;
+Doser MQTT/Discovery remains LEGACY CURRENT until F10.6. HA-101, IDN-101 and SEC-101
+boundaries are unchanged.
+
 ## SPIKE REQUIRED
 
 - WEB/RT: długotrwały slow client, saturacja kolejek i docelowa polityka backpressure poza ograniczonym HIL F8.3;

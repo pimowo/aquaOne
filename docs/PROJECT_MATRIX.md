@@ -8,9 +8,12 @@ commita. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
 
 F9.8B: Phase 9 is CLOSED. Core Realtime WS/resync is CURRENT and passed classic
 ESP32 HIL; Luma, Hydro and Doser production HTTP is native, while product
-WS/cohorts/notifications are absent. Phase 10 is REQUIRED NEXT, NOT STARTED.
+WS/cohorts/notifications are absent. Phase 10 is IN PROGRESS with F10.1A
+docs-only architecture complete; HA implementation is not started. F10.1B
+server identity/API prerequisite is required before F10.2.
 See `docs/WEB_F9_8B_PHASE9_CLOSURE.md` and the detailed
-`docs/WEB_F9_8A_PHASE9_CLOSURE_AUDIT.md`.
+`docs/WEB_F9_8A_PHASE9_CLOSURE_AUDIT.md`; F10.1A decision:
+`docs/HA_F10_1A_ARCHITECTURE.md`.
 
 ## HA-101 target update
 
@@ -290,7 +293,7 @@ aquaOneCore    ███████░░░░░ 🟢 STABLE   (7/7 modułów
 
 ### Doser
 - Status: 🟡 Integracja hybrydowa; native Web i streaming OTA CURRENT; G5 bare-board HIL PASS 2026-10-09 (bez pomp i stopni wykonawczych)
-- Następny krok: Phase 10 jest REQUIRED NEXT, NOT STARTED; Doser MQTT/Discovery migracja w F10.6; produktowy WS wymaga osobnego zatwierdzonego zakresu
+- Następny krok: Phase 10 jest IN PROGRESS (F10.1A docs-only); F10.1B poprzedza F10.2, Doser MQTT/Discovery migracja w F10.6; produktowy WS wymaga osobnego zatwierdzonego zakresu
 - Ryzyko: Średnie/wysokie; wymagane punkty regresji i testy sprzętowe
 
 ### Clima
@@ -325,4 +328,4 @@ Docelowe rozszerzenia platformy obejmują Commands, Events, Alarms, Safety,
 Maintenance, Registry, produktową kompozycję Realtime, Home Assistant client integration,
 wspólne OTA, Backup/Restore, Factory Reset oraz pełną Application lifecycle/composition.
 Core Realtime foundation jest CURRENT, bez produkcyjnego WS w Luma/Hydro/Doser.
-Phase 9 jest CLOSED po F9.8B; Phase 10 jest REQUIRED NEXT, NOT STARTED.
+Phase 9 jest CLOSED po F9.8B; Phase 10 jest IN PROGRESS po F10.1A, bez implementacji integracji.

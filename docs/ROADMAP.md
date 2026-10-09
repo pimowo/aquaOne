@@ -24,7 +24,7 @@ kierunek. Istniejące domeny nie definiują architektury platformy.
 7. **FAZA 7 — Time / Network adaptation (CLOSED)**: dostarczono CURRENT monotonic i wall clock foundation, RTC jako offline UTC source, opcjonalną synchronizację NTP oraz optional Network startup, runtime i live Health.
 8. **FAZA 8 — HTTP + WebSocket feasibility spike (CLOSED)**: F8.1–F8.3C zamknęły feasibility i wybrały `esp_http_server` jako WEB-103 ACCEPTED — TARGET dla przebadanej bazy; production Web nie został zmigrowany.
 9. **FAZA 9 — Production Web + Realtime (CLOSED)**: Core native HTTP/Realtime foundation, F9.6 classic ESP32 HIL oraz produkcyjne migracje HTTP Luma, Hydro i Doser są zakończone. Produkty pozostają bez kompozycji WS. Końcowy checkpoint: F9.8B.
-10. **FAZA 10 — Home Assistant Integration (REQUIRED NEXT; NOT STARTED)**: custom integration `aquaOne`, lokalny HTTP API client, przyszły WebSocket/Realtime client, Config Flow, Zeroconf/mDNS, Luma reference adapter, reconnect/resync i product-aware entity mapping. Plan: F10.1 architecture/client library; F10.2 Luma read-only; F10.3 Realtime reconnect/resync; F10.4 Luma commands; F10.5 Hydro adapter; F10.6 Doser MQTT replacement. Każdy WS client wymaga wcześniej gotowego product server cutover.
+10. **FAZA 10 — Home Assistant Integration (IN PROGRESS: F10.1A architecture gate complete; implementation not started)**: custom integration `aquaOne`, lokalny HTTP API client, przyszły WebSocket/Realtime client, Config Flow, Zeroconf/mDNS, Luma reference adapter, reconnect/resync i product-aware entity mapping. Plan: F10.1 architecture/client library; F10.1B server identity/API prerequisite before F10.2; F10.2 Luma read-only; F10.3 Realtime reconnect/resync; F10.4 Luma commands; F10.5 Hydro adapter; F10.6 Doser MQTT replacement. Każdy WS client wymaga wcześniej gotowego product server cutover. Decision: [F10.1A](HA_F10_1A_ARCHITECTURE.md).
 11. **FAZA 11 — OTA / Backup / Restore / Factory Reset (FUTURE)**: wspólne workflow i recovery.
 12. **FAZA 12 — UI Shell (FUTURE; foundation częściowo CURRENT)**: wspólny shell/design system po stabilizacji kontraktów. Shared Web Theme v1 jest już CURRENT foundation, ale nie zamyka całej fazy.
 13. **FAZA 13 — Reference Empty Device (FUTURE)**: minimalny klient weryfikujący platformę bez domeny.
@@ -69,8 +69,8 @@ F9.7F1/F2 and F9.7G1–G5 are CLOSED. G4 atomically replaced the legacy Doser We
 listener with one `EspIdfWebTransport` + `NativeWebService`; native streaming
 `POST /update` is CURRENT. G5 real OTA and 300 s bare-board ESP32-S3 HIL passed
 without source/test changes. Pumps and output stages were absent, so physical dosing
-was not tested. Doser MQTT/Discovery remains LEGACY CURRENT until F10.6; Phase 10
-has not started. Product-local OTA is transitional until Phase 11 common OTA.
+was not tested. Doser MQTT/Discovery remains LEGACY CURRENT until F10.6; at the
+F9.7F1 checkpoint Phase 10 had not started. Product-local OTA is transitional until Phase 11 common OTA.
 SEC-101 remains OPEN and SYS-107 remains OPEN/transitional. Evidence and limits:
 docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md.
 
@@ -81,7 +81,7 @@ F9.1–F9.7 i F9.7A: produkcyjny WS w konkretnym produkcie nie był warunkiem
 wyjścia z Phase 9. Core WS/resync jest CURRENT i przeszedł F9.6 HIL; żaden z
 trzech produktów nie ma obecnie endpointu WS ani koherentnej kohorty resync.
 F9.8B zamknął Phase 9. SEC-101, WEB-101 i pozostały RT-101 pozostają otwarte,
-bez zmiany przyjętego zakresu wyjściowego. Phase 10 jest REQUIRED NEXT, NOT STARTED.
+bez zmiany przyjętego zakresu wyjściowego. Phase 10 rozpoczęła się później od dokumentacyjnej bramki F10.1A; implementacja integracji nie rozpoczęła się.
 Szczegóły i granice: docs/WEB_F9_8B_PHASE9_CLOSURE.md.
 
 ## Zasady bramki
