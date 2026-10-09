@@ -1,6 +1,7 @@
 #include <unity.h>
 #include <string.h>
 #include <type_traits>
+#include <initializer_list>
 
 #include "AquaCore/System/Identity.h"
 #include "AquaCore/Version.h"
@@ -20,6 +21,13 @@ static_assert(!std::is_same<Id::HardwareIdentity, Id::BuildIdentity>::value,
 
 namespace {
 
+Id::DeviceId validDeviceId() {
+    const uint8_t bytes[] {0x24U, 0x6FU, 0x28U, 0xA1U, 0xB2U, 0xC3U};
+    Id::DeviceId id;
+    TEST_ASSERT_TRUE(id.assign(bytes, sizeof(bytes)).isValid());
+    return id;
+}
+
 void assertError(Id::ValidationResult result, Id::ValidationError error,
     Id::ValidationField field) {
     TEST_ASSERT_FALSE(result.isValid());
@@ -35,7 +43,7 @@ void fillText(char (&text)[Capacity], size_t length) {
 
 void test_device_identity_valid() {
     Id::DeviceIdentity identity;
-    const Id::ValidationResult result = identity.assign("luma");
+    const Id::ValidationResult result = identity.assign("luma", validDeviceId());
     TEST_ASSERT_TRUE(result.isValid());
     TEST_ASSERT_EQUAL_INT(static_cast<int>(Id::ValidationField::None), static_cast<int>(result.field));
     TEST_ASSERT_TRUE(identity.isValid());
@@ -44,15 +52,15 @@ void test_device_identity_valid() {
 
 void test_device_identity_null() {
     Id::DeviceIdentity identity;
-    TEST_ASSERT_TRUE(identity.assign("luma").isValid());
-    assertError(identity.assign(nullptr), Id::ValidationError::NullInput, Id::ValidationField::DeviceType);
+    TEST_ASSERT_TRUE(identity.assign("luma", validDeviceId()).isValid());
+    assertError(identity.assign(nullptr, validDeviceId()), Id::ValidationError::NullInput, Id::ValidationField::DeviceType);
     TEST_ASSERT_FALSE(identity.isValid());
     TEST_ASSERT_EQUAL_STRING("", identity.deviceType());
 }
 
 void test_device_identity_empty() {
     Id::DeviceIdentity identity;
-    assertError(identity.assign(""), Id::ValidationError::EmptyRequiredField, Id::ValidationField::DeviceType);
+    assertError(identity.assign("", validDeviceId()), Id::ValidationError::EmptyRequiredField, Id::ValidationField::DeviceType);
     TEST_ASSERT_FALSE(identity.isValid());
     TEST_ASSERT_EQUAL_STRING("", identity.deviceType());
 }
@@ -61,7 +69,7 @@ void test_device_identity_capacity_boundary() {
     Id::DeviceIdentity identity;
     char input[Id::DeviceIdentity::DEVICE_TYPE_CAPACITY] {};
     fillText(input, sizeof(input) - 1U);
-    TEST_ASSERT_TRUE(identity.assign(input).isValid());
+    TEST_ASSERT_TRUE(identity.assign(input, validDeviceId()).isValid());
     TEST_ASSERT_EQUAL_STRING(input, identity.deviceType());
 }
 
@@ -69,8 +77,8 @@ void test_device_identity_too_long() {
     Id::DeviceIdentity identity;
     char input[Id::DeviceIdentity::DEVICE_TYPE_CAPACITY + 1U] {};
     fillText(input, sizeof(input) - 1U);
-    TEST_ASSERT_TRUE(identity.assign("luma").isValid());
-    assertError(identity.assign(input), Id::ValidationError::TooLong, Id::ValidationField::DeviceType);
+    TEST_ASSERT_TRUE(identity.assign("luma", validDeviceId()).isValid());
+    assertError(identity.assign(input, validDeviceId()), Id::ValidationError::TooLong, Id::ValidationField::DeviceType);
     TEST_ASSERT_FALSE(identity.isValid());
     TEST_ASSERT_EQUAL_STRING("", identity.deviceType());
     TEST_ASSERT_EQUAL_UINT('x', input[sizeof(input) - 2U]);
@@ -200,7 +208,7 @@ void test_identity_copies_own_storage() {
     Id::DeviceIdentity device;
     Id::BuildIdentity build;
     Id::HardwareIdentity hardware;
-    TEST_ASSERT_TRUE(device.assign(deviceInput).isValid());
+    TEST_ASSERT_TRUE(device.assign(deviceInput, validDeviceId()).isValid());
     TEST_ASSERT_TRUE(build.assign(firmwareInput, AQUA_CORE_VERSION).isValid());
     TEST_ASSERT_TRUE(hardware.assign(hardwareInput).isValid());
     const Id::DeviceIdentity deviceCopy(device);
@@ -213,7 +221,7 @@ void test_identity_copies_own_storage() {
     deviceInput[0] = 'X';
     firmwareInput[0] = 'X';
     hardwareInput[0] = 'X';
-    TEST_ASSERT_TRUE(device.assign("hydro").isValid());
+    TEST_ASSERT_TRUE(device.assign("hydro", validDeviceId()).isValid());
     TEST_ASSERT_TRUE(build.assign("0.3.0", "0.7.0").isValid());
     TEST_ASSERT_TRUE(hardware.assign("AQMA").isValid());
     TEST_ASSERT_TRUE(deviceCopy.isValid());
@@ -229,10 +237,10 @@ void test_identity_categories_are_independent() {
     Id::DeviceIdentity device;
     Id::BuildIdentity build;
     Id::HardwareIdentity hardware;
-    TEST_ASSERT_TRUE(device.assign("luma").isValid());
+    TEST_ASSERT_TRUE(device.assign("luma", validDeviceId()).isValid());
     TEST_ASSERT_TRUE(build.assign("0.2.1", AQUA_CORE_VERSION).isValid());
     TEST_ASSERT_TRUE(hardware.assign("LOLIN32_TEST").isValid());
-    assertError(device.assign(nullptr), Id::ValidationError::NullInput, Id::ValidationField::DeviceType);
+    assertError(device.assign(nullptr, validDeviceId()), Id::ValidationError::NullInput, Id::ValidationField::DeviceType);
     TEST_ASSERT_TRUE(build.isValid());
     TEST_ASSERT_TRUE(hardware.isValid());
     TEST_ASSERT_EQUAL_STRING("0.2.1", build.firmwareVersion());
@@ -243,16 +251,91 @@ void test_identity_assign_accepts_own_getters() {
     Id::DeviceIdentity device;
     Id::BuildIdentity build;
     Id::HardwareIdentity hardware;
-    TEST_ASSERT_TRUE(device.assign("luma").isValid());
+    TEST_ASSERT_TRUE(device.assign("luma", validDeviceId()).isValid());
     TEST_ASSERT_TRUE(build.assign("0.2.1", AQUA_CORE_VERSION).isValid());
     TEST_ASSERT_TRUE(hardware.assign("LOLIN32_TEST").isValid());
-    TEST_ASSERT_TRUE(device.assign(device.deviceType()).isValid());
+    TEST_ASSERT_TRUE(device.assign(device.deviceType(), device.deviceId()).isValid());
     TEST_ASSERT_TRUE(build.assign(build.coreVersion(), build.firmwareVersion()).isValid());
     TEST_ASSERT_TRUE(hardware.assign(hardware.hardwareVariant()).isValid());
     TEST_ASSERT_EQUAL_STRING("luma", device.deviceType());
     TEST_ASSERT_EQUAL_STRING(AQUA_CORE_VERSION, build.firmwareVersion());
     TEST_ASSERT_EQUAL_STRING("0.2.1", build.coreVersion());
     TEST_ASSERT_EQUAL_STRING("LOLIN32_TEST", hardware.hardwareVariant());
+}
+
+void test_canonical_type_grammar_and_failed_assign() {
+    Id::DeviceTypeToken token;
+    TEST_ASSERT_TRUE(token.assign("a").isValid());
+    char maximum[24] {};
+    fillText(maximum, 23U);
+    TEST_ASSERT_TRUE(token.assign(maximum).isValid());
+    TEST_ASSERT_EQUAL_STRING(maximum, token.value());
+    const char* invalid[] = {"A", "1luma", "a b", "a/b", "a+b", "a#b", "a.b", "a\xC3\xA9"};
+    for (const char* text : invalid) {
+        assertError(token.assign(text), Id::ValidationError::InvalidFormat, Id::ValidationField::DeviceType);
+        TEST_ASSERT_FALSE(token.isValid());
+        TEST_ASSERT_EQUAL_STRING("", token.value());
+    }
+    assertError(token.assign(""), Id::ValidationError::EmptyRequiredField, Id::ValidationField::DeviceType);
+    char overlong[25] {};
+    fillText(overlong, 24U);
+    assertError(token.assign(overlong), Id::ValidationError::TooLong, Id::ValidationField::DeviceType);
+    TEST_ASSERT_TRUE(token.assign("luma_2-test").isValid());
+}
+
+void test_device_id_validation_format_and_equality() {
+    Id::DeviceId id;
+    TEST_ASSERT_FALSE(id.isValid());
+    const uint8_t bytes[] {0x24U, 0x00U, 0x00U, 0x01U, 0xABU, 0xCDU};
+    TEST_ASSERT_TRUE(id.assign(bytes, sizeof(bytes)).isValid());
+    char output[13] {};
+    TEST_ASSERT_TRUE(id.format(output, sizeof(output)));
+    TEST_ASSERT_EQUAL_STRING("24000001ABCD", output);
+    char tooSmall[12] { 'X' };
+    TEST_ASSERT_FALSE(id.format(tooSmall, sizeof(tooSmall)));
+    TEST_ASSERT_EQUAL_UINT8('X', tooSmall[0]);
+    TEST_ASSERT_TRUE(id.equals(id));
+    Id::DeviceId another;
+    TEST_ASSERT_TRUE(another.assign(bytes, sizeof(bytes)).isValid());
+    TEST_ASSERT_TRUE(id.equals(another));
+    const uint8_t zero[6] {};
+    const uint8_t broadcast[6] {0xFFU, 0xFFU, 0xFFU, 0xFFU, 0xFFU, 0xFFU};
+    const uint8_t multicast[6] {0x25U, 0x00U, 0x00U, 0x01U, 0xABU, 0xCDU};
+    for (const uint8_t* invalid : {zero, broadcast, multicast}) {
+        assertError(id.assign(invalid, 6U), Id::ValidationError::InvalidDeviceId, Id::ValidationField::DeviceId);
+        TEST_ASSERT_FALSE(id.isValid());
+        TEST_ASSERT_FALSE(id.format(output, sizeof(output)));
+    }
+    assertError(id.assign(bytes, 5U), Id::ValidationError::InvalidFormat, Id::ValidationField::DeviceId);
+    assertError(id.assign(nullptr, 6U), Id::ValidationError::NullInput, Id::ValidationField::DeviceId);
+}
+
+void test_canonical_identity_pair_and_fake_source() {
+    struct FakeSource final : Id::DeviceIdSource {
+        bool read(Id::DeviceId& out) const override {
+            out = validDeviceId();
+            return true;
+        }
+    } source;
+    Id::DeviceId id;
+    TEST_ASSERT_TRUE(source.read(id));
+    Id::DeviceIdentity first;
+    Id::DeviceIdentity same;
+    Id::DeviceIdentity otherType;
+    TEST_ASSERT_TRUE(first.assign("luma", id).isValid());
+    TEST_ASSERT_TRUE(same.assign("luma", id).isValid());
+    TEST_ASSERT_TRUE(otherType.assign("hydro", id).isValid());
+    TEST_ASSERT_TRUE(first.equals(same));
+    TEST_ASSERT_FALSE(first.equals(otherType));
+    TEST_ASSERT_TRUE(first.deviceId().equals(otherType.deviceId()));
+    const Id::DeviceIdentity copy(first);
+    TEST_ASSERT_TRUE(copy.equals(first));
+    assertError(first.assign("Luma", id), Id::ValidationError::InvalidFormat, Id::ValidationField::DeviceType);
+    TEST_ASSERT_FALSE(first.isValid());
+    TEST_ASSERT_TRUE(copy.isValid());
+    TEST_ASSERT_EQUAL_STRING("", first.deviceType());
+    Id::DeviceId invalidId;
+    assertError(first.assign("luma", invalidId), Id::ValidationError::InvalidDeviceId, Id::ValidationField::DeviceId);
 }
 
 } // namespace
@@ -277,4 +360,7 @@ void runIdentityTests() {
     RUN_TEST(test_identity_copies_own_storage);
     RUN_TEST(test_identity_categories_are_independent);
     RUN_TEST(test_identity_assign_accepts_own_getters);
+    RUN_TEST(test_canonical_type_grammar_and_failed_assign);
+    RUN_TEST(test_device_id_validation_format_and_equality);
+    RUN_TEST(test_canonical_identity_pair_and_fake_source);
 }

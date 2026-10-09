@@ -11,6 +11,8 @@ bool SystemServiceWebProjectionSource::read(CoreSystemProjection& out) const {
     }
     CoreSystemProjection value {};
     value.identity = source_.deviceIdentity();
+    value.canonicalIdentity = canonicalIdentity_;
+    value.apiProtocolVersion = CURRENT_API_PROTOCOL_VERSION;
     std::strncpy(
         value.aquaCoreVersion,
         source_.aquaCoreVersion(),

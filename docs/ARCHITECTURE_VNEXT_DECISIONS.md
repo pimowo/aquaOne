@@ -40,8 +40,9 @@ Komendy używają HTTP POST i normalnej ścieżki Application/Command/Policy/Saf
 nie przenosi komend przez WebSocket. Home Assistant jest klientem, nie authority Domain.
 Integracja używa Config Flow, z manual host/IP jako fallback. Target discovery to lokalny
 Zeroconf/DNS-SD; `_aquaone._tcp.local.` jest kandydatem, a exact registration, port i TXT schema
-pozostają Phase 10 spike. Identity HA opiera się na DeviceIdentity/future stable DeviceId, nie
-na IP; HA-101 nie redefiniuje MAC jako publicznego wire identity.
+pozostają Phase 10 spike. Identity HA opiera się na stabilnej parze DeviceIdentity, nie
+na IP. F10.1B CURRENT publikuje `device_id` jako 12 wielkich cyfr hex factory/default
+base MAC48 dla obecnego zakresu ESP32-family; jest to publiczny identyfikator techniczny.
 
 MQTT, broker i MQTT Discovery nie należą do TARGET. Nie powstaje wspólny AquaCore MQTT module.
 Doser zachowuje `PubSubClient`, `MqttManager` i `HaDiscovery` jako LEGACY CURRENT do F10.6.
@@ -496,9 +497,10 @@ RuntimeIdentity nie jest persistent jako current identity, nie trafia do NVS, ba
 restore jako wartość do ponownego użycia. Nie wymaga flash writes ani RTC/NTP.
 Ewentualny boot history i next-boot metadata są osobnymi future contracts.
 
-DeviceIdentity jest stabilną kategorią technical device identity według IDN-001; CURRENT
-Identity::DeviceIdentity przechowuje tylko deviceType i nie jest jeszcze finalnym unikalnym
-device_id. SYS-101 nie zmienia tego ani IDN-101. BuildIdentity opisuje firmware/Core versions,
+DeviceIdentity jest stabilną kategorią technical device identity według IDN-001; w chwili
+bramki SYS-101 Identity::DeviceIdentity przechowywał tylko deviceType. F10.1B CURRENT
+implementuje parę (deviceType, DeviceId) dla obecnego zakresu ESP32-family.
+SYS-101 nie zmienia tego ani IDN-101. BuildIdentity opisuje firmware/Core versions,
 HardwareIdentity fizyczny wariant; reboot przy tych samych wartościach nadal losuje nową
 RuntimeIdentity. MAC nie jest RuntimeIdentity i nie jest wymaganym składnikiem RuntimeIdentity generatora. Nie łączy się
 identity categories w jeden canonical string; presentation może pokazać je obok siebie.
@@ -1509,9 +1511,11 @@ rozszerzenia ich schema/grammar pozostają osobnymi otwartymi decyzjami.
 
 ### IDN-101 — DeviceIdentity v1
 
-**Status:** ACCEPTED — TARGET contract; F1.12 jest docs-only. CURRENT F1.3
-Identity::DeviceIdentity ma tylko deviceType; nie implementuje tego kontraktu.
-Legacy AquaCore::DeviceIdentity i wszyscy konsumenci pozostają bez migracji.
+**Status:** ACCEPTED — TARGET contract; F1.12 był docs-only. F10.1B CURRENT
+implementuje `Identity::DeviceIdentity` jako parę `(deviceType, DeviceId)` z 6-bajtowym
+DeviceId i walidowanym tokenem typu. Źródło factory/default base MAC48 oraz publikacja
+API 1.0 są CURRENT dla obecnego zakresu ESP32-family. Legacy `AquaCore::DeviceIdentity`
+pozostaje osobnym kontraktem kompatybilności.
 
 #### Wybór modelu device_id
 
@@ -1534,7 +1538,7 @@ hardware source i persistence wymagałyby osobnej walidacji platformowej.
 
 #### Pola, type token i technical identity
 
-Docelowy AquaCore::Identity::DeviceIdentity zawiera dokładnie dwa wymagane pola:
+AquaCore::Identity::DeviceIdentity v1 zawiera dokładnie dwa wymagane pola:
 DeviceTypeToken deviceType oraz DeviceId deviceId. Nie zawiera friendly name,
 firmwareVersion, coreVersion, hardwareVariant ani RuntimeIdentity. BuildIdentity
 opisuje firmware/Core versions, HardwareIdentity wariant/platformę, a SYS-101
@@ -2772,6 +2776,18 @@ compatibility, before F10.2 creates HA config entries/entities. Static product-a
 capabilities suffice initially. Production product WS remains a later separate cutover;
 Doser MQTT/Discovery remains LEGACY CURRENT until F10.6. HA-101, IDN-101 and SEC-101
 boundaries are unchanged.
+
+## F10.1B — server identity/API prerequisite checkpoint
+
+F10.1A is CLOSED and F10.1B is CLOSED/CURRENT. Common `GET /api/system` now exposes
+canonical `device_type` (`luma`, `hydro`, `doser`), `device_id` as 12 uppercase hex
+characters from the ESP32 factory/default base MAC48 and `api_protocol_version` 1.0,
+alongside legacy fields. Classic ESP32 Luma and ESP32-S3 Doser passed physical
+factory identity and reboot stability checks; Luma also passed 9/9 hardware Web tests
+and 13 stable system samples over 62.66 s. AP/STA mode transitions were not exhaustively
+tested. Phase 10 remains IN PROGRESS; F10.2 Luma read-only integration is REQUIRED NEXT.
+The HA custom integration, product WS, `/api/capabilities` and mDNS/Zeroconf are not
+CURRENT. SEC-101 remains OPEN; Doser MQTT/Discovery stays LEGACY CURRENT until F10.6.
 
 ## SPIKE REQUIRED
 

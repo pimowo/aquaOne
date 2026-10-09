@@ -71,7 +71,7 @@ HydroSenseApp::HydroSenseApp()
       statusSnapshot_(snapshotSynchronizer_),
       settingsSnapshot_(snapshotSynchronizer_),
       hydroDiagnosticsSnapshot_(snapshotSynchronizer_),
-      systemProjectionSource_(systemService_),
+      systemProjectionSource_(systemService_, canonicalIdentity_),
       coreDiagnosticsSource_(systemService_, networkService_, configStorage_),
       coreProjectionPublisher_(systemProjectionSource_, &coreDiagnosticsSource_,
                                coreSystemSnapshot_, coreDiagnosticsSnapshot_),
@@ -259,6 +259,9 @@ void HydroSenseApp::beginSystem()
     systemService_.begin(
         identity
     );
+    AquaCore::Identity::DeviceId deviceId;
+    if (factoryDeviceIdSource_.read(deviceId))
+        (void)canonicalIdentity_.assign("hydro", deviceId);
 }
 
 void HydroSenseApp::handleButton()

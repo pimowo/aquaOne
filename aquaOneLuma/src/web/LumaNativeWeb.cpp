@@ -219,6 +219,9 @@ bool LumaNativeWeb::registerRoutes() {
 void LumaNativeWeb::handleStatus(
     void* context, const HttpRouteRequest&, WebResponseWriter& response
 ) {
+    // API protocol 1.0 read-only Luma schema: preserve required field names,
+    // types and meanings through 1.x; optional additions may use a minor bump.
+    // A breaking change requires protocol-major review.
     const LumaNativeWeb* self = static_cast<const LumaNativeWeb*>(context);
     LumaStatusProjection value {};
     if (self == nullptr || !self->status_.read(value)) {

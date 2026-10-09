@@ -2,6 +2,7 @@
 
 #include <AquaCore/System/SystemService.h>
 #include <AquaCore/System/DeviceIdentity.h>
+#include <AquaCore/System/Esp32FactoryDeviceIdSource.h>
 #include <AquaCore/Logging/Logger.h>
 #include <AquaCore/Logging/SerialLogSink.h>
 #include <AquaCore/Web/CoreWebProjectionPublisher.h>
@@ -28,6 +29,8 @@
 #include "DoserRestartRuntime.h"
 
 AquaCore::SystemService systemService;
+AquaCore::Identity::DeviceIdentity canonicalIdentity;
+AquaCore::Identity::Esp32FactoryDeviceIdSource factoryDeviceIdSource;
 AquaCore::SerialLogSink serialLogSink(Serial);
 AquaCore::Logger logger(serialLogSink);
 
@@ -48,7 +51,8 @@ AquaCore::Web::PublishedSnapshot<AquaCore::Web::CoreSystemProjection>
 AquaCore::Web::Esp32SnapshotSynchronizer diagnosticsSnapshotSync;
 AquaCore::Web::PublishedSnapshot<AquaCore::Web::CoreDiagnosticsProjection>
     diagnosticsSnapshot(diagnosticsSnapshotSync);
-AquaCore::Web::SystemServiceWebProjectionSource systemProjectionSource(systemService);
+AquaCore::Web::SystemServiceWebProjectionSource systemProjectionSource(
+    systemService, canonicalIdentity);
 DoserManagerDiagnosticsFacts diagnosticsFacts(
     systemService, timeManager, wifiManager, diagnosticsManager);
 DoserDiagnosticsProjectionSource diagnosticsProjectionSource(diagnosticsFacts);
@@ -83,6 +87,9 @@ void setup() {
         "ESP32-S3-SuperMini"
     );
     systemService.begin(identity);
+    AquaCore::Identity::DeviceId deviceId;
+    if (factoryDeviceIdSource.read(deviceId))
+        (void)canonicalIdentity.assign("doser", deviceId);
 
     logger.info("System", "AquaCore initialized");
 

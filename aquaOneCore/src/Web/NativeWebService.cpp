@@ -308,7 +308,14 @@ void NativeWebService::handleSystem(
 ) {
     const NativeWebService* self = static_cast<const NativeWebService*>(context);
     CoreSystemProjection value {};
-    if (self == nullptr || !self->systemSnapshot_.read(value)) {
+    if (self == nullptr || !self->systemSnapshot_.read(value) ||
+        !value.canonicalIdentity.isValid() ||
+        value.apiProtocolVersion.major == 0U) {
+        unavailable(response, "system unavailable");
+        return;
+    }
+    char deviceId[Identity::DeviceId::TEXT_LENGTH + 1U] {};
+    if (!value.canonicalIdentity.deviceId().format(deviceId, sizeof(deviceId))) {
         unavailable(response, "system unavailable");
         return;
     }
@@ -327,6 +334,15 @@ void NativeWebService::handleSystem(
     writeUnsigned(response, value.uptimeMs);
     response.writeText(",\"restartReason\":");
     writeJsonString(response, restartReasonName(value.restartReason));
+    response.writeText(",\"device_type\":");
+    writeJsonString(response, value.canonicalIdentity.deviceType());
+    response.writeText(",\"device_id\":");
+    writeJsonString(response, deviceId);
+    response.writeText(",\"api_protocol_version\":{\"major\":");
+    writeUnsigned(response, value.apiProtocolVersion.major);
+    response.writeText(",\"minor\":");
+    writeUnsigned(response, value.apiProtocolVersion.minor);
+    response.writeText("}");
     response.writeText("}");
     response.endResponse();
 }

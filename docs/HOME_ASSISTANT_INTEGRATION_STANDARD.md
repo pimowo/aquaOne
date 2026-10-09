@@ -1,10 +1,10 @@
 # HOME_ASSISTANT_INTEGRATION_STANDARD.md
 
-**Status:** TARGET / ACTIVE DESIGN
+**Status:** TARGET / ACTIVE DESIGN; F10.1B server prerequisite CURRENT
 **Scope:** aquaOne ecosystem
 **Decision:** HA-101 ACCEPTED
 **Version:** 1.0
-**Last reviewed:** 2026-10-07
+**Last reviewed:** 2026-10-09
 
 ## 1. Purpose and autonomy
 
@@ -72,10 +72,12 @@ label fits the RFC 6335 syntax and 15-character limit. Exact registration, insta
 port and TXT schema remain a Phase 10 spike and are not frozen by this document. Zeroconf is
 discovery, not authentication.
 
-The Home Assistant device registry MUST use the accepted stable `DeviceIdentity` and future
-stable public `DeviceId`, subject to IDN decisions. IP address and hostname locate the current
-endpoint; they are not device identity. This decision does not expose a MAC address as public
-wire identity.
+The Home Assistant device registry MUST use the accepted stable `DeviceIdentity` pair.
+F10.1B now exposes `device_type` and a public `device_id`: the 12-character uppercase
+representation of the factory/default base MAC48 for the current ESP32-family implementation.
+It is a technical identifier, not an authentication credential. IP address and hostname
+locate the current endpoint; they are not device identity. Other hardware platforms need
+their own reviewed source before claiming this contract.
 
 ## 6. Initial connection
 
@@ -97,8 +99,10 @@ legacy MQTT and MQTT Discovery implementation.
 ## 7. Version and compatibility contract
 
 The minimum neutral compatibility tuple is stable `device_type`, firmware version, Core
-version and `api_protocol_version`. The exact wire field is FUTURE source work. The target
-contract MUST NOT use `mqtt_protocol_version`.
+version and `api_protocol_version`. F10.1B CURRENT `GET /api/system` publishes canonical
+`device_type`, `device_id` and `api_protocol_version` as an object with `major: 1` and
+`minor: 0`; legacy system fields remain present. Luma's current read-only status schema
+belongs to this API major. The target contract MUST NOT use `mqtt_protocol_version`.
 
 The client MUST reject unsupported major protocol or product API versions clearly and MUST
 not guess a schema. Backward compatible additions MAY use minor capability checks owned by
@@ -165,8 +169,17 @@ implement them.
 ## F10.1A gate (2026-10-09)
 
 [F10.1A](HA_F10_1A_ARCHITECTURE.md) starts Phase 10 as a docs-only architecture gate
-and selects **B — SERVER PREREQUISITE REQUIRED**. The CURRENT `/api/system` does not
+and selects **B — SERVER PREREQUISITE REQUIRED**. At that gate `/api/system` did not
 publish canonical stable `device_id` or `api_protocol_version`, and its legacy
 `deviceType` values are not the IDN-101 product tokens. F10.1B must establish and
 publish those fields before F10.2 creates stable HA entries/entities. No integration,
 firmware API or product Realtime changed at this gate; Doser MQTT remains LEGACY CURRENT.
+
+## F10.1B server checkpoint (2026-10-09)
+
+F10.1B is CLOSED/CURRENT after native tests and physical identity, stability and reboot
+checks on classic ESP32 Luma and ESP32-S3 Doser. The common system API now supplies the
+stable identity and version prerequisite for F10.2. Phase 10 remains IN PROGRESS;
+F10.2 read-only Luma integration is REQUIRED NEXT. The HA custom integration, product
+WebSocket, `/api/capabilities` and Zeroconf service are not CURRENT. SEC-101 remains OPEN;
+Doser MQTT/Discovery remains LEGACY CURRENT until F10.6.

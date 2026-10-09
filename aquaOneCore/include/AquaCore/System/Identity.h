@@ -8,21 +8,21 @@
 namespace AquaCore {
 namespace Identity {
 
-// F1.3 coexistence with legacy AquaCore::DeviceIdentity; no consumer migration.
-// These are the minimum fields backed by CURRENT data, not final IDN-101 fields.
-// Capacities include the NUL byte and reuse CURRENT implementation limits.
-// device_id, MAC/MAC6 and final syntax/capacities remain open;
-// RuntimeIdentity has its own CURRENT foundation in RuntimeIdentity.h.
+// Canonical IDN-101 identity coexists with legacy display/build identity.
+// RuntimeIdentity is a separate per-boot value.
 enum class ValidationError : uint8_t {
     None,
     NullInput,
     EmptyRequiredField,
-    TooLong
+    TooLong,
+    InvalidFormat,
+    InvalidDeviceId
 };
 
 enum class ValidationField : uint8_t {
     None,
     DeviceType,
+    DeviceId,
     FirmwareVersion,
     CoreVersion,
     HardwareVariant
@@ -42,8 +42,43 @@ struct ValidationResult {
     }
 };
 
-// All fields below are required. Validation checks presence and byte length,
-// not final identifier grammar or SemVer. No normalization or truncation.
+// Device type grammar is [a-z][a-z0-9_-]{0,22}.
+class DeviceTypeToken {
+public:
+    static constexpr size_t CAPACITY = AquaCore::DeviceIdentity::DEVICE_TYPE_CAPACITY;
+    DeviceTypeToken();
+    ValidationResult assign(const char* value);
+    bool isValid() const;
+    const char* value() const;
+    bool equals(const DeviceTypeToken& other) const;
+private:
+    char value_[CAPACITY];
+    bool valid_;
+};
+
+// Full factory/base MAC48, independent of an active network interface.
+class DeviceId {
+public:
+    static constexpr size_t BYTE_COUNT = 6U;
+    static constexpr size_t TEXT_LENGTH = 12U;
+    DeviceId();
+    ValidationResult assign(const uint8_t* bytes, size_t length);
+    bool isValid() const;
+    bool format(char* destination, size_t capacity) const;
+    bool equals(const DeviceId& other) const;
+private:
+    uint8_t bytes_[BYTE_COUNT];
+    bool valid_;
+};
+
+class DeviceIdSource {
+public:
+    virtual bool read(DeviceId& out) const = 0;
+protected:
+    ~DeviceIdSource() = default;
+};
+
+// All fields below are required. No normalization or truncation.
 // A default value is invalid; a failed assign empties ALL fields and invalidates
 // the value, including after a previous successful assign. Getters return owned,
 // NUL-terminated storage. No dynamic allocation; ordinary copies own their data.
@@ -51,16 +86,18 @@ struct ValidationResult {
 // Capacity bytes when no NUL occurs.
 class DeviceIdentity {
 public:
-    static constexpr size_t DEVICE_TYPE_CAPACITY =
-        AquaCore::DeviceIdentity::DEVICE_TYPE_CAPACITY;
+    static constexpr size_t DEVICE_TYPE_CAPACITY = DeviceTypeToken::CAPACITY;
 
     DeviceIdentity();
-    ValidationResult assign(const char* deviceType);
+    ValidationResult assign(const char* deviceType, const DeviceId& deviceId);
     bool isValid() const;
     const char* deviceType() const;
+    const DeviceId& deviceId() const;
+    bool equals(const DeviceIdentity& other) const;
 
 private:
-    char deviceType_[DEVICE_TYPE_CAPACITY];
+    DeviceTypeToken deviceType_;
+    DeviceId deviceId_;
     bool valid_;
 };
 

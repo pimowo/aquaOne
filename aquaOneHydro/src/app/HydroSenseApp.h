@@ -2,6 +2,7 @@
 
 #include <AquaCore/System/SystemService.h>
 #include <AquaCore/System/DeviceIdentity.h>
+#include <AquaCore/System/Esp32FactoryDeviceIdSource.h>
 
 #include <AquaCore/Network/Esp32NetworkBackend.h>
 #include <AquaCore/Network/NetworkService.h>
@@ -94,6 +95,8 @@ private:
 
     AquaCore::SystemService
         systemService_;
+    AquaCore::Identity::DeviceIdentity canonicalIdentity_;
+    AquaCore::Identity::Esp32FactoryDeviceIdSource factoryDeviceIdSource_;
 
 
     // =========================================================

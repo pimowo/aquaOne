@@ -12,12 +12,15 @@ namespace Web {
 class SystemServiceWebProjectionSource final
     : public CoreSystemProjectionSource {
 public:
-    explicit SystemServiceWebProjectionSource(const SystemService& source)
-        : source_(source) {}
+    SystemServiceWebProjectionSource(
+        const SystemService& source,
+        const Identity::DeviceIdentity& canonicalIdentity
+    ) : source_(source), canonicalIdentity_(canonicalIdentity) {}
     bool read(CoreSystemProjection& out) const override;
 
 private:
     const SystemService& source_;
+    const Identity::DeviceIdentity& canonicalIdentity_;
 };
 
 class DiagnosticsServiceWebProjectionSource final

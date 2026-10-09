@@ -8,6 +8,7 @@
 #include "AquaCore/Network/Esp32NetworkBackend.h"
 #include "AquaCore/Network/NetworkService.h"
 #include "AquaCore/System/SystemService.h"
+#include "AquaCore/System/Esp32FactoryDeviceIdSource.h"
 #include "AquaCore/Web/CoreWebProjectionPublisher.h"
 #include "AquaCore/Web/CoreWebProjectionSources.h"
 #include "AquaCore/Web/Esp32ActionBridgeSynchronizer.h"
@@ -51,6 +52,8 @@ LumaSense::NtpService ntpService(
 );
 LumaSense::NtpSyncCoordinator ntpSyncCoordinator(ntpService);
 AquaCore::SystemService systemService;
+AquaCore::Identity::DeviceIdentity canonicalIdentity;
+AquaCore::Identity::Esp32FactoryDeviceIdSource factoryDeviceIdSource;
 AquaCore::SerialLogSink serialLogSink(Serial);
 AquaCore::Logger logger(serialLogSink);
 
@@ -97,7 +100,7 @@ AquaCore::Web::PublishedSnapshot<AquaCore::Web::CoreDiagnosticsProjection>
 AquaCore::Web::PublishedSnapshot<LumaSense::Web::LumaStatusProjection>
     lumaStatus(lumaStatusSynchronizer);
 AquaCore::Web::SystemServiceWebProjectionSource systemProjectionSource(
-    systemService
+    systemService, canonicalIdentity
 );
 AquaCore::Web::DiagnosticsServiceWebProjectionSource
     diagnosticsProjectionSource(diagnosticsService);
@@ -418,6 +421,9 @@ void setup() {
     const uint32_t nowMs = millis();
 
     (void)systemService.begin(DEVICE_IDENTITY);
+    AquaCore::Identity::DeviceId deviceId;
+    if (factoryDeviceIdSource.read(deviceId))
+        (void)canonicalIdentity.assign("luma", deviceId);
 
     // Storage resolves PWM polarity before the only hardware.begin().
     // Network and Web are initialized only after the autonomous lamp.

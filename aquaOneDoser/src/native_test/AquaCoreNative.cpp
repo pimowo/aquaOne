@@ -1,5 +1,6 @@
 #if !defined(ARDUINO_ARCH_ESP32)
 #include "../../../aquaOneCore/src/System/DeviceIdentity.cpp"
+#include "../../../aquaOneCore/src/System/Identity.cpp"
 #include "../../../aquaOneCore/src/System/RestartReason.cpp"
 #include "../../../aquaOneCore/src/System/SystemService.cpp"
 #include "../../../aquaOneCore/src/Web/WebTypes.cpp"

@@ -1,19 +1,26 @@
 # Project Matrix — Status i Integracja Core
 
 **Snapshot date:** 2026-10-09
-**Snapshot base commit:** 2259695 plus F9.8B closure
+**Snapshot scope:** F10.1B server identity/API checkpoint after F9.8B Phase 9 closure
 
-Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla wskazanego
-commita. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
+Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla bieżącego
+checkpointu. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
 
 F9.8B: Phase 9 is CLOSED. Core Realtime WS/resync is CURRENT and passed classic
 ESP32 HIL; Luma, Hydro and Doser production HTTP is native, while product
-WS/cohorts/notifications are absent. Phase 10 is IN PROGRESS with F10.1A
-docs-only architecture complete; HA implementation is not started. F10.1B
-server identity/API prerequisite is required before F10.2.
+WS/cohorts/notifications are absent. Phase 10 is IN PROGRESS: F10.1A is CLOSED,
+F10.1B server identity/API is CLOSED/CURRENT and F10.2 Luma read-only is REQUIRED NEXT.
+The HA custom integration is not implemented yet.
 See `docs/WEB_F9_8B_PHASE9_CLOSURE.md` and the detailed
 `docs/WEB_F9_8A_PHASE9_CLOSURE_AUDIT.md`; F10.1A decision:
 `docs/HA_F10_1A_ARCHITECTURE.md`.
+
+F10.1B CURRENT common `GET /api/system` adds canonical `device_type` (`luma`, `hydro`,
+`doser`), `device_id` from the factory/default base MAC48 of the current ESP32-family
+implementation, and `api_protocol_version` 1.0 while retaining legacy fields. Physical
+identity and reboot stability passed on classic ESP32 Luma and ESP32-S3 Doser. The
+Luma status schema remained available; SEC-101 remains OPEN. `/api/capabilities`,
+mDNS/Zeroconf and production product WS remain FUTURE.
 
 ## HA-101 target update
 
@@ -231,7 +238,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | **Struktura** | `include/AquaCore/<Module>/` + `src/<Module>/` | Implementacje znajdują się bezpośrednio pod `aquaOneCore/src/` |
 | | | |
 | **Moduły główne** | | |
-| System | ✅ READY | SystemService, DeviceIdentity, RestartReason |
+| System | ✅ READY | SystemService, canonical DeviceIdentity pair, RestartReason; `/api/system` identity and API 1.0 CURRENT |
 | Config | ✅ READY | StorageService (CRC32, versioning, dual-slot) |
 | Logging | ✅ READY | Logger + SerialLogSink + compile-time control |
 | Diagnostics | ✅ READY | DiagnosticsService (snapshot agregator) |
@@ -293,7 +300,7 @@ aquaOneCore    ███████░░░░░ 🟢 STABLE   (7/7 modułów
 
 ### Doser
 - Status: 🟡 Integracja hybrydowa; native Web i streaming OTA CURRENT; G5 bare-board HIL PASS 2026-10-09 (bez pomp i stopni wykonawczych)
-- Następny krok: Phase 10 jest IN PROGRESS (F10.1A docs-only); F10.1B poprzedza F10.2, Doser MQTT/Discovery migracja w F10.6; produktowy WS wymaga osobnego zatwierdzonego zakresu
+- Następny krok: Phase 10 jest IN PROGRESS; F10.1A i F10.1B CLOSED, F10.2 REQUIRED NEXT; Doser MQTT/Discovery migracja w F10.6, produktowy WS wymaga osobnego zatwierdzonego zakresu
 - Ryzyko: Średnie/wysokie; wymagane punkty regresji i testy sprzętowe
 
 ### Clima
@@ -328,4 +335,5 @@ Docelowe rozszerzenia platformy obejmują Commands, Events, Alarms, Safety,
 Maintenance, Registry, produktową kompozycję Realtime, Home Assistant client integration,
 wspólne OTA, Backup/Restore, Factory Reset oraz pełną Application lifecycle/composition.
 Core Realtime foundation jest CURRENT, bez produkcyjnego WS w Luma/Hydro/Doser.
-Phase 9 jest CLOSED po F9.8B; Phase 10 jest IN PROGRESS po F10.1A, bez implementacji integracji.
+Phase 9 jest CLOSED po F9.8B; Phase 10 jest IN PROGRESS po F10.1A i F10.1B,
+bez implementacji integracji HA. F10.2 Luma read-only jest REQUIRED NEXT.

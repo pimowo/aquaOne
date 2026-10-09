@@ -159,7 +159,7 @@ public:
 class Fixture {
 public:
     Fixture()
-        : system(backend), systemSource(system), diagnosticsSource(facts),
+        : system(backend), systemSource(system, canonicalIdentity), diagnosticsSource(facts),
           systemSnapshot(systemSync), diagnosticsSnapshot(diagnosticsSync),
           publisher(systemSource, &diagnosticsSource,
                     systemSnapshot, diagnosticsSnapshot),
@@ -170,6 +170,10 @@ public:
           otaRoute(upload, capacitySnapshot, ota, "user", "password"),
           service(transport, systemSnapshot, diagnosticsSnapshot) {
         TEST_ASSERT_TRUE(system.begin(DeviceIdentity("Doser", "Test", "1", "S3")));
+        const uint8_t bytes[] {0x24U, 0x6FU, 0x28U, 0xA1U, 0xB2U, 0xC3U};
+        Identity::DeviceId id;
+        TEST_ASSERT_TRUE(id.assign(bytes, sizeof(bytes)).isValid());
+        TEST_ASSERT_TRUE(canonicalIdentity.assign("doser", id).isValid());
         facts.value.systemReady = true;
         facts.value.productHealth = Diagnostics::HealthState::Ok;
         transport.system = &systemSnapshot;
@@ -188,6 +192,7 @@ public:
     }
     Backend backend;
     SystemService system;
+    Identity::DeviceIdentity canonicalIdentity;
     SystemServiceWebProjectionSource systemSource;
     Facts facts;
     DoserDiagnosticsProjectionSource diagnosticsSource;

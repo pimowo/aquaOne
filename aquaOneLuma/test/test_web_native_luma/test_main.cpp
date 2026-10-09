@@ -2,6 +2,10 @@
 #include <unity.h>
 
 #include <cstring>
+#include <memory>
+#include <new>
+#include <string>
+#include <type_traits>
 
 #define LUMASENSE_STORAGE_PREFERENCES_HEADER "../../test/test_ac8/Preferences.h"
 #define LUMASENSE_RTC_WIRE_HEADER "../../test/test_ac8/Wire.h"
@@ -36,23 +40,89 @@ using namespace LumaSense::Web;
 
 namespace {
 
+bool hasJsonIntegerMember(const std::string& object, const char* key, int expected) {
+    const std::string quotedKey = std::string("\"") + key + "\"";
+    const size_t keyPosition = object.find(quotedKey);
+    if (keyPosition == std::string::npos) return false;
+    const size_t colon = object.find(':', keyPosition + quotedKey.size());
+    if (colon == std::string::npos) return false;
+    size_t valuePosition = colon + 1U;
+    while (valuePosition < object.size() &&
+           (object[valuePosition] == ' ' || object[valuePosition] == '\t' ||
+            object[valuePosition] == '\r' || object[valuePosition] == '\n')) ++valuePosition;
+    bool negative = false;
+    if (valuePosition < object.size() && object[valuePosition] == '-') {
+        negative = true; ++valuePosition;
+    }
+    if (valuePosition >= object.size() || object[valuePosition] < '0' ||
+        object[valuePosition] > '9') return false;
+    int value = 0;
+    do { value = value * 10 + (object[valuePosition] - '0'); ++valuePosition; }
+    while (valuePosition < object.size() && object[valuePosition] >= '0' &&
+           object[valuePosition] <= '9');
+    if (valuePosition < object.size() && object[valuePosition] != ',' &&
+        object[valuePosition] != '}') return false;
+    return (negative ? -value : value) == expected;
+}
+
+bool hasApiProtocolVersion(const char* json, int major, int minor) {
+    if (json == nullptr) return false;
+    const std::string document(json);
+    const size_t key = document.find("\"api_protocol_version\"");
+    if (key == std::string::npos) return false;
+    size_t open = document.find(':', key + std::strlen("\"api_protocol_version\""));
+    if (open == std::string::npos) return false;
+    ++open;
+    while (open < document.size() &&
+           (document[open] == ' ' || document[open] == '\t' ||
+            document[open] == '\r' || document[open] == '\n')) ++open;
+    if (open >= document.size() || document[open] != '{') return false;
+    size_t close = open + 1U;
+    unsigned int depth = 1U;
+    for (; close < document.size() && depth != 0U; ++close) {
+        if (document[close] == '{') ++depth;
+        else if (document[close] == '}') --depth;
+    }
+    if (depth != 0U) return false;
+    const std::string versionObject = document.substr(open, close - open);
+    return hasJsonIntegerMember(versionObject, "major", major) &&
+           hasJsonIntegerMember(versionObject, "minor", minor);
+}
+
 class Writer final : public WebResponseWriter {
 public:
+    static constexpr size_t kBodyCapacity = 24576U;
+
+    Writer() : body(new (std::nothrow) char[kBodyCapacity]()) {}
+    Writer(const Writer&) = delete;
+    Writer& operator=(const Writer&) = delete;
+    Writer(Writer&&) noexcept = default;
+    Writer& operator=(Writer&&) noexcept = default;
+
     bool beginResponse(uint16_t value, ContentType content) override {
+        if (!body) return false;
         status = value; type = content; size = 0U; body[0] = '\0'; return true;
     }
     bool write(const char* data, size_t length) override {
-        if (data == nullptr || size + length >= sizeof(body)) return false;
-        std::memcpy(body + size, data, length);
+        if (!body || data == nullptr || size >= kBodyCapacity ||
+            length >= kBodyCapacity - size) return false;
+        std::memcpy(body.get() + size, data, length);
         size += length; body[size] = '\0'; return true;
     }
     bool endResponse() override { ended = true; return true; }
+    const char* text() const { return body ? body.get() : ""; }
     uint16_t status = 0U;
     ContentType type = ContentType::PlainText;
-    char body[24576] {};
+    std::unique_ptr<char[]> body;
     size_t size = 0U;
     bool ended = false;
 };
+
+static_assert(sizeof(Writer) <= 32U, "Writer must stay small enough for loopTask");
+static_assert(std::is_nothrow_move_constructible<Writer>::value,
+              "Writer must move safely when returned by value");
+static_assert(!std::is_copy_constructible<Writer>::value,
+              "Writer must not copy its response buffer");
 
 class Transport final : public HttpServerTransport {
 public:
@@ -283,6 +353,10 @@ struct Fixture {
         system.identity = DeviceIdentity(
             "lighting-controller", "LumaSense", "0.2.1", "LOLIN32_TEST"
         );
+        const uint8_t bytes[] {0x24U, 0x6FU, 0x28U, 0xA1U, 0xB2U, 0xC3U};
+        Identity::DeviceId id;
+        TEST_ASSERT_TRUE(id.assign(bytes, sizeof(bytes)).isValid());
+        TEST_ASSERT_TRUE(system.canonicalIdentity.assign("luma", id).isValid());
         std::strcpy(system.aquaCoreVersion, "0.6.2");
         system.ready = true;
         TEST_ASSERT_TRUE(systemSnapshot.publish(system));
@@ -366,27 +440,27 @@ void test_status_is_snapshot_compatible_and_secret_free() {
     TEST_ASSERT_TRUE(fixture->statusSnapshot.publish(statusValue(1U, "Main \"Day\"")));
     Writer first = fixture->transport.request("/api/lumasense/status");
     TEST_ASSERT_EQUAL_UINT16(200U, first.status);
-    assertContains(first.body, "\"mode\":\"NORMAL\"");
-    assertContains(first.body, "\"activeProfile\":1");
-    assertContains(first.body, "\"activeProfileName\":\"Main \\\"Day\\\"\"");
-    assertContains(first.body, "\"dayState\":\"NIGHT\"");
-    assertContains(first.body, "\"localTime\":\"2026-09-10 10:30:05\"");
-    assertContains(first.body, "\"requestedLevels\":[1.00,2.00,3.00,4.00,5.00,6.00,7.00,8.00]");
-    assertContains(first.body, "\"finalLevels\":[10.00,20.00,30.00,40.00,50.00,60.00,70.00,80.00]");
-    assertContains(first.body, "\"globalPowerLimit\":80.00");
-    assertContains(first.body, "\"state\":\"connected\"");
-    assertContains(first.body, "\"ip\":\"192.168.1.55\"");
-    assertContains(first.body, "\"rssi\":-58");
-    assertContains(first.body, "\"overallHealth\":\"ok\"");
-    assertMissing(first.body, "password");
-    assertMissing(first.body, "ssid");
+    assertContains(first.text(), "\"mode\":\"NORMAL\"");
+    assertContains(first.text(), "\"activeProfile\":1");
+    assertContains(first.text(), "\"activeProfileName\":\"Main \\\"Day\\\"\"");
+    assertContains(first.text(), "\"dayState\":\"NIGHT\"");
+    assertContains(first.text(), "\"localTime\":\"2026-09-10 10:30:05\"");
+    assertContains(first.text(), "\"requestedLevels\":[1.00,2.00,3.00,4.00,5.00,6.00,7.00,8.00]");
+    assertContains(first.text(), "\"finalLevels\":[10.00,20.00,30.00,40.00,50.00,60.00,70.00,80.00]");
+    assertContains(first.text(), "\"globalPowerLimit\":80.00");
+    assertContains(first.text(), "\"state\":\"connected\"");
+    assertContains(first.text(), "\"ip\":\"192.168.1.55\"");
+    assertContains(first.text(), "\"rssi\":-58");
+    assertContains(first.text(), "\"overallHealth\":\"ok\"");
+    assertMissing(first.text(), "password");
+    assertMissing(first.text(), "ssid");
 
     LumaStatusProjection changed = statusValue(2U, "Second");
     Writer stale = fixture->transport.request("/api/lumasense/status");
-    assertContains(stale.body, "\"activeProfile\":1");
+    assertContains(stale.text(), "\"activeProfile\":1");
     TEST_ASSERT_TRUE(fixture->statusSnapshot.publish(changed));
     Writer fresh = fixture->transport.request("/api/lumasense/status");
-    assertContains(fresh.body, "\"activeProfile\":2");
+    assertContains(fresh.text(), "\"activeProfile\":2");
 }
 
 void test_pages_and_core_builtins_use_shared_native_service() {
@@ -396,19 +470,27 @@ void test_pages_and_core_builtins_use_shared_native_service() {
     for (const char* path : pages) {
         Writer response = fixture->transport.request(path);
         TEST_ASSERT_EQUAL_UINT16(200U, response.status);
-        assertContains(response.body, "/assets/aqua.css");
+        assertContains(response.text(), "/assets/aqua.css");
     }
     Writer dashboard = fixture->transport.request("/");
-    assertContains(dashboard.body, "setInterval(refresh,1500)");
+    assertContains(dashboard.text(), "setInterval(refresh,1500)");
     Writer control = fixture->transport.request("/control");
-    assertContains(control.body, "body.ok===true");
-    TEST_ASSERT_EQUAL_UINT16(200U, fixture->transport.request("/api/system").status);
+    assertContains(control.text(), "body.ok===true");
+    Writer system = fixture->transport.request("/api/system");
+    TEST_ASSERT_EQUAL_UINT16(200U, system.status);
+    assertContains(system.text(), "\"deviceType\":\"lighting-controller\"");
+    assertContains(system.text(), "\"device_type\":\"luma\"");
+    assertContains(system.text(), "\"device_id\":\"246F28A1B2C3\"");
+    TEST_ASSERT_TRUE(hasApiProtocolVersion(system.text(), 1, 0));
     TEST_ASSERT_EQUAL_UINT16(200U, fixture->transport.request("/api/diagnostics").status);
     TEST_ASSERT_EQUAL_UINT16(404U, fixture->transport.request("/missing").status);
 }
 
 void test_application_side_exact_results_and_authority_isolation() {
-    AuthorityFixture authority;
+    std::unique_ptr<AuthorityFixture> ownedAuthority(
+        new (std::nothrow) AuthorityFixture());
+    if (!ownedAuthority) { TEST_FAIL_MESSAGE("AuthorityFixture allocation failed"); return; }
+    AuthorityFixture& authority = *ownedAuthority;
     TEST_ASSERT_TRUE(authority.start());
 
     LumaWebRequest service {};
@@ -558,7 +640,7 @@ void test_native_action_routes_preserve_typed_requests_and_exact_results() {
         "/api/lumasense/mode", HttpMethod::Post, "{\"mode\":\"SERVICE\"}"
     );
     TEST_ASSERT_EQUAL_UINT16(200U, applied.status);
-    TEST_ASSERT_EQUAL_STRING("{\"ok\":true,\"result\":\"applied\"}", applied.body);
+    TEST_ASSERT_EQUAL_STRING("{\"ok\":true,\"result\":\"applied\"}", applied.text());
     TEST_ASSERT_EQUAL(LumaWebRequestKind::SetMode, execution.request.kind);
     TEST_ASSERT_EQUAL(OperatingMode::Service, execution.request.mode);
 
@@ -568,7 +650,7 @@ void test_native_action_routes_preserve_typed_requests_and_exact_results() {
     );
     TEST_ASSERT_EQUAL_UINT16(200U, noChange.status);
     TEST_ASSERT_EQUAL_STRING(
-        "{\"ok\":true,\"result\":\"no_change\"}", noChange.body
+        "{\"ok\":true,\"result\":\"no_change\"}", noChange.text()
     );
     TEST_ASSERT_EQUAL(LumaWebRequestKind::SelectProfile, execution.request.kind);
     TEST_ASSERT_EQUAL_UINT8(2U, execution.request.profileIndex);
@@ -579,7 +661,7 @@ void test_native_action_routes_preserve_typed_requests_and_exact_results() {
     );
     TEST_ASSERT_EQUAL_UINT16(409U, storage.status);
     TEST_ASSERT_EQUAL_STRING(
-        "{\"ok\":false,\"error\":\"storage unavailable\"}", storage.body
+        "{\"ok\":false,\"error\":\"storage unavailable\"}", storage.text()
     );
 
     execution.result = FirmwareCommandResult::Rejected;
@@ -589,7 +671,7 @@ void test_native_action_routes_preserve_typed_requests_and_exact_results() {
     );
     TEST_ASSERT_EQUAL_UINT16(409U, rejected.status);
     TEST_ASSERT_EQUAL_STRING(
-        "{\"ok\":false,\"error\":\"state conflict\"}", rejected.body
+        "{\"ok\":false,\"error\":\"state conflict\"}", rejected.text()
     );
     TEST_ASSERT_EQUAL(LumaWebRequestKind::SetManual, execution.request.kind);
     TEST_ASSERT_EQUAL_UINT16(30U, execution.request.timeoutMinutes);
@@ -609,8 +691,8 @@ void test_malformed_timeout_and_late_single_execution() {
         "/api/lumasense/mode", HttpMethod::Post, "{\"mode\":\"SERVICE\"}"
     );
     TEST_ASSERT_EQUAL_UINT16(202U, timeout.status);
-    assertContains(timeout.body, "\"ok\":false");
-    assertContains(timeout.body, "outcome_unknown");
+    assertContains(timeout.text(), "\"ok\":false");
+    assertContains(timeout.text(), "outcome_unknown");
     uint32_t executions = 0U;
     TEST_ASSERT_TRUE(fixture->bridge.processOne(countExecution, &executions));
     TEST_ASSERT_EQUAL_UINT32(1U, executions);
@@ -632,20 +714,27 @@ void test_queue_full_is_not_accepted() {
         "/api/lumasense/mode", HttpMethod::Post, "{\"mode\":\"OFF\"}"
     );
     TEST_ASSERT_EQUAL_UINT16(503U, response.status);
-    assertContains(response.body, "service unavailable");
+    assertContains(response.text(), "service unavailable");
 }
 
 void test_web_registration_and_begin_failure_preserve_application_autonomy() {
-    AuthorityFixture authority;
+    std::unique_ptr<AuthorityFixture> ownedAuthority(
+        new (std::nothrow) AuthorityFixture());
+    if (!ownedAuthority) { TEST_FAIL_MESSAGE("AuthorityFixture allocation failed"); return; }
+    AuthorityFixture& authority = *ownedAuthority;
     TEST_ASSERT_TRUE(authority.start());
 
-    Fixture registrationFailure;
+    std::unique_ptr<Fixture> ownedRegistrationFailure(new (std::nothrow) Fixture());
+    if (!ownedRegistrationFailure) { TEST_FAIL_MESSAGE("Fixture allocation failed"); return; }
+    Fixture& registrationFailure = *ownedRegistrationFailure;
     registrationFailure.transport.rejectNextRoute = true;
     TEST_ASSERT_FALSE(registrationFailure.luma.registerRoutes());
     TEST_ASSERT_TRUE(authority.app.update(1000U));
     TEST_ASSERT_TRUE(authority.app.isRunning());
 
-    Fixture beginFailure;
+    std::unique_ptr<Fixture> ownedBeginFailure(new (std::nothrow) Fixture());
+    if (!ownedBeginFailure) { TEST_FAIL_MESSAGE("Fixture allocation failed"); return; }
+    Fixture& beginFailure = *ownedBeginFailure;
     TEST_ASSERT_TRUE(beginFailure.luma.registerRoutes());
     beginFailure.transport.beginResult = false;
     TEST_ASSERT_FALSE(beginFailure.native.begin(webConfig()));

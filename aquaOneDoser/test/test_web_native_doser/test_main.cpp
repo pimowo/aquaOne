@@ -15,6 +15,55 @@ using namespace AquaCore;
 using namespace AquaCore::Web;
 
 namespace {
+bool hasJsonIntegerMember(const std::string& object, const char* key, int expected) {
+    const std::string quotedKey = std::string("\"") + key + "\"";
+    const size_t keyPosition = object.find(quotedKey);
+    if (keyPosition == std::string::npos) return false;
+    const size_t colon = object.find(':', keyPosition + quotedKey.size());
+    if (colon == std::string::npos) return false;
+    size_t valuePosition = colon + 1U;
+    while (valuePosition < object.size() &&
+           (object[valuePosition] == ' ' || object[valuePosition] == '\t' ||
+            object[valuePosition] == '\r' || object[valuePosition] == '\n')) ++valuePosition;
+    bool negative = false;
+    if (valuePosition < object.size() && object[valuePosition] == '-') {
+        negative = true; ++valuePosition;
+    }
+    if (valuePosition >= object.size() || object[valuePosition] < '0' ||
+        object[valuePosition] > '9') return false;
+    int value = 0;
+    do { value = value * 10 + (object[valuePosition] - '0'); ++valuePosition; }
+    while (valuePosition < object.size() && object[valuePosition] >= '0' &&
+           object[valuePosition] <= '9');
+    if (valuePosition < object.size() && object[valuePosition] != ',' &&
+        object[valuePosition] != '}') return false;
+    return (negative ? -value : value) == expected;
+}
+
+bool hasApiProtocolVersion(const char* json, int major, int minor) {
+    if (json == nullptr) return false;
+    const std::string document(json);
+    const size_t key = document.find("\"api_protocol_version\"");
+    if (key == std::string::npos) return false;
+    size_t open = document.find(':', key + std::strlen("\"api_protocol_version\""));
+    if (open == std::string::npos) return false;
+    ++open;
+    while (open < document.size() &&
+           (document[open] == ' ' || document[open] == '\t' ||
+            document[open] == '\r' || document[open] == '\n')) ++open;
+    if (open >= document.size() || document[open] != '{') return false;
+    size_t close = open + 1U;
+    unsigned int depth = 1U;
+    for (; close < document.size() && depth != 0U; ++close) {
+        if (document[close] == '{') ++depth;
+        else if (document[close] == '}') --depth;
+    }
+    if (depth != 0U) return false;
+    const std::string versionObject = document.substr(open, close - open);
+    return hasJsonIntegerMember(versionObject, "major", major) &&
+           hasJsonIntegerMember(versionObject, "minor", minor);
+}
+
 class Lock final : public SnapshotSynchronizer, public ActionBridgeSynchronizer {
 public:
     bool lock() override {
@@ -155,7 +204,7 @@ public:
 class Fixture {
 public:
     explicit Fixture(const char* password = "test-password")
-        : system(backend), systemSource(system), diagnosticSource(facts),
+        : system(backend), systemSource(system, canonicalIdentity), diagnosticSource(facts),
           systemSnapshot(lock), diagnosticSnapshot(lock),
           publisher(systemSource, &diagnosticSource, systemSnapshot,
                     diagnosticSnapshot), service(transport, systemSnapshot,
@@ -163,6 +212,10 @@ public:
           doserRoutes(bridge, "test-user", password, &upload) {
         app.setOtaSessionView(&upload);
         TEST_ASSERT_TRUE(system.begin(DeviceIdentity("Doser", "Test", "1", "S3")));
+        const uint8_t bytes[] {0x24U, 0x6FU, 0x28U, 0xA1U, 0xB2U, 0xC3U};
+        Identity::DeviceId id;
+        TEST_ASSERT_TRUE(id.assign(bytes, sizeof(bytes)).isValid());
+        TEST_ASSERT_TRUE(canonicalIdentity.assign("doser", id).isValid());
         facts.facts.systemReady = true;
         facts.facts.timeEnabled = true;
         facts.facts.timeValid = true;
@@ -184,6 +237,7 @@ public:
     }
     Backend backend;
     SystemService system;
+    Identity::DeviceIdentity canonicalIdentity;
     SystemServiceWebProjectionSource systemSource;
     Facts facts;
     DoserDiagnosticsProjectionSource diagnosticSource;
@@ -211,7 +265,12 @@ void test_inventory_and_read_routes() {
     Context context;
     TEST_ASSERT_EQUAL_UINT(200U, f.transport.request("/", HttpMethod::Get, context).status);
     TEST_ASSERT_EQUAL_UINT(200U, f.transport.request("/assets/aqua.css", HttpMethod::Get, context).status);
-    TEST_ASSERT_EQUAL_UINT(200U, f.transport.request("/api/system", HttpMethod::Get, context).status);
+    Writer systemApi = f.transport.request("/api/system", HttpMethod::Get, context);
+    TEST_ASSERT_EQUAL_UINT(200U, systemApi.status);
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, systemApi.body.find("\"deviceType\":\"Doser\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, systemApi.body.find("\"device_type\":\"doser\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, systemApi.body.find("\"device_id\":\"246F28A1B2C3\""));
+    TEST_ASSERT_TRUE(hasApiProtocolVersion(systemApi.body.c_str(), 1, 0));
     Writer diagnostics = f.transport.request("/api/diagnostics", HttpMethod::Get, context);
     TEST_ASSERT_EQUAL_UINT(200U, diagnostics.status);
     TEST_ASSERT_TRUE(diagnostics.body.find("{\"health\":\"unknown\"") != std::string::npos);

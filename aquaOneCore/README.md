@@ -40,16 +40,18 @@ punktem orkiestracji, nie SafetyManagerem. F3.4 dodaje oddzielny Action Lock fou
 
 Boot status, device identity, restart reasons.
 
-**CURRENT F1.3:** `AquaCore/System/Identity.h` udostępnia neutralne value types
-`AquaCore::Identity::DeviceIdentity` (deviceType), `BuildIdentity` (firmwareVersion,
-coreVersion) i `HardwareIdentity` (hardwareVariant). Są to minimalne dane oparte na
-CURRENT; legacy `AquaCore::DeviceIdentity`, SystemService i konsumenci pozostają bez migracji.
+**CURRENT F1.3 + F10.1B:** `AquaCore/System/Identity.h` udostępnia neutralne value types
+`AquaCore::Identity::DeviceIdentity` (deviceType i 6-bajtowy DeviceId), `BuildIdentity`
+(firmwareVersion, coreVersion) i `HardwareIdentity` (hardwareVariant). Legacy
+`AquaCore::DeviceIdentity` pozostaje osobnym kontraktem kompatybilności.
 `assign()` zwraca jawny ValidationResult (error + field); null, pusty tekst lub przekroczenie
 limitu czyści cały obiekt i ustawia invalid. Brak truncation i dynamic allocation.
 Limity implementacji, łącznie z NUL: deviceType/firmwareVersion 24, coreVersion 16,
-hardwareVariant 32 bajty. Istniejące typy i foundation pozostają CURRENT i nie implementują
-docelowego DeviceIdentity contract.
-Format device_id, MAC/MAC6, finalne pola, capacities i walidacja są opisane przez zaakceptowany kierunek IDN-101.
+hardwareVariant 32 bajty. F10.1B implementuje parę `(device_type, device_id)` z walidowanym
+tokenem `[a-z][a-z0-9_-]{0,22}` i 12-znakowym uppercase hex formatem DeviceId. Obecne
+źródło ESP32-family używa `esp_efuse_mac_get_default()` przed Network; fizyczny classic
+ESP32 i ESP32-S3 potwierdziły zgodność factory/base MAC i stabilność po restarcie.
+Format DeviceId, MAC/MAC6 i capacities opisuje IDN-101.
 Statusy kontraktów docelowych: SYS-101 — ACCEPTED — TARGET; IDN-101 — ACCEPTED — TARGET.
 **CURRENT F4.2:** `RuntimeIdentity` ma 64-bitową niezerową wartość i zapis jako 16 wielkich
 cyfr hex w buforze wywołującego. `RuntimeIdentityState` przechowuje jedną wartość na instancję
@@ -547,6 +549,9 @@ health through SYS-106. The native HTTP path has no transport polling. F9.7
 subsequently migrated Luma, Hydro and Doser production HTTP to this transport.
 The legacy `WebService`/`Esp32WebBackend` remains available for compatibility;
 product WS composition and endpoint Auth policy remain separate open work.
+F10.1B CURRENT `GET /api/system` adds canonical `device_type`, `device_id` and
+`api_protocol_version` (`major: 1`, `minor: 0`) while retaining legacy fields.
+Luma, Hydro and Doser publish their canonical product tokens; SEC-101 remains OPEN.
 
 **CURRENT F9.4 foundation:** `WebActionBridge<Command, Capacity>` accepts an
 owned, bounded typed command into a fixed FIFO and invokes the existing

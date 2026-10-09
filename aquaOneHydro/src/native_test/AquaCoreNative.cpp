@@ -3,6 +3,7 @@
 // The product host suite links only the portable Core units used by the
 // native Web composition. Production ESP32 builds compile this file empty.
 #include "../../../aquaOneCore/src/System/DeviceIdentity.cpp"
+#include "../../../aquaOneCore/src/System/Identity.cpp"
 #include "../../../aquaOneCore/src/System/RestartReason.cpp"
 #include "../../../aquaOneCore/src/System/SystemService.cpp"
 #include "../../../aquaOneCore/src/Network/NetworkService.cpp"

@@ -6,7 +6,9 @@
 
 #include "AquaCore/Diagnostics/DiagnosticsTypes.h"
 #include "AquaCore/System/DeviceIdentity.h"
+#include "AquaCore/System/Identity.h"
 #include "AquaCore/System/RestartReason.h"
+#include "AquaCore/Web/ApiProtocolVersion.h"
 
 namespace AquaCore {
 namespace Web {
@@ -16,6 +18,8 @@ struct CoreSystemProjection {
         Diagnostics::VERSION_TEXT_CAPACITY;
 
     DeviceIdentity identity {};
+    Identity::DeviceIdentity canonicalIdentity {};
+    ApiProtocolVersion apiProtocolVersion {CURRENT_API_PROTOCOL_VERSION};
     char aquaCoreVersion[CORE_VERSION_CAPACITY] {};
     uint32_t uptimeMs = 0U;
     RestartReason restartReason = RestartReason::Unknown;

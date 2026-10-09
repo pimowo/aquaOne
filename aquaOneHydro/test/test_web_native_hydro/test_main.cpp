@@ -76,6 +76,55 @@ void recordDigitalWrite(uint8_t pin, uint8_t value)
 
 namespace
 {
+bool hasJsonIntegerMember(const std::string& object, const char* key, int expected) {
+    const std::string quotedKey = std::string("\"") + key + "\"";
+    const size_t keyPosition = object.find(quotedKey);
+    if (keyPosition == std::string::npos) return false;
+    const size_t colon = object.find(':', keyPosition + quotedKey.size());
+    if (colon == std::string::npos) return false;
+    size_t valuePosition = colon + 1U;
+    while (valuePosition < object.size() &&
+           (object[valuePosition] == ' ' || object[valuePosition] == '\t' ||
+            object[valuePosition] == '\r' || object[valuePosition] == '\n')) ++valuePosition;
+    bool negative = false;
+    if (valuePosition < object.size() && object[valuePosition] == '-') {
+        negative = true; ++valuePosition;
+    }
+    if (valuePosition >= object.size() || object[valuePosition] < '0' ||
+        object[valuePosition] > '9') return false;
+    int value = 0;
+    do { value = value * 10 + (object[valuePosition] - '0'); ++valuePosition; }
+    while (valuePosition < object.size() && object[valuePosition] >= '0' &&
+           object[valuePosition] <= '9');
+    if (valuePosition < object.size() && object[valuePosition] != ',' &&
+        object[valuePosition] != '}') return false;
+    return (negative ? -value : value) == expected;
+}
+
+bool hasApiProtocolVersion(const char* json, int major, int minor) {
+    if (json == nullptr) return false;
+    const std::string document(json);
+    const size_t key = document.find("\"api_protocol_version\"");
+    if (key == std::string::npos) return false;
+    size_t open = document.find(':', key + std::strlen("\"api_protocol_version\""));
+    if (open == std::string::npos) return false;
+    ++open;
+    while (open < document.size() &&
+           (document[open] == ' ' || document[open] == '\t' ||
+            document[open] == '\r' || document[open] == '\n')) ++open;
+    if (open >= document.size() || document[open] != '{') return false;
+    size_t close = open + 1U;
+    unsigned int depth = 1U;
+    for (; close < document.size() && depth != 0U; ++close) {
+        if (document[close] == '{') ++depth;
+        else if (document[close] == '}') --depth;
+    }
+    if (depth != 0U) return false;
+    const std::string versionObject = document.substr(open, close - open);
+    return hasJsonIntegerMember(versionObject, "major", major) &&
+           hasJsonIntegerMember(versionObject, "minor", minor);
+}
+
 void test_gpio_initialization_order_and_safe_levels()
 {
     ArduinoTest::resetGpioOperations();
@@ -402,6 +451,10 @@ struct Fixture
         CoreSystemProjection systemValue {};
         systemValue.ready = true;
         systemValue.identity = identity;
+        const uint8_t bytes[] {0x24U, 0x6FU, 0x28U, 0xA1U, 0xB2U, 0xC3U};
+        AquaCore::Identity::DeviceId id;
+        TEST_ASSERT_TRUE(id.assign(bytes, sizeof(bytes)).isValid());
+        TEST_ASSERT_TRUE(systemValue.canonicalIdentity.assign("hydro", id).isValid());
         systemSnapshot.publish(systemValue);
         CoreDiagnosticsProjection diagnosticsValue {};
         diagnosticsSnapshot.publish(diagnosticsValue);
@@ -478,6 +531,13 @@ void test_routes_pages_theme_secrets_and_snapshot_isolation()
     TEST_ASSERT_EQUAL(std::string::npos, settings.body.find("TEST_AP_SECRET_B"));
     TEST_ASSERT_NOT_EQUAL(std::string::npos,
         settings.body.find("name=\"password\" maxlength=\"64\" value=\"\""));
+
+    const Writer systemApi = fixture.transport.request("/api/system", HttpMethod::Get);
+    TEST_ASSERT_EQUAL_UINT16(200U, systemApi.status);
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, systemApi.body.find("\"deviceType\":\"hydro-test\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, systemApi.body.find("\"device_type\":\"hydro\""));
+    TEST_ASSERT_NOT_EQUAL(std::string::npos, systemApi.body.find("\"device_id\":\"246F28A1B2C3\""));
+    TEST_ASSERT_TRUE(hasApiProtocolVersion(systemApi.body.c_str(), 1, 0));
 
     Writer api = fixture.transport.request("/api/hydrosense", HttpMethod::Get);
     TEST_ASSERT_NOT_EQUAL(std::string::npos, api.body.find("\"serviceMode\":false"));
