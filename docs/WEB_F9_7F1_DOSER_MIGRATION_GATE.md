@@ -2,6 +2,8 @@
 
 > Status: F9.7F1 and F9.7F2 are CLOSED. F9.7G is REQUIRED NEXT before atomic Doser production cutover.
 
+> F9.7G1 design gate: docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md resolves the native streaming API, product multipart/Update ownership, cancellation, restart and one-listener cutover plan. This is design only; production still uses legacy Web.
+
 > F9.7F2 implemented and tested TOOLCHAIN-2, callback-scoped native header/Basic Auth, an Application-owned restart bridge, published Core projections and authenticated `GET /update`. Production remains LEGACY CURRENT. Native `POST /update` is absent, so F9.7G still blocks cutover. Doser's two storage records have no single Core storage status; the foundation reports storage health as `unknown`. Production Toolchain/Storage/GPIO sanity HIL passed on a bare ESP32-S3: no physical pumps or output stages were connected, native routes were not tested on hardware, exact pre/post pump-field equality was not captured, and the final NVS state was stable with no observed Storage failure or default reset.
 
 ## CURRENT production Web
@@ -86,7 +88,7 @@ The F9.7F2 production image is 1,085,528 B, leaving 225,192 B (about 17.18%) in 
 
 F9.7F2 adds the smallest Core-neutral capability for callback-scoped header access, Basic Auth and `WWW-Authenticate`; product passwords remain outside Core. It does not establish a platform-wide credential standard or close SEC-101.
 
-It also lacks multipart framing, owned chunk handoff, declared-size policy, backpressure, disconnect/inactivity cleanup, END response lifecycle and fixed-memory upload semantics. F9.7G must stream only, never buffer firmware in RAM. Chunk size, total limit and timeouts remain DECISION REQUIRED until measured. HTTPD may authenticate/frame/receive bounded chunks and transfer ownership; it must not manually run subsystem loops, mutate pumps/domain state, or directly write firmware outside the serialized owner.
+It also lacks multipart framing, owned chunk handoff, declared-size policy, backpressure, disconnect/inactivity cleanup, END response lifecycle and fixed-memory upload semantics. F9.7G must stream only, never buffer firmware in RAM. F9.7G1 now selects a 1,024-byte chunk, partition-derived total limit and provisional timeout policy for implementation and HIL measurement. HTTPD may authenticate/frame/receive bounded chunks and transfer ownership; it must not manually run subsystem loops, mutate pumps/domain state, or directly write firmware outside the serialized owner.
 
 `DiagnosticsManager` may provide Application-side copied projections without duplicate authority. Core `/api/system` and `/api/diagnostics` use published projections. Product `/api/status` remains a separate versioned API decision. Future pages may use aquaOne Web Theme v1; F9.7G may theme OTA only if auth/upload behavior is preserved. ERROR/MAINTENANCE permissions need explicit product policy.
 

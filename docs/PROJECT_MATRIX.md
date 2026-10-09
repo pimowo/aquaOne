@@ -1,7 +1,7 @@
 # Project Matrix — Status i Integracja Core
 
 **Snapshot date:** 2026-10-09
-**Snapshot base commit:** `f0d4992` plus local F9.7F2 checkpoint candidate
+**Snapshot base commit:** e93c00f plus local F9.7G1 design candidate
 
 Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla wskazanego
 commita. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
@@ -76,7 +76,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Aspekt | Status | Notatki |
 |--------|--------|---------|
 | **Platforma** | ESP32-S3 Super Mini (4MB) | |
-| **Status** | 🟡 Funkcjonalny, integracja hybrydowa | W1/W1.5 Web CURRENT; hardware validation is documented as passed, evidence not yet persisted; Doser is not an architecture reference |
+| **Status** | 🟡 F9.7F2 CLOSED, integracja hybrydowa | Native Web foundation tested; one legacy production Web owner remains; F9.7G1 design accepted |
 | **Architektura** | Composition root + lokalne managery/adapters | Migracja Core jest częściowa |
 | | | |
 | **Używane moduły Core** | | |
@@ -94,7 +94,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Hardware | Relay drivers, PWM pump control | |
 | MQTT/HA | LEGACY CURRENT / LOCAL | Istniejące PubSubClient, MqttManager, HaDiscovery i około 205 encji pozostają do migracji Dosera; nie są TARGET Core ani docelowym modelem encji HA |
 | **Web W1/W1.5** | DONE | Jeden serwer, auth, restart, OTA success/abort/cleanup/reconnect |
-| **Następny etap Web** | PLANNED | W2: pozostałe strony/API zgodnie z WEB_STANDARD |
+| **Następny etap Web** | F9.7G2 REQUIRED NEXT | Core neutral streaming foundation; F9.7G3–G5 complete OTA and atomic production cutover |
 | **Ryzyko dalszej migracji** | Średnie/wysokie | Lokalna domena działa i nie może zostać naruszona |
 
 ---
@@ -306,6 +306,10 @@ are CLOSED: the native foundation, Basic Auth boundary, projections and restart
 bridge are implemented and tested, while legacy remains the sole production owner.
 F9.7G must provide streaming OTA before one atomic native production cutover.
 Doser MQTT/Discovery remains LEGACY CURRENT until F10.6.
+
+F9.7G1 is an accepted docs-only design gate. The streaming transport, Doser-local
+multipart parser, Application-owned Update lifecycle and atomic cutover remain
+unimplemented; details are in docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md.
 
 ## Architecture vNext perspective
 

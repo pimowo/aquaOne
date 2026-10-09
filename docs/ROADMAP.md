@@ -69,6 +69,11 @@ must add streaming OTA, safe maintenance ownership and physical S3 OTA HIL befor
 an atomic single-server cutover. Deferring OTA to Phase 11 defers the whole Doser
 production Web migration; it never permits a partial two-server migration.
 
+F9.7G1 design gate is ACCEPTED: the native streaming OTA and atomic cutover plan
+is recorded in docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md. F9.7G2 Core streaming
+foundation is the next implementation step; F9.7G3–G5 remain required before
+Doser production Web can become native.
+
 ## Zasady bramki
 
 Nie rozpoczynamy migracji domeny przed zakończeniem odpowiednich kontraktów platformy.
