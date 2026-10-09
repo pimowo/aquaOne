@@ -159,8 +159,9 @@ public:
           systemSnapshot(lock), diagnosticSnapshot(lock),
           publisher(systemSource, &diagnosticSource, systemSnapshot,
                     diagnosticSnapshot), service(transport, systemSnapshot,
-                    diagnosticSnapshot), bridge(lock), app(bridge, authority),
-          doserRoutes(bridge, "test-user", password) {
+                    diagnosticSnapshot), bridge(lock), upload(lock), app(bridge, authority),
+          doserRoutes(bridge, "test-user", password, &upload) {
+        app.setOtaSessionView(&upload);
         TEST_ASSERT_TRUE(system.begin(DeviceIdentity("Doser", "Test", "1", "S3")));
         facts.facts.systemReady = true;
         facts.facts.timeEnabled = true;
@@ -193,6 +194,7 @@ public:
     Transport transport;
     NativeWebService service;
     DoserWebBridge bridge;
+    StreamingUploadBridge upload;
     Authority authority;
     DoserWebApplication app;
     DoserNativeWebRoutes doserRoutes;
@@ -396,6 +398,29 @@ void test_web_failure_keeps_application_available() {
     TEST_ASSERT_TRUE(f.app.processOne());
     TEST_ASSERT_TRUE(f.app.restartPending());
 }
+
+void test_ota_busy_get_and_manual_restart_admission() {
+    Fixture f;
+    TEST_ASSERT_TRUE(f.begin());
+    Context context;
+    context.authorization = "Basic dGVzdC11c2VyOnRlc3QtcGFzc3dvcmQ=";
+    uint64_t generation = 0U;
+    TEST_ASSERT_TRUE(f.upload.beginSession(generation));
+    TEST_ASSERT_EQUAL_UINT(409U,
+        f.transport.request("/update", HttpMethod::Get, context).status);
+    context.authorization = nullptr;
+    TEST_ASSERT_EQUAL_UINT(401U,
+        f.transport.request("/update", HttpMethod::Get, context).status);
+    context.authorization = "Basic dGVzdC11c2VyOnRlc3QtcGFzc3dvcmQ=";
+    f.lock.onWait = processOne;
+    f.lock.waitContext = &f.app;
+    TEST_ASSERT_EQUAL_UINT(409U,
+        f.transport.request("/api/restart", HttpMethod::Post, context).status);
+    TEST_ASSERT_FALSE(f.app.restartPending());
+    TEST_ASSERT_TRUE(f.upload.releaseSession(generation));
+    TEST_ASSERT_EQUAL_UINT(200U,
+        f.transport.request("/update", HttpMethod::Get, context).status);
+}
 }
 
 int main(int, char**) {
@@ -408,5 +433,6 @@ int main(int, char**) {
     RUN_TEST(test_restart_completion_duplicate_and_deadline);
     RUN_TEST(test_queue_full_and_accepted_timeout);
     RUN_TEST(test_web_failure_keeps_application_available);
+    RUN_TEST(test_ota_busy_get_and_manual_restart_admission);
     return UNITY_END();
 }

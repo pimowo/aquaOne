@@ -1,7 +1,7 @@
 # Project Matrix — Status i Integracja Core
 
 **Snapshot date:** 2026-10-09
-**Snapshot base commit:** e93c00f plus local F9.7G1 design candidate
+**Snapshot base commit:** d9e045e plus F9.7G3 checkpoint changes
 
 Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla wskazanego
 commita. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
@@ -76,7 +76,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Aspekt | Status | Notatki |
 |--------|--------|---------|
 | **Platforma** | ESP32-S3 Super Mini (4MB) | |
-| **Status** | 🟡 F9.7G2 CLOSED, integracja hybrydowa | Core streaming HTTP foundation is current; one legacy production Web owner remains; F9.7G3 required next |
+| **Status** | 🟡 F9.7G3 CLOSED, integracja hybrydowa | Core streaming HTTP is current; tested Doser native OTA candidate is available; one legacy production Web owner remains |
 | **Architektura** | Composition root + lokalne managery/adapters | Migracja Core jest częściowa |
 | | | |
 | **Używane moduły Core** | | |
@@ -94,7 +94,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | Hardware | Relay drivers, PWM pump control | |
 | MQTT/HA | LEGACY CURRENT / LOCAL | Istniejące PubSubClient, MqttManager, HaDiscovery i około 205 encji pozostają do migracji Dosera; nie są TARGET Core ani docelowym modelem encji HA |
 | **Web W1/W1.5** | DONE | Jeden serwer, auth, restart, OTA success/abort/cleanup/reconnect |
-| **Następny etap Web** | F9.7G3 REQUIRED NEXT | Doser-local OTA; F9.7G4–G5 complete atomic production cutover and OTA HIL |
+| **Następny etap Web** | F9.7G4 REQUIRED NEXT | Atomic production cutover; F9.7G5 physical OTA HIL follows |
 | **Ryzyko dalszej migracji** | Średnie/wysokie | Lokalna domena działa i nie może zostać naruszona |
 
 ---
@@ -307,10 +307,11 @@ bridge are implemented and tested, while legacy remains the sole production owne
 F9.7G must provide streaming OTA before one atomic native production cutover.
 Doser MQTT/Discovery remains LEGACY CURRENT until F10.6.
 
-F9.7G1 and F9.7G2 are CLOSED. Core-neutral streaming transport is CURRENT;
-Doser-local multipart parsing, Application-owned Update lifecycle and atomic
-cutover remain unimplemented. F9.7G3 is REQUIRED NEXT; details are in
-docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md.
+F9.7G1, F9.7G2 and F9.7G3 are CLOSED. Core-neutral streaming transport is
+CURRENT; Doser-local multipart parsing and the Application-owned Update lifecycle
+are available and tested, but native POST /update is not active in production.
+F9.7G4 atomic cutover is REQUIRED NEXT; F9.7G5 physical OTA HIL follows. Details
+are in docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md.
 
 ## Architecture vNext perspective
 

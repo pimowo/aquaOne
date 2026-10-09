@@ -3,9 +3,11 @@
 #include <AquaCore/Web/NativeWebService.h>
 #include <AquaCore/Web/WebApplicationBridge.h>
 
+#include "DoserOtaApplication.h"
+
 enum class DoserWebRequestKind : uint8_t { ScheduleRestart };
 struct DoserWebRequest { DoserWebRequestKind kind; };
-enum class DoserWebResult : uint8_t { Scheduled, Rejected };
+enum class DoserWebResult : uint8_t { Scheduled, Rejected, Busy };
 using DoserWebBridge = AquaCore::Web::WebApplicationBridge<
     DoserWebRequest, DoserWebResult, 4U>;
 static_assert(std::is_trivially_copyable<DoserWebRequest>::value,
@@ -19,7 +21,7 @@ public:
     virtual void restartDevice() = 0;
 };
 
-class DoserWebApplication {
+class DoserWebApplication : public DoserOtaRestartScheduler {
 public:
     DoserWebApplication(DoserWebBridge& bridge, DoserRestartAuthority& authority)
         : bridge_(bridge), authority_(authority) {}
@@ -27,6 +29,9 @@ public:
     void serviceRestart();
     bool restartPending() const { return restartPending_; }
     uint32_t restartAt() const { return restartAt_; }
+    bool isRestartPending() const override { return restartPending_; }
+    bool scheduleOtaRestart() override;
+    void setOtaSessionView(StreamingUploadBridge* view) { otaSession_ = view; }
 
 private:
     static DoserWebResult execute(const DoserWebRequest& request, void* context);
@@ -34,6 +39,7 @@ private:
     DoserRestartAuthority& authority_;
     bool restartPending_ = false;
     uint32_t restartAt_ = 0U;
+    StreamingUploadBridge* otaSession_ = nullptr;
 };
 
 class DoserNativeWebRoutes {
@@ -41,8 +47,8 @@ public:
     // Credentials are borrowed for callback use. No request context crosses
     // the bridge; the accepted typed request contains one enum only.
     DoserNativeWebRoutes(DoserWebBridge& bridge, const char* user,
-                         const char* password)
-        : bridge_(bridge), user_(user), password_(password) {}
+                         const char* password, StreamingUploadBridge* ota = nullptr)
+        : bridge_(bridge), user_(user), password_(password), ota_(ota) {}
     bool addTo(AquaCore::Web::NativeWebService& service);
 
 private:
@@ -55,4 +61,5 @@ private:
     DoserWebBridge& bridge_;
     const char* user_;
     const char* password_;
+    StreamingUploadBridge* ota_;
 };

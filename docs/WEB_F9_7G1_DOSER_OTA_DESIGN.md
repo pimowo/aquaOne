@@ -1,6 +1,6 @@
 # F9.7G1 — Doser native streaming OTA and atomic Web cutover
 
-**Status:** F9.7G1 design gate and F9.7G2 Core streaming HTTP foundation are CLOSED. G3-G5 behavior in this document remains design, not implemented behavior. F9.7G3 is required next; Phase 9 remains in progress. Production Doser remains on legacy Web.
+**Status:** F9.7G1, F9.7G2 and F9.7G3 are CLOSED. Core streaming HTTP is CURRENT; the Doser native OTA application is an available, tested candidate, not active in production. F9.7G4 atomic production cutover is REQUIRED NEXT; F9.7G5 physical OTA HIL remains required afterward. Phase 9 remains in progress. Production Doser remains on legacy Web.
 
 ## Scope and current baseline
 
@@ -23,7 +23,7 @@ replaces the active transfer. F9.7G deliberately changes that concurrency policy
 when a competing request reaches the handler while an upload is active.
 
 The existing page, FormData field, X-Firmware-Size and response text stay unchanged. No native GET /api/status
-is added. Native POST /update does not exist at this checkpoint.
+is added. Native POST /update exists as a tested candidate but is not active in production.
 
 ## Evidence from installed toolchains
 
@@ -323,4 +323,4 @@ backup, restore, factory reset and common UI/maintenance policy belong to Phase 
 
 ## Decision
 
-**F9.7G IMPLEMENTABLE — architecture resolved.** F9.7G2 is the current Core streaming HTTP foundation; F9.7G3 is required next. Physical OTA HIL and image/latency/heap measurements remain required release evidence.
+**F9.7G IMPLEMENTABLE — architecture resolved.** F9.7G2 Core streaming HTTP and F9.7G3 Doser OTA application are CLOSED. The tested native POST /update candidate awaits F9.7G4 atomic production cutover; F9.7G5 physical OTA HIL, including image/latency/heap measurements, remains required release evidence.

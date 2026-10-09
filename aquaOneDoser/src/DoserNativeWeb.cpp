@@ -19,9 +19,18 @@ DoserWebResult DoserWebApplication::execute(const DoserWebRequest& request,
     DoserWebApplication& self = *static_cast<DoserWebApplication*>(context);
     if (request.kind != DoserWebRequestKind::ScheduleRestart)
         return DoserWebResult::Rejected;
+    if (self.otaSession_ != nullptr && self.otaSession_->uploadActive())
+        return DoserWebResult::Busy;
     self.restartPending_ = true;
     self.restartAt_ = self.authority_.nowMs() + 1000U;
     return DoserWebResult::Scheduled;
+}
+
+bool DoserWebApplication::scheduleOtaRestart() {
+    if (restartPending_) return true;
+    restartPending_ = true;
+    restartAt_ = authority_.nowMs() + 1000U;
+    return true;
 }
 
 bool DoserWebApplication::processOne() {
@@ -76,7 +85,8 @@ void DoserNativeWebRoutes::restartRoute(
         sendText(response, 202U,
                  "Restart zaplanowany. Urządzenie uruchomi się ponownie.");
     } else if (waited == ApplicationBridgeWaitResult::Completed) {
-        sendText(response, 503U, "Restart unavailable");
+        sendText(response, result == DoserWebResult::Busy ? 409U : 503U,
+                 result == DoserWebResult::Busy ? "OTA in progress" : "Restart unavailable");
     } else {
         // Submission was accepted; completion uncertainty cannot cancel it.
         sendText(response, 202U, "Restart accepted; outcome unknown.");
@@ -87,6 +97,14 @@ void DoserNativeWebRoutes::updateRoute(
     void* context, const HttpRouteRequest& request, WebResponseWriter& response) {
     DoserNativeWebRoutes& self = *static_cast<DoserNativeWebRoutes*>(context);
     if (!self.authenticateAdmin(request, response)) return;
+    if (self.ota_ != nullptr) {
+        const UploadSessionView view = self.ota_->sessionView();
+        if (view != UploadSessionView::Idle) {
+            sendText(response, view == UploadSessionView::Busy ? 409U : 503U,
+                     view == UploadSessionView::Busy ? "OTA in progress" : "OTA unavailable");
+            return;
+        }
+    }
     response.beginResponse(200U, ContentType::Html);
     response.write(DOSER_UPDATE_PAGE, strlen(DOSER_UPDATE_PAGE));
     response.endResponse();

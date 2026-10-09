@@ -64,14 +64,16 @@ Znany dług legacy: `test_network` ma nieaktualną fixture `StorageService`, ada
 
 F9.7F1 and F9.7F2 are CLOSED. F9.7F2 implements and tests native Doser adapters,
 Basic Auth and an Application-owned restart foundation without production cutover.
-Doser production Web and MQTT remain LEGACY CURRENT. F9.7G is REQUIRED NEXT and
-must add streaming OTA, safe maintenance ownership and physical S3 OTA HIL before
-an atomic single-server cutover. Deferring OTA to Phase 11 defers the whole Doser
+Doser production Web and MQTT remain LEGACY CURRENT. F9.7G is IN PROGRESS:
+G3 delivered tested streaming OTA logic; G4 must atomically replace the legacy
+server, followed by G5 physical S3 OTA HIL. Deferring OTA to Phase 11 defers the whole Doser
 production Web migration; it never permits a partial two-server migration.
 
-F9.7G1 design gate and F9.7G2 Core streaming HTTP foundation are CLOSED; the
-plan is recorded in docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md. F9.7G3 is REQUIRED
-NEXT; F9.7G3–G5 remain required before Doser production Web can become native.
+F9.7G1 design gate, F9.7G2 Core streaming HTTP foundation and F9.7G3 tested
+Doser OTA application are CLOSED; the plan is recorded in
+docs/WEB_F9_7G1_DOSER_OTA_DESIGN.md. F9.7G4 atomic production cutover is REQUIRED
+NEXT; F9.7G5 physical OTA HIL remains required afterward. Native POST /update
+is not active in production yet.
 
 ## Zasady bramki
 
