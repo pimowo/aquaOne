@@ -298,6 +298,14 @@ aquaOneCore    ███████░░░░░ 🟢 STABLE   (7/7 modułów
 - Integracja: Od razu ze standardem
 - Ryzyko: Niskie
 
+## Doser F9.7F1 gate
+
+Doser Web is LEGACY CURRENT: one `Esp32WebBackend` + `WebService` +
+`WebManager` owns restart and authenticated multipart OTA. F9.7F is a native
+design/implementation preparation gate only; legacy remains the sole production
+owner. F9.7G must provide streaming OTA before one atomic native production
+cutover. Doser MQTT/Discovery remains LEGACY CURRENT until F10.6.
+
 ## Architecture vNext perspective
 
 Macierz jest snapshotem CURRENT, a nie rankingiem architektury. Wszystkie domeny — Luma,

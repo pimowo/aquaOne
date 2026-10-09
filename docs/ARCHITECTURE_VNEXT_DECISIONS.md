@@ -2707,6 +2707,19 @@ explicit 512-byte POST limits. Hydro remains polling-only. F9.7E3 bare-board
 Web/Application HIL passed with expected hardware limitations; full physical
 Hydro hardware HIL remains future work.
 
+## F9.7F1 — Doser native Web migration gate
+
+F9.7F1 records Doser's one legacy `Esp32WebBackend`/`WebService`/`WebManager`
+owner, including Basic Auth, restart and multipart OTA. F9.7F may prepare
+native projections, normal/admin adapters, an auth boundary and an
+Application-owned restart workflow, but does not cut production over. F9.7G
+must provide streaming OTA, cleanup/backpressure, pump/restart safety and S3
+OTA HIL before the native owner atomically replaces legacy Web. Two listeners,
+a legacy OTA-only listener and silent OTA removal are forbidden. Deferring OTA
+to Phase 11/MNT-102 defers the entire Doser production cutover. MQTT and
+Discovery remain LEGACY CURRENT through F10.6. Details:
+`docs/WEB_F9_7F1_DOSER_MIGRATION_GATE.md`.
+
 ## SPIKE REQUIRED
 
 - WEB/RT: długotrwały slow client, saturacja kolejek i docelowa polityka backpressure poza ograniczonym HIL F8.3;

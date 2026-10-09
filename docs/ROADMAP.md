@@ -60,6 +60,14 @@ Znany dług legacy: `test_network` ma nieaktualną fixture `StorageService`, ada
 `Esp32NetworkBackend::activeInstance_` obsługuje jedną aktywną instancję. Semantyka
 `applyRadioPolicy() == false` została rozstrzygnięta w F7.5.
 
+## F9.7F1 — Doser native Web gate
+
+F9.7F1 is CLOSED as a design/audit gate. F9.7F prepares native Doser adapters,
+Basic Auth and Application-owned restart without production cutover. F9.7G must
+add streaming OTA, safe maintenance ownership and physical S3 OTA HIL before an
+atomic single-server cutover. Deferring OTA to Phase 11 defers the whole Doser
+production Web migration; it never permits a partial two-server migration.
+
 ## Zasady bramki
 
 Nie rozpoczynamy migracji domeny przed zakończeniem odpowiednich kontraktów platformy.
