@@ -2855,3 +2855,27 @@ the candidate SHA-256 manifest are recorded in
 F10.3A and the Core prerequisite are CLOSED/CURRENT. Luma, Hydro and Doser
 remain API 1.0. Product Luma Realtime and HA WebSocket resync are NOT CURRENT.
 F10.3B Luma server Realtime composition is REQUIRED NEXT.
+
+## F10.3B/F10.3C - Luma server and Home Assistant Realtime checkpoints (2026-10-10)
+
+F10.3B and F10.3C are CLOSED/CURRENT. Production Luma now advertises API 1.1 only
+with its composed `/ws/realtime` endpoint and coherent status metadata. The Home
+Assistant integration keeps one coordinator and one bounded WS task, performs a
+WS-first coherent HTTP resync, treats notifications only as refresh hints, uses a
+configured 60-second safety poll and retains the F10.2 10-second HTTP fallback.
+Device Registry identity and all 13 entity unique IDs remain unchanged.
+
+Real HA 2026.10.0 HIL confirmed one Luma device, 13/13 entities without duplicates,
+six notification-driven updates at 71-603 ms, coherent HTTP/WS positions, a new
+RuntimeIdentity with stable DeviceId after ESP restart, automatic unavailable/recovery
+and ConfigEntry reload. Deterministic Python tests passed 66/66. The safety-poll
+cadence was not measured directly in HA; WS-only physical failure and live API
+downgrade were not run; soak was limited to five minutes; internal HA task count was
+not directly measured. Initial setup at API 1.0 requires integration reload after a
+later upgrade to API 1.1 before WS starts. These are documented nonblocking limits,
+not physical PASS claims. Evidence:
+[`HA_F10_3C_HOME_ASSISTANT_REALTIME_HIL.md`](HA_F10_3C_HOME_ASSISTANT_REALTIME_HIL.md).
+
+Phase 10 remains IN PROGRESS. F10.4 Luma commands is REQUIRED NEXT. F10.5 Hydro,
+F10.6 Doser MQTT replacement, `/api/capabilities`, Zeroconf/mDNS and SEC-101 remain
+future/open according to their existing gates.

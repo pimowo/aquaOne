@@ -8,6 +8,7 @@ from typing import Any
 
 from ..api.errors import AquaOneInvalidResponseError
 from ..api.models import SystemInfo
+from ..api.realtime import RealtimeStatusMetadata
 
 MODES = ("normal", "service", "manual", "channel_test", "preview", "simulation", "off")
 DAY_STATES = ("day", "night")
@@ -75,6 +76,7 @@ class LumaStatus:
     wifi_state: str = field(compare=False)
     wifi_ip: str = field(compare=False)
     overall_health: str
+    realtime: RealtimeStatusMetadata | None = field(default=None, compare=False)
 
     @property
     def time_validity(self) -> str:
@@ -105,6 +107,10 @@ class LumaStatus:
         rssi = wifi.get("rssi")
         if type(connected) is not bool or type(rssi) is not int:
             raise AquaOneInvalidResponseError("Invalid wifi")
+        realtime = (
+            RealtimeStatusMetadata.from_json(data["realtime"])
+            if "realtime" in data else None
+        )
         return cls(
             mode=mode,
             active_profile=profile,
@@ -120,6 +126,7 @@ class LumaStatus:
             wifi_state=_enum(wifi, "state", WIFI_STATES),
             wifi_ip=_string(wifi, "ip"),
             overall_health=health,
+            realtime=realtime,
         )
 
 

@@ -1,10 +1,10 @@
 # HOME_ASSISTANT_INTEGRATION_STANDARD.md
 
-**Status:** TARGET / ACTIVE DESIGN; F10.1B, F10.2 and F10.3 Core prerequisite CURRENT; F10.3B REQUIRED NEXT
+**Status:** TARGET / ACTIVE DESIGN; F10.1B, F10.2 and F10.3A/B/C CURRENT; F10.4 REQUIRED NEXT
 **Scope:** aquaOne ecosystem
 **Decision:** HA-101 ACCEPTED
 **Version:** 1.0
-**Last reviewed:** 2026-10-09
+**Last reviewed:** 2026-10-10
 
 ## 1. Purpose and autonomy
 
@@ -93,7 +93,8 @@ The target sequence is:
 8. enter live mode.
 
 A CURRENT polling-only product MAY use periodic HTTP snapshots until its Realtime cutover.
-Luma and Hydro are CURRENT native HTTP and polling-only; Doser remains on its
+Luma read-only Realtime is CURRENT with HTTP fallback; Hydro is CURRENT native HTTP
+and polling-only; Doser remains on its
 legacy MQTT and MQTT Discovery implementation.
 
 ## 7. Version and compatibility contract
@@ -198,10 +199,9 @@ are separate from transport availability. The exact HA Core version and passive 
 request count were not captured; live synthetic identity mismatch was not run.
 
 The checkpoint closes F10.2 for its read-only scope. Phase 10 remains IN PROGRESS;
-F10.3 is REQUIRED NEXT only after review of the Luma server's product WebSocket,
-cohort and public wire contract. No HA WebSocket subscriber or Luma commands are
-CURRENT. F10.4 commands, F10.5 Hydro, F10.6 Doser MQTT replacement, `/api/capabilities`
-and Zeroconf remain future. SEC-101 remains OPEN.
+F10.3B Luma server and F10.3C HA Realtime client are CLOSED/CURRENT. Luma commands
+are not CURRENT. F10.4 commands are REQUIRED NEXT; F10.5 Hydro, F10.6 Doser MQTT
+replacement, `/api/capabilities` and Zeroconf remain future. SEC-101 remains OPEN.
 
 ## F10.3A Realtime architecture gate (2026-10-09)
 
@@ -217,8 +217,24 @@ F10.3A is CLOSED and the reusable Core prerequisite is CLOSED/CURRENT. Core
 StreamStart is bounded TEXT JSON, generic notification transport retains
 TEXT/BINARY selection, and per-product API version selection defaults to 1.0.
 The classic ESP32 Core HIL and production Luma/HA restoration evidence are in
-[F10.3 Core prerequisite HIL](HA_F10_3_CORE_PREREQUISITE_HIL.md). Luma, Hydro
-and Doser remain API 1.0; product Realtime remains polling-only/not CURRENT.
-F10.3B Luma server composition is REQUIRED NEXT; F10.3C HA client validation
-follows the server gate. SEC-101 remains OPEN and is nonblocking only for this
-read-only local notification scope; no command authority is added.
+[F10.3 Core prerequisite HIL](HA_F10_3_CORE_PREREQUISITE_HIL.md). Luma server
+Realtime and the bounded HA client are CLOSED/CURRENT after F10.3B/F10.3C; Hydro
+and Doser retain their current polling contracts. SEC-101 remains OPEN and is
+nonblocking only for this read-only local notification scope; no command authority
+is added.
+
+## F10.3C Home Assistant Realtime checkpoint (2026-10-10)
+
+The Luma integration uses one coordinator and one bounded WebSocket client task.
+Notifications trigger authoritative coherent HTTP refresh; they do not patch entity
+state. Healthy WS mode uses a configured 60-second safety poll, and failure returns
+to the F10.2 10-second polling path without changing the existing Device, ConfigEntry
+or 13 entity unique IDs. API 1.0, missing/invalid metadata and unverified identity
+block WS attempts.
+
+Real HA 2026.10.0 HIL confirmed one Luma device, 13/13 entities without duplicates,
+six notification-driven updates at 71-603 ms, coherent HTTP/WS watermarks, reboot
+with a new RuntimeIdentity and stable DeviceId, automatic unavailable/recovery and
+ConfigEntry reload. The explicit unmeasured scenarios and the five-minute soak limit
+are recorded in [F10.3C HIL evidence](HA_F10_3C_HOME_ASSISTANT_REALTIME_HIL.md).
+F10.3C is CLOSED/CURRENT. F10.4 is REQUIRED NEXT.

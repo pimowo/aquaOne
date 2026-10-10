@@ -1,22 +1,22 @@
 # Project Matrix — Status i Integracja Core
 
-**Snapshot date:** 2026-10-09
-**Snapshot scope:** F10.3 Core prerequisite checkpoint after physical Core HIL
+**Snapshot date:** 2026-10-10
+**Snapshot scope:** F10.3C Home Assistant Realtime client checkpoint after real HA HIL
 
 Ten dokument opisuje wyłącznie stan zaimplementowany w lokalnym kodzie dla bieżącego
 checkpointu. Nie definiuje architektury docelowej ani kolejności przyszłych prac.
 
 F9.8B: Phase 9 is CLOSED. Core Realtime WS/resync is CURRENT and passed classic
-ESP32 HIL; Luma, Hydro and Doser production HTTP is native, while product
-WS/cohorts/notifications are absent. Phase 10 is IN PROGRESS: F10.1A is CLOSED,
-F10.1B server identity/API and F10.2 Luma read-only integration are CLOSED/CURRENT;
-F10.3A architecture gate and Core prerequisite are CLOSED/CURRENT; F10.3B Luma server
-Realtime composition is REQUIRED NEXT, before F10.3C HA client.
+ESP32 HIL. Phase 10 is IN PROGRESS: F10.1A is CLOSED; F10.1B server identity/API,
+F10.2 Luma read-only integration, F10.3A architecture gate, the Core prerequisite,
+F10.3B Luma server and F10.3C HA Realtime client are CLOSED/CURRENT. F10.4 is
+REQUIRED NEXT.
 See `docs/WEB_F9_8B_PHASE9_CLOSURE.md` and the detailed
 `docs/WEB_F9_8A_PHASE9_CLOSURE_AUDIT.md`; F10.1A decision:
 `docs/HA_F10_1A_ARCHITECTURE.md`; F10.2 evidence:
 `docs/HA_F10_2_LUMA_READONLY_HIL.md`; F10.3A decision:
-`docs/HA_F10_3A_REALTIME_ARCHITECTURE.md`.
+`docs/HA_F10_3A_REALTIME_ARCHITECTURE.md`; F10.3C evidence:
+`docs/HA_F10_3C_HOME_ASSISTANT_REALTIME_HIL.md`.
 
 F10.1B CURRENT common `GET /api/system` adds canonical `device_type` (`luma`, `hydro`,
 `doser`), `device_id` from the factory/default base MAC48 of the current ESP32-family
@@ -34,7 +34,7 @@ count and live identity-mismatch behavior were not measured.
 
 Home Assistant TARGET is one local custom `aquaOne` integration using HTTP snapshots,
 HTTP POST actions and WebSocket/Realtime. AquaCore MQTT is not a planned module. Luma
-read-only polling is CURRENT after F10.2; its commands and Realtime remain later work.
+read-only polling and Realtime are CURRENT after F10.3C; its commands remain later work.
 Hydro is a future product adapter. Doser MQTT/Discovery is LEGACY CURRENT and remains
 functional until F10.6 replaces it. Gas, Clima and Fauna are future HA/API adapters.
 
@@ -257,7 +257,7 @@ Emoji są tylko pomocą wizualną; tekstowy status jest rozstrzygający.
 | **Nie zaimplementowane** | | |
 | MQTT | ❌ | Not planned for TARGET Core |
 | OTA | ❌ | Planned (no version assigned) |
-| Home Assistant integration | PARTIAL CURRENT | Luma read-only HTTP polling CURRENT (F10.2); WS/Realtime and commands remain future |
+| Home Assistant integration | PARTIAL CURRENT | Luma read-only HTTP polling and WS/Realtime CURRENT (F10.3C); commands remain future |
 | RTC/NTP recovery | ✅ IMPLEMENTED | `ResilientTimeService` z progami failure/recovery i cache czasu |
 | | | |
 | **Design** | | |
@@ -342,10 +342,10 @@ obowiązuje późniejsza ocena KEEP, ADAPT, REWRITE albo REMOVE.
 Docelowe rozszerzenia platformy obejmują Commands, Events, Alarms, Safety,
 Maintenance, Registry, produktową kompozycję Realtime, Home Assistant commands and other adapters,
 wspólne OTA, Backup/Restore, Factory Reset oraz pełną Application lifecycle/composition.
-Core Realtime foundation jest CURRENT, bez produkcyjnego WS w Luma/Hydro/Doser.
-Phase 9 jest CLOSED po F9.8B; Phase 10 jest IN PROGRESS po F10.1A, F10.1B
-i F10.2. Luma HA read-only polling jest CURRENT. Product Realtime, commands
-and remaining product adapters are future work.
+Core Realtime foundation jest CURRENT; Luma ma produkcyjny WS, a Hydro i Doser
+pozostają bez własnej kompozycji Realtime. Phase 9 jest CLOSED po F9.8B; Phase 10
+jest IN PROGRESS. Luma HA read-only polling i Realtime są CURRENT. Commands and
+remaining product adapters are future work.
 
 F10.3A selected a common TEXT JSON Realtime contract and a one-resource Luma
 resync cohort. Verdict B requires reusable Core StreamStart/version work before
@@ -363,3 +363,15 @@ version selection defaults to 1.0. Luma, Hydro and Doser remain API 1.0, with
 no product Realtime endpoint or status watermark. F10.3B Luma server Realtime
 composition is REQUIRED NEXT; F10.3C remains the later HA Realtime client gate.
 Evidence: `docs/HA_F10_3_CORE_PREREQUISITE_HIL.md`.
+
+## F10.3B/F10.3C Luma Realtime checkpoint
+
+F10.3B Luma server and F10.3C Home Assistant client are CLOSED/CURRENT. Production
+Luma advertises API 1.1 and exposes the coherent status watermark plus bounded TEXT
+notification stream. One HA coordinator uses notification-triggered HTTP refresh,
+a configured 60-second safety poll and the F10.2 10-second polling fallback. Real
+HA 2026.10.0 HIL confirmed one device, 13/13 unchanged entities, no duplicates,
+six notification-driven updates, reboot RuntimeIdentity change with stable DeviceId,
+automatic unavailable/recovery and ConfigEntry reload. F10.4 is REQUIRED NEXT.
+Evidence: `docs/HA_F10_3B_LUMA_REALTIME_HIL.md` and
+`docs/HA_F10_3C_HOME_ASSISTANT_REALTIME_HIL.md`.
