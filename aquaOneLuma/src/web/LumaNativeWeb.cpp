@@ -119,7 +119,7 @@ LumaWebApplication::LumaWebApplication(
     FirmwareApp& app,
     const AquaCore::Network::NetworkService& network,
     const AquaCore::Diagnostics::DiagnosticsService& diagnostics,
-    PublishedSnapshot<LumaStatusProjection>& statusTarget,
+    PublishedSnapshot<LumaPublishedStatus>& statusTarget,
     LumaApplicationBridge& bridge
 ) : app_(app), network_(network), diagnostics_(diagnostics),
     statusTarget_(statusTarget), bridge_(bridge) {}
@@ -149,16 +149,12 @@ FirmwareCommandResult LumaWebApplication::execute(
     return FirmwareCommandResult::Invalid;
 }
 
-bool LumaWebApplication::publishStatus() {
-    if (!app_.isRunning()) {
-        return statusTarget_.invalidate();
-    }
+bool LumaWebApplication::buildStatus(LumaStatusProjection& value) const {
+    if (!app_.isRunning()) return false;
     const RuntimeState& state = app_.state();
     const DeviceConfig& config = app_.config();
-    if (config.activeProfileIndex >= PROFILE_COUNT) {
-        return statusTarget_.invalidate();
-    }
-    LumaStatusProjection value {};
+    if (config.activeProfileIndex >= PROFILE_COUNT) return false;
+    value = LumaStatusProjection();
     value.mode = state.mode;
     value.activeProfile = static_cast<uint8_t>(config.activeProfileIndex + 1U);
     std::strncpy(
@@ -179,14 +175,22 @@ bool LumaWebApplication::publishStatus() {
     value.wifiIp = network_.ipAddress();
     value.wifiRssi = network_.rssi();
     value.overallHealth = diagnostics_.snapshot().overallHealth;
-    return statusTarget_.publish(value);
+    return true;
+}
+
+bool LumaWebApplication::publishStatus() {
+    LumaPublishedStatus published {};
+    if (!buildStatus(published.value)) return statusTarget_.invalidate();
+    return statusTarget_.publish(published);
 }
 
 LumaNativeWeb::LumaNativeWeb(
     NativeWebService& web,
-    const PublishedSnapshot<LumaStatusProjection>& status,
-    LumaApplicationBridge& bridge
-) : web_(web), status_(status), bridge_(bridge) {}
+    const PublishedSnapshot<LumaPublishedStatus>& status,
+    LumaApplicationBridge& bridge,
+    const EspIdfWebTransport* realtimeTransport
+) : web_(web), status_(status), bridge_(bridge),
+    realtimeTransport_(realtimeTransport) {}
 
 LumaNativeWeb::~LumaNativeWeb() {
     // Stop before the route context and owned pages are destroyed.
@@ -223,10 +227,31 @@ void LumaNativeWeb::handleStatus(
     // types and meanings through 1.x; optional additions may use a minor bump.
     // A breaking change requires protocol-major review.
     const LumaNativeWeb* self = static_cast<const LumaNativeWeb*>(context);
-    LumaStatusProjection value {};
-    if (self == nullptr || !self->status_.read(value)) {
+    LumaPublishedStatus published {};
+    if (self == nullptr || !self->status_.read(published) ||
+        (published.realtimeAvailable &&
+         (!published.runtime.isValid() || !published.position.isValid() ||
+          (self->realtimeTransport_ != nullptr &&
+           self->realtimeTransport_->isRealtimeRecoveryRequired())))) {
         writeLumaError(response, 503U, "status unavailable");
         return;
+    }
+    const LumaStatusProjection& value = published.value;
+    char runtime[AquaCore::Identity::RuntimeIdentity::TEXT_CAPACITY] {};
+    char sequence[24] {};
+    if (published.realtimeAvailable) {
+        if (!published.runtime.format(runtime, sizeof(runtime))) {
+            writeLumaError(response, 503U, "status unavailable");
+            return;
+        }
+        if (published.position.hasSequence()) {
+            const int length = std::snprintf(sequence, sizeof(sequence), "%llu",
+                static_cast<unsigned long long>(published.position.sequence().value()));
+            if (length <= 0 || static_cast<size_t>(length) >= sizeof(sequence)) {
+                writeLumaError(response, 503U, "status unavailable");
+                return;
+            }
+        }
     }
     response.beginResponse(200U, ContentType::Json);
     response.writeText("{\"mode\":");
@@ -263,6 +288,18 @@ void LumaNativeWeb::handleStatus(
     writeNativeSigned(response, value.wifiRssi);
     response.writeText("},\"overallHealth\":");
     writeJsonString(response, nativeHealthName(value.overallHealth));
+    if (published.realtimeAvailable) {
+        response.writeText(",\"realtime\":{\"runtime_id\":\"");
+        response.writeText(runtime);
+        response.writeText("\",\"position\":{\"kind\":\"");
+        if (published.position.isBeforeFirst()) {
+            response.writeText("before_first\"}}");
+        } else {
+            response.writeText("at\",\"sequence\":\"");
+            response.writeText(sequence);
+            response.writeText("\"}}");
+        }
+    }
     response.writeText("}");
     response.endResponse();
 }

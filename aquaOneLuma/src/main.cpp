@@ -9,6 +9,7 @@
 #include "AquaCore/Network/NetworkService.h"
 #include "AquaCore/System/SystemService.h"
 #include "AquaCore/System/Esp32FactoryDeviceIdSource.h"
+#include "AquaCore/System/Esp32RuntimeIdentityGenerator.h"
 #include "AquaCore/Web/CoreWebProjectionPublisher.h"
 #include "AquaCore/Web/CoreWebProjectionSources.h"
 #include "AquaCore/Web/Esp32ActionBridgeSynchronizer.h"
@@ -26,6 +27,7 @@
 #include "time/NtpSyncCoordinator.h"
 #include "time/TimeService.h"
 #include "web/LumaNativeWeb.h"
+#include "web/LumaRealtime.h"
 
 #if __has_include("NetworkSecrets.h")
     #include "NetworkSecrets.h"
@@ -54,6 +56,11 @@ LumaSense::NtpSyncCoordinator ntpSyncCoordinator(ntpService);
 AquaCore::SystemService systemService;
 AquaCore::Identity::DeviceIdentity canonicalIdentity;
 AquaCore::Identity::Esp32FactoryDeviceIdSource factoryDeviceIdSource;
+AquaCore::Identity::RuntimeIdentityState runtimeIdentityState;
+bool entropyWindowOpen = false;
+bool entropyWindowAvailable(void*) { return entropyWindowOpen; }
+AquaCore::Identity::Esp32RuntimeIdentityGenerator runtimeIdentityGenerator(
+    entropyWindowAvailable, nullptr);
 AquaCore::SerialLogSink serialLogSink(Serial);
 AquaCore::Logger logger(serialLogSink);
 
@@ -97,15 +104,24 @@ AquaCore::Web::PublishedSnapshot<AquaCore::Web::CoreSystemProjection>
     systemProjection(systemProjectionSynchronizer);
 AquaCore::Web::PublishedSnapshot<AquaCore::Web::CoreDiagnosticsProjection>
     diagnosticsProjection(diagnosticsProjectionSynchronizer);
-AquaCore::Web::PublishedSnapshot<LumaSense::Web::LumaStatusProjection>
+AquaCore::Web::PublishedSnapshot<LumaSense::Web::LumaPublishedStatus>
     lumaStatus(lumaStatusSynchronizer);
 AquaCore::Web::SystemServiceWebProjectionSource systemProjectionSource(
     systemService, canonicalIdentity
+);
+AquaCore::Web::SystemServiceWebProjectionSource realtimeSystemProjectionSource(
+    systemService, canonicalIdentity, AquaCore::Web::ApiProtocolVersion {1U, 1U}
 );
 AquaCore::Web::DiagnosticsServiceWebProjectionSource
     diagnosticsProjectionSource(diagnosticsService);
 AquaCore::Web::CoreWebProjectionPublisher coreWebPublisher(
     systemProjectionSource,
+    &diagnosticsProjectionSource,
+    systemProjection,
+    diagnosticsProjection
+);
+AquaCore::Web::CoreWebProjectionPublisher realtimeCoreWebPublisher(
+    realtimeSystemProjectionSource,
     &diagnosticsProjectionSource,
     systemProjection,
     diagnosticsProjection
@@ -130,10 +146,16 @@ LumaSense::Web::LumaWebApplication lumaWebApplication(
 LumaSense::Web::LumaNativeWeb lumaNativeWeb(
     nativeWebService,
     lumaStatus,
-    lumaActionBridge
+    lumaActionBridge,
+    &webTransport
 );
+LumaSense::Web::LumaRealtime lumaRealtime(
+    lumaWebApplication, lumaStatus, webTransport, nativeWebService);
 
 bool networkAddressReported = false;
+// One startup decision for this firmware runtime; transient recovery does not
+// change the published API contract.
+bool realtimeStartupSucceeded = false;
 
 void copyText(
     char* destination,
@@ -420,10 +442,17 @@ void printTimeDiagnostics(uint32_t nowMs) {
 void setup() {
     const uint32_t nowMs = millis();
 
+    // Factory identity reads eFuse only; it does not initialize ADC/I2S/RF.
     (void)systemService.begin(DEVICE_IDENTITY);
     AquaCore::Identity::DeviceId deviceId;
     if (factoryDeviceIdSource.read(deviceId))
         (void)canonicalIdentity.assign("luma", deviceId);
+
+    // This is the only exclusive entropy window in this firmware runtime.
+    // No hardware, ADC, RF, network or Application initialization precedes it.
+    entropyWindowOpen = true;
+    const bool runtimeReady = runtimeIdentityState.initialize(runtimeIdentityGenerator);
+    entropyWindowOpen = false;
 
     // Storage resolves PWM polarity before the only hardware.begin().
     // Network and Web are initialized only after the autonomous lamp.
@@ -443,13 +472,24 @@ void setup() {
     const AquaCore::Web::CoreWebPublicationResult initialCorePublication =
         coreWebPublisher.update();
     (void)initialCorePublication;
-    (void)lumaWebApplication.publishStatus();
+    const bool realtimeReady = runtimeReady &&
+        lumaRealtime.start(runtimeIdentityState.identity());
+    if (!realtimeReady) (void)lumaWebApplication.publishStatus();
 
-    const bool routesOk =
-        lumaNativeWeb.registerRoutes();
+    const bool routesOk = lumaNativeWeb.registerRoutes();
+    const bool wsRegistered = routesOk && realtimeReady &&
+        webTransport.setRealtimeEndpoint("/ws/realtime");
 
     const bool webOk =
         routesOk && nativeWebService.begin(makeWebConfig());
+    realtimeStartupSucceeded = lumaRealtime.confirmStartup(
+        wsRegistered, webOk && nativeWebService.isRunning());
+    if (realtimeStartupSucceeded)
+        (void)realtimeCoreWebPublisher.update();
+    else {
+        (void)lumaWebApplication.publishStatus();
+        (void)coreWebPublisher.update();
+    }
 
     printStartupStatus(networkOk, routesOk, webOk);
     Serial.print("NTP: ");
@@ -469,8 +509,14 @@ void loop() {
     );
     // At most one accepted Web request executes per autonomous lamp tick.
     (void)lumaWebApplication.processOne(nowMs);
-    (void)coreWebPublisher.update();
-    (void)lumaWebApplication.publishStatus();
+    if (realtimeStartupSucceeded)
+        (void)realtimeCoreWebPublisher.update();
+    else
+        (void)coreWebPublisher.update();
+    if (lumaRealtime.active())
+        lumaRealtime.update(nowMs, makeWebConfig());
+    else
+        (void)lumaWebApplication.publishStatus();
 
     reportNetworkAddress();
 

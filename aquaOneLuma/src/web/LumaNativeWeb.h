@@ -5,8 +5,10 @@
 
 #include "AquaCore/Diagnostics/DiagnosticsService.h"
 #include "AquaCore/Network/NetworkService.h"
+#include "AquaCore/Web/EspIdfWebTransport.h"
 #include "AquaCore/Web/NativeWebService.h"
 #include "AquaCore/Web/PublishedSnapshot.h"
+#include "AquaCore/Web/Realtime.h"
 #include "AquaCore/Web/WebApplicationBridge.h"
 
 #include "../app/FirmwareApp.h"
@@ -38,6 +40,16 @@ struct LumaStatusProjection {
 static_assert(std::is_trivially_copyable<LumaStatusProjection>::value,
               "Luma status projection must remain a copied value");
 
+struct LumaPublishedStatus {
+    LumaStatusProjection value {};
+    bool realtimeAvailable = false;
+    AquaCore::Identity::RuntimeIdentity runtime {};
+    AquaCore::Web::RealtimeStreamPosition position {};
+};
+
+static_assert(std::is_trivially_copyable<LumaPublishedStatus>::value,
+              "Luma status and watermark must be one copied value");
+
 using LumaApplicationBridge = AquaCore::Web::WebApplicationBridge<
     LumaWebRequest,
     FirmwareCommandResult,
@@ -52,11 +64,12 @@ public:
         FirmwareApp& app,
         const AquaCore::Network::NetworkService& network,
         const AquaCore::Diagnostics::DiagnosticsService& diagnostics,
-        AquaCore::Web::PublishedSnapshot<LumaStatusProjection>& statusTarget,
+        AquaCore::Web::PublishedSnapshot<LumaPublishedStatus>& statusTarget,
         LumaApplicationBridge& bridge
     );
 
     bool processOne(uint32_t nowMs);
+    bool buildStatus(LumaStatusProjection& value) const;
     bool publishStatus();
 
 private:
@@ -67,7 +80,7 @@ private:
     FirmwareApp& app_;
     const AquaCore::Network::NetworkService& network_;
     const AquaCore::Diagnostics::DiagnosticsService& diagnostics_;
-    AquaCore::Web::PublishedSnapshot<LumaStatusProjection>& statusTarget_;
+    AquaCore::Web::PublishedSnapshot<LumaPublishedStatus>& statusTarget_;
     LumaApplicationBridge& bridge_;
     uint32_t executionNowMs_ = 0U;
 };
@@ -80,8 +93,9 @@ public:
 
     LumaNativeWeb(
         AquaCore::Web::NativeWebService& web,
-        const AquaCore::Web::PublishedSnapshot<LumaStatusProjection>& status,
-        LumaApplicationBridge& bridge
+        const AquaCore::Web::PublishedSnapshot<LumaPublishedStatus>& status,
+        LumaApplicationBridge& bridge,
+        const AquaCore::Web::EspIdfWebTransport* realtimeTransport = nullptr
     );
     ~LumaNativeWeb();
 
@@ -115,8 +129,9 @@ private:
     );
 
     AquaCore::Web::NativeWebService& web_;
-    const AquaCore::Web::PublishedSnapshot<LumaStatusProjection>& status_;
+    const AquaCore::Web::PublishedSnapshot<LumaPublishedStatus>& status_;
     LumaApplicationBridge& bridge_;
+    const AquaCore::Web::EspIdfWebTransport* realtimeTransport_;
     bool registered_ = false;
 
     DashboardPage dashboardPage_;

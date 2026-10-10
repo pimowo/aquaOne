@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <unity.h>
 
+#include <cstdint>
 #include <cstring>
 #include <memory>
 #include <new>
@@ -29,9 +30,12 @@ TwoWire Wire;
 #include "../../src/web/LumaPages.cpp"
 #include "../../src/web/LumaApi.cpp"
 #include "../../src/web/LumaNativeWeb.cpp"
+#include "../../src/web/LumaRealtime.cpp"
 
 #include "AquaCore/Web/Esp32ActionBridgeSynchronizer.h"
 #include "AquaCore/Web/Esp32SnapshotSynchronizer.h"
+#include "AquaCore/Web/CoreWebProjectionPublisher.h"
+#include "AquaCore/Web/CoreWebProjectionSources.h"
 
 using namespace AquaCore;
 using namespace AquaCore::Web;
@@ -39,6 +43,26 @@ using namespace LumaSense;
 using namespace LumaSense::Web;
 
 namespace {
+
+uint32_t upper32(uint64_t value) {
+    return static_cast<uint32_t>(value >> 32U);
+}
+
+uint32_t lower32(uint64_t value) {
+    return static_cast<uint32_t>(value);
+}
+
+bool equalUint64Parts(uint64_t expected, uint64_t actual) {
+    return upper32(expected) == upper32(actual) &&
+           lower32(expected) == lower32(actual);
+}
+
+void assertEqualUint64Parts(uint64_t expected, uint64_t actual) {
+    TEST_ASSERT_EQUAL_HEX32_MESSAGE(upper32(expected), upper32(actual),
+                                    "upper 32 bits differ");
+    TEST_ASSERT_EQUAL_HEX32_MESSAGE(lower32(expected), lower32(actual),
+                                    "lower 32 bits differ");
+}
 
 bool hasJsonIntegerMember(const std::string& object, const char* key, int expected) {
     const std::string quotedKey = std::string("\"") + key + "\"";
@@ -273,13 +297,14 @@ public:
     AquaCore::Network::IpAddress localIp() const override {
         return {{192U, 168U, 1U, 55U}};
     }
-    int32_t rssi() const override { return -58; }
+    int32_t rssi() const override { return rssiValue; }
     AquaCore::Network::NetworkDisconnectReason consumeDisconnectReason() override {
         return AquaCore::Network::NetworkDisconnectReason::None;
     }
     bool startAccessPoint(const char*, const char*) override { return true; }
     bool stopAccessPoint() override { return true; }
     AquaCore::Network::IpAddress accessPointIp() const override { return {}; }
+    int32_t rssiValue = -58;
 };
 
 AquaCore::Network::NetworkConfig networkConfig() {
@@ -325,7 +350,7 @@ struct AuthorityFixture {
     AquaCore::Network::NetworkService network;
     AquaCore::Diagnostics::DiagnosticsService diagnostics;
     Esp32SnapshotSynchronizer statusSync;
-    PublishedSnapshot<LumaStatusProjection> status;
+    PublishedSnapshot<LumaPublishedStatus> status;
     Esp32ActionBridgeSynchronizer actionSync;
     LumaApplicationBridge bridge;
     LumaWebApplication webApplication;
@@ -358,6 +383,7 @@ struct Fixture {
         TEST_ASSERT_TRUE(id.assign(bytes, sizeof(bytes)).isValid());
         TEST_ASSERT_TRUE(system.canonicalIdentity.assign("luma", id).isValid());
         std::strcpy(system.aquaCoreVersion, "0.6.2");
+        system.apiProtocolVersion = ApiProtocolVersion {1U, 1U};
         system.ready = true;
         TEST_ASSERT_TRUE(systemSnapshot.publish(system));
         CoreDiagnosticsProjection diagnostics {};
@@ -374,7 +400,7 @@ struct Fixture {
     Esp32SnapshotSynchronizer statusSync;
     PublishedSnapshot<CoreSystemProjection> systemSnapshot;
     PublishedSnapshot<CoreDiagnosticsProjection> diagnosticsSnapshot;
-    PublishedSnapshot<LumaStatusProjection> statusSnapshot;
+    PublishedSnapshot<LumaPublishedStatus> statusSnapshot;
     Transport transport;
     NativeWebService native;
     HookSynchronizer actionSync;
@@ -437,7 +463,9 @@ void test_route_inventory_and_post_limits() {
 
 void test_status_is_snapshot_compatible_and_secret_free() {
     TEST_ASSERT_TRUE(fixture->start());
-    TEST_ASSERT_TRUE(fixture->statusSnapshot.publish(statusValue(1U, "Main \"Day\"")));
+    LumaPublishedStatus firstValue {};
+    firstValue.value = statusValue(1U, "Main \"Day\"");
+    TEST_ASSERT_TRUE(fixture->statusSnapshot.publish(firstValue));
     Writer first = fixture->transport.request("/api/lumasense/status");
     TEST_ASSERT_EQUAL_UINT16(200U, first.status);
     assertContains(first.text(), "\"mode\":\"NORMAL\"");
@@ -454,8 +482,10 @@ void test_status_is_snapshot_compatible_and_secret_free() {
     assertContains(first.text(), "\"overallHealth\":\"ok\"");
     assertMissing(first.text(), "password");
     assertMissing(first.text(), "ssid");
+    assertMissing(first.text(), "\"realtime\"");
 
-    LumaStatusProjection changed = statusValue(2U, "Second");
+    LumaPublishedStatus changed {};
+    changed.value = statusValue(2U, "Second");
     Writer stale = fixture->transport.request("/api/lumasense/status");
     assertContains(stale.text(), "\"activeProfile\":1");
     TEST_ASSERT_TRUE(fixture->statusSnapshot.publish(changed));
@@ -463,9 +493,392 @@ void test_status_is_snapshot_compatible_and_secret_free() {
     assertContains(fresh.text(), "\"activeProfile\":2");
 }
 
+void test_status_realtime_metadata_and_failure() {
+    TEST_ASSERT_TRUE(fixture->start());
+    LumaPublishedStatus value {};
+    value.value = statusValue(1U, "Main");
+    TEST_ASSERT_TRUE(Identity::RuntimeIdentity::fromValue(
+        UINT64_C(0x0123456789ABCDEF), value.runtime));
+    value.realtimeAvailable = true;
+    value.position = RealtimeStreamPosition::beforeFirst();
+    TEST_ASSERT_TRUE(fixture->statusSnapshot.publish(value));
+    Writer before = fixture->transport.request("/api/lumasense/status");
+    TEST_ASSERT_EQUAL_UINT16(200U, before.status);
+    assertContains(before.text(),
+        "\"realtime\":{\"runtime_id\":\"0123456789ABCDEF\","
+        "\"position\":{\"kind\":\"before_first\"}}");
+    assertMissing(before.text(), "\"sequence\"");
+    assertContains(before.text(), "\"activeProfile\":1");
+
+    RealtimeStreamSequence one;
+    TEST_ASSERT_TRUE(RealtimeStreamSequence::fromValue(1U, one));
+    TEST_ASSERT_TRUE(RealtimeStreamPosition::at(one, value.position));
+    TEST_ASSERT_TRUE(fixture->statusSnapshot.publish(value));
+    Writer at = fixture->transport.request("/api/lumasense/status");
+    TEST_ASSERT_EQUAL_UINT16(200U, at.status);
+    assertContains(at.text(), "\"kind\":\"at\",\"sequence\":\"1\"");
+
+    RealtimeStreamSequence maximum;
+    TEST_ASSERT_TRUE(RealtimeStreamSequence::fromValue(UINT64_MAX, maximum));
+    TEST_ASSERT_TRUE(RealtimeStreamPosition::at(maximum, value.position));
+    TEST_ASSERT_TRUE(fixture->statusSnapshot.publish(value));
+    Writer max = fixture->transport.request("/api/lumasense/status");
+    assertContains(max.text(), "\"sequence\":\"18446744073709551615\"");
+
+    TEST_ASSERT_TRUE(fixture->statusSnapshot.invalidate());
+    TEST_ASSERT_EQUAL_UINT16(503U,
+        fixture->transport.request("/api/lumasense/status").status);
+}
+
+void test_realtime_notification_wire_and_semantic_fingerprint() {
+    Identity::RuntimeIdentity runtime;
+    TEST_ASSERT_TRUE(Identity::RuntimeIdentity::fromValue(
+        UINT64_C(0x0123456789ABCDEF), runtime));
+    const uint64_t values[] = {1U, UINT64_MAX};
+    const char* expected[] = {
+        "{\"type\":\"notification\",\"runtime_id\":\"0123456789ABCDEF\",\"sequence\":\"1\",\"kind\":\"luma_status_changed\"}",
+        "{\"type\":\"notification\",\"runtime_id\":\"0123456789ABCDEF\",\"sequence\":\"18446744073709551615\",\"kind\":\"luma_status_changed\"}"
+    };
+    for (size_t i = 0U; i < 2U; ++i) {
+        RealtimeStreamSequence seq;
+        RealtimeNotificationMetadata metadata;
+        TEST_ASSERT_TRUE(RealtimeStreamSequence::fromValue(values[i], seq));
+        TEST_ASSERT_TRUE(RealtimeNotificationMetadata::fromValues(runtime, seq, metadata));
+        uint8_t frame[119] {};
+        size_t length = 0U;
+        TEST_ASSERT_TRUE(LumaRealtime::encodeNotification(
+            metadata, frame, sizeof(frame), length));
+        TEST_ASSERT_EQUAL_STRING(expected[i], reinterpret_cast<const char*>(frame));
+        TEST_ASSERT_EQUAL_UINT32(std::strlen(expected[i]), length);
+        TEST_ASSERT_TRUE(length <= 118U);
+        uint8_t shortFrame[1] {0x7aU};
+        TEST_ASSERT_FALSE(LumaRealtime::encodeNotification(
+            metadata, shortFrame, sizeof(shortFrame), length));
+        TEST_ASSERT_EQUAL_UINT8(0x7aU, shortFrame[0]);
+        TEST_ASSERT_EQUAL_UINT32(0U, length);
+    }
+
+    const LumaStatusProjection base = statusValue(1U, "Main");
+    LumaStatusProjection changed = base;
+    TEST_ASSERT_TRUE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed.localTime.second++;
+    changed.wifiRssi--;
+    TEST_ASSERT_TRUE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed = base; changed.mode = OperatingMode::Off;
+    TEST_ASSERT_FALSE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed = base; changed.activeProfile++;
+    TEST_ASSERT_FALSE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed = base; std::strcpy(changed.activeProfileName, "Other");
+    TEST_ASSERT_FALSE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed = base; changed.activeProfileName[10] = 'X';
+    TEST_ASSERT_TRUE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed = base; changed.dayState = DayState::Day;
+    TEST_ASSERT_FALSE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed = base; changed.requestedLevels[0] += 0.001f;
+    TEST_ASSERT_TRUE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed.requestedLevels[0] += 0.01f;
+    TEST_ASSERT_FALSE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed = base; changed.finalLevels[0] += 0.01f;
+    TEST_ASSERT_FALSE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed = base; changed.globalPowerLimit += 0.01f;
+    TEST_ASSERT_FALSE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed = base; changed.timeValid = false;
+    TEST_ASSERT_FALSE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed = base; changed.wifiState = Network::NetworkState::Disconnected;
+    TEST_ASSERT_FALSE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed = base; changed.wifiConnected = false;
+    TEST_ASSERT_FALSE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed = base; changed.wifiIp.octets[0]++;
+    TEST_ASSERT_FALSE(LumaRealtime::sameSemanticStatus(base, changed));
+    changed = base; changed.overallHealth = Diagnostics::HealthState::Warning;
+    TEST_ASSERT_FALSE(LumaRealtime::sameSemanticStatus(base, changed));
+}
+
+void test_realtime_baseline_restamp_and_failed_notification() {
+    const uint64_t control = 0x0123456789ABCDEFULL;
+    const uint64_t wrongUpper = control ^ (1ULL << 32U);
+    TEST_ASSERT_EQUAL_HEX32(lower32(control), lower32(wrongUpper));
+    TEST_ASSERT_FALSE(equalUint64Parts(control, wrongUpper));
+
+    std::unique_ptr<AuthorityFixture> authority(new (std::nothrow) AuthorityFixture());
+    std::unique_ptr<EspIdfWebTransport> transport(new (std::nothrow) EspIdfWebTransport());
+    if (!authority || !transport) {
+        TEST_FAIL_MESSAGE("Realtime fixture allocation failed");
+        return;
+    }
+    TEST_ASSERT_TRUE(authority->start());
+    authority->network.update(1U);
+    Identity::RuntimeIdentity runtime;
+    TEST_ASSERT_TRUE(Identity::RuntimeIdentity::fromValue(
+        UINT64_C(0x0123456789ABCDEF), runtime));
+    LumaRealtime realtime(authority->webApplication, authority->status,
+                          *transport, fixture->native);
+    TEST_ASSERT_TRUE(realtime.start(runtime));
+    LumaPublishedStatus baseline {};
+    TEST_ASSERT_TRUE(authority->status.read(baseline));
+    TEST_ASSERT_TRUE(baseline.realtimeAvailable);
+    TEST_ASSERT_TRUE(baseline.position.isBeforeFirst());
+    TEST_ASSERT_EQUAL_UINT8(1U, baseline.value.activeProfile);
+    TEST_ASSERT_FALSE(transport->isRealtimeRecoveryRequired());
+
+    // No semantic change: republish at the same BeforeFirst watermark.
+    realtime.update(100U, webConfig());
+    LumaPublishedStatus refreshed {};
+    TEST_ASSERT_TRUE(authority->status.read(refreshed));
+    TEST_ASSERT_TRUE(refreshed.position.isBeforeFirst());
+    TEST_ASSERT_FALSE(transport->isRealtimeRecoveryRequired());
+
+    authority->networkBackend.rssiValue = -59;
+    authority->network.update(200U);
+    realtime.update(200U, webConfig());
+    LumaPublishedStatus incidental {};
+    TEST_ASSERT_TRUE(authority->status.read(incidental));
+    TEST_ASSERT_EQUAL_INT32(-59, incidental.value.wifiRssi);
+    TEST_ASSERT_TRUE(incidental.position.isBeforeFirst());
+    TEST_ASSERT_FALSE(transport->isRealtimeRecoveryRequired());
+
+    TEST_ASSERT_EQUAL(FirmwareCommandResult::Applied,
+                      authority->app.commandMode(OperatingMode::Service));
+    realtime.update(300U, webConfig());
+    LumaPublishedStatus changed {};
+    TEST_ASSERT_TRUE(authority->status.read(changed));
+    TEST_ASSERT_TRUE(changed.position.hasSequence());
+    assertEqualUint64Parts(1U, changed.position.sequence().value());
+    // No HTTPD is running: notification submit fails and sticky recovery is
+    // requested after the coherent N=1 status publication.
+    TEST_ASSERT_TRUE(transport->isRealtimeRecoveryRequired());
+}
+
+void test_runtime_unavailable_preserves_plain_status() {
+    std::unique_ptr<AuthorityFixture> authority(new (std::nothrow) AuthorityFixture());
+    std::unique_ptr<EspIdfWebTransport> transport(new (std::nothrow) EspIdfWebTransport());
+    if (!authority || !transport) {
+        TEST_FAIL_MESSAGE("Fallback fixture allocation failed");
+        return;
+    }
+    TEST_ASSERT_TRUE(authority->start());
+    LumaRealtime realtime(authority->webApplication, authority->status,
+                          *transport, fixture->native);
+    TEST_ASSERT_FALSE(realtime.start(Identity::RuntimeIdentity()));
+    TEST_ASSERT_FALSE(realtime.active());
+    TEST_ASSERT_TRUE(authority->webApplication.publishStatus());
+    LumaPublishedStatus plain {};
+    TEST_ASSERT_TRUE(authority->status.read(plain));
+    TEST_ASSERT_FALSE(plain.realtimeAvailable);
+    TEST_ASSERT_FALSE(plain.runtime.isValid());
+}
+
+void test_realtime_startup_outcome_selects_http_protocol() {
+    TEST_ASSERT_TRUE(fixture->start());
+    Identity::RuntimeIdentity validRuntime;
+    TEST_ASSERT_TRUE(Identity::RuntimeIdentity::fromValue(
+        UINT64_C(0x0123456789ABCDEF), validRuntime));
+    struct Scenario {
+        bool appReady;
+        bool runtimeReady;
+        bool wsRegistered;
+        bool listenerRunning;
+        bool expectedRealtime;
+    };
+    const Scenario cases[] = {
+        {true, true, true, true, true},
+        {true, false, true, true, false},
+        {false, true, true, true, false},
+        {true, true, false, true, false},
+        {true, true, true, false, false}
+    };
+    for (const Scenario& scenario : cases) {
+        std::unique_ptr<AuthorityFixture> authority(new (std::nothrow) AuthorityFixture());
+        std::unique_ptr<EspIdfWebTransport> transport(new (std::nothrow) EspIdfWebTransport());
+        if (!authority || !transport) { TEST_FAIL_MESSAGE("Startup allocation failed"); return; }
+        if (scenario.appReady) TEST_ASSERT_TRUE(authority->start());
+        else TEST_ASSERT_TRUE(authority->system.begin(DeviceIdentity(
+            "lighting-controller", "LumaSense", "0.2.1", "TEST")));
+        Identity::DeviceId deviceId;
+        const uint8_t bytes[] {0x24U, 0x6FU, 0x28U, 0xA1U, 0xB2U, 0xC3U};
+        TEST_ASSERT_TRUE(deviceId.assign(bytes, sizeof(bytes)).isValid());
+        Identity::DeviceIdentity canonical;
+        TEST_ASSERT_TRUE(canonical.assign("luma", deviceId).isValid());
+        SystemServiceWebProjectionSource plain(authority->system, canonical);
+        SystemServiceWebProjectionSource realtimeSource(
+            authority->system, canonical, ApiProtocolVersion {1U, 1U});
+        CoreWebProjectionPublisher plainPublisher(
+            plain, nullptr, fixture->systemSnapshot, fixture->diagnosticsSnapshot);
+        CoreWebProjectionPublisher realtimePublisher(
+            realtimeSource, nullptr, fixture->systemSnapshot, fixture->diagnosticsSnapshot);
+        TEST_ASSERT_TRUE(plainPublisher.update().systemPublished);
+
+        LumaRealtime realtime(authority->webApplication, authority->status,
+                              *transport, fixture->native);
+        const bool baseline = scenario.runtimeReady &&
+            realtime.start(validRuntime);
+        if (!scenario.runtimeReady)
+            TEST_ASSERT_FALSE(realtime.start(Identity::RuntimeIdentity()));
+        TEST_ASSERT_EQUAL(scenario.appReady && scenario.runtimeReady, baseline);
+        const bool started = realtime.confirmStartup(
+            scenario.wsRegistered, scenario.listenerRunning);
+        TEST_ASSERT_EQUAL(scenario.expectedRealtime, started);
+        if (started)
+            TEST_ASSERT_TRUE(realtimePublisher.update().systemPublished);
+        else {
+            (void)authority->webApplication.publishStatus();
+            TEST_ASSERT_TRUE(plainPublisher.update().systemPublished);
+        }
+        Writer response = fixture->transport.request("/api/system");
+        TEST_ASSERT_EQUAL_UINT16(200U, response.status);
+        TEST_ASSERT_TRUE(hasApiProtocolVersion(
+            response.text(), 1, scenario.expectedRealtime ? 1 : 0));
+        if (!scenario.expectedRealtime && scenario.appReady) {
+            LumaPublishedStatus status {};
+            TEST_ASSERT_TRUE(authority->status.read(status));
+            TEST_ASSERT_FALSE(status.realtimeAvailable);
+        }
+    }
+}
+
+struct RealtimeLifecycleProbe {
+    bool sticky = false;
+    bool stopSucceeds = true;
+    bool beginSucceeds = true;
+    bool running = true;
+    RealtimeRecoveryServiceResult serviceResult = RealtimeRecoveryServiceResult::Idle;
+    uint32_t serviceCalls = 0U;
+    uint32_t stopCalls = 0U;
+    uint32_t beginCalls = 0U;
+    uint32_t clearCalls = 0U;
+
+    static bool required(void* context) {
+        return static_cast<RealtimeLifecycleProbe*>(context)->sticky;
+    }
+    static RealtimeRecoveryServiceResult service(void* context) {
+        RealtimeLifecycleProbe& self = *static_cast<RealtimeLifecycleProbe*>(context);
+        ++self.serviceCalls;
+        return self.serviceResult;
+    }
+    static bool stop(void* context) {
+        RealtimeLifecycleProbe& self = *static_cast<RealtimeLifecycleProbe*>(context);
+        ++self.stopCalls;
+        if (self.stopSucceeds) self.running = false;
+        return self.stopSucceeds;
+    }
+    static bool begin(void* context, const WebConfig&) {
+        RealtimeLifecycleProbe& self = *static_cast<RealtimeLifecycleProbe*>(context);
+        ++self.beginCalls;
+        self.running = self.beginSucceeds;
+        return self.beginSucceeds;
+    }
+    static bool isRunning(void* context) {
+        return static_cast<RealtimeLifecycleProbe*>(context)->running;
+    }
+    static bool clear(void* context, Identity::RuntimeIdentity,
+                      RealtimeStreamPosition) {
+        RealtimeLifecycleProbe& self = *static_cast<RealtimeLifecycleProbe*>(context);
+        ++self.clearCalls;
+        self.sticky = false;
+        return true;
+    }
+    LumaRealtime::LifecyclePort port() {
+        LumaRealtime::LifecyclePort value {};
+        value.context = this;
+        value.recoveryRequired = required;
+        value.serviceRecovery = service;
+        value.tryStop = stop;
+        value.begin = begin;
+        value.isRunning = isRunning;
+        value.tryClear = clear;
+        return value;
+    }
+};
+
+void test_closing_without_sticky_is_serviced_without_sequence() {
+    std::unique_ptr<AuthorityFixture> authority(new (std::nothrow) AuthorityFixture());
+    std::unique_ptr<EspIdfWebTransport> transport(new (std::nothrow) EspIdfWebTransport());
+    if (!authority || !transport) { TEST_FAIL_MESSAGE("Closing allocation failed"); return; }
+    TEST_ASSERT_TRUE(authority->start());
+    Identity::RuntimeIdentity runtime;
+    TEST_ASSERT_TRUE(Identity::RuntimeIdentity::fromValue(
+        UINT64_C(0x0123456789ABCDEF), runtime));
+    RealtimeLifecycleProbe probe;
+    probe.serviceResult = RealtimeRecoveryServiceResult::Progress;
+    LumaRealtime realtime(authority->webApplication, authority->status,
+                          *transport, fixture->native, probe.port());
+    TEST_ASSERT_TRUE(realtime.start(runtime));
+    TEST_ASSERT_TRUE(realtime.confirmStartup(true, true));
+    realtime.update(100U, webConfig());
+    realtime.update(150U, webConfig());
+    probe.serviceResult = RealtimeRecoveryServiceResult::Idle;
+    realtime.update(200U, webConfig());
+    TEST_ASSERT_EQUAL_UINT32(2U, probe.serviceCalls);
+    TEST_ASSERT_EQUAL_UINT32(0U, probe.stopCalls);
+    TEST_ASSERT_EQUAL_UINT32(0U, probe.beginCalls);
+    TEST_ASSERT_EQUAL_UINT32(0U, probe.clearCalls);
+    LumaPublishedStatus status {};
+    TEST_ASSERT_TRUE(authority->status.read(status));
+    TEST_ASSERT_TRUE(status.realtimeAvailable);
+    TEST_ASSERT_TRUE(status.position.isBeforeFirst());
+    assertEqualUint64Parts(runtime.value(), status.runtime.value());
+    TEST_ASSERT_TRUE(authority->app.update(250U));
+    TEST_ASSERT_TRUE(authority->app.isRunning());
+}
+
+void test_recycle_retries_stop_republish_and_restart() {
+    std::unique_ptr<AuthorityFixture> authority(new (std::nothrow) AuthorityFixture());
+    std::unique_ptr<EspIdfWebTransport> transport(new (std::nothrow) EspIdfWebTransport());
+    if (!authority || !transport) { TEST_FAIL_MESSAGE("Recycle allocation failed"); return; }
+    TEST_ASSERT_TRUE(authority->start());
+    Identity::RuntimeIdentity runtime;
+    TEST_ASSERT_TRUE(Identity::RuntimeIdentity::fromValue(
+        UINT64_C(0x0123456789ABCDEF), runtime));
+    RealtimeLifecycleProbe probe;
+    probe.serviceResult = RealtimeRecoveryServiceResult::TransportRecycleSuggested;
+    probe.stopSucceeds = false;
+    LumaRealtime realtime(authority->webApplication, authority->status,
+                          *transport, fixture->native, probe.port());
+    TEST_ASSERT_TRUE(realtime.start(runtime));
+    TEST_ASSERT_TRUE(realtime.confirmStartup(true, true));
+    realtime.update(100U, webConfig());
+    TEST_ASSERT_EQUAL_UINT32(0U, probe.stopCalls);
+    realtime.update(1000U, webConfig());
+    TEST_ASSERT_EQUAL_UINT32(1U, probe.stopCalls);
+    realtime.update(1100U, webConfig());
+    TEST_ASSERT_EQUAL_UINT32(1U, probe.stopCalls);
+    TEST_ASSERT_EQUAL_UINT32(1U, probe.serviceCalls);
+
+    probe.stopSucceeds = true;
+    authority->hardware.ready = false;
+    TEST_ASSERT_FALSE(authority->app.update(1900U));
+    realtime.update(2000U, webConfig());
+    TEST_ASSERT_EQUAL_UINT32(2U, probe.stopCalls);
+    TEST_ASSERT_FALSE(probe.running);
+    TEST_ASSERT_EQUAL_UINT32(0U, probe.beginCalls);
+
+    TEST_ASSERT_TRUE(authority->app.begin(2100U));
+    probe.beginSucceeds = false;
+    realtime.update(3000U, webConfig());
+    TEST_ASSERT_EQUAL_UINT32(2U, probe.stopCalls);
+    TEST_ASSERT_EQUAL_UINT32(1U, probe.beginCalls);
+    TEST_ASSERT_FALSE(probe.running);
+
+    probe.beginSucceeds = true;
+    realtime.update(4000U, webConfig());
+    TEST_ASSERT_EQUAL_UINT32(2U, probe.stopCalls);
+    TEST_ASSERT_EQUAL_UINT32(2U, probe.beginCalls);
+    TEST_ASSERT_TRUE(probe.running);
+    TEST_ASSERT_EQUAL_UINT32(1U, probe.serviceCalls);
+    LumaPublishedStatus status {};
+    TEST_ASSERT_TRUE(authority->status.read(status));
+    TEST_ASSERT_TRUE(status.realtimeAvailable);
+    TEST_ASSERT_TRUE(status.position.isBeforeFirst());
+    assertEqualUint64Parts(runtime.value(), status.runtime.value());
+    TEST_ASSERT_TRUE(authority->app.update(4100U));
+    TEST_ASSERT_TRUE(authority->app.isRunning());
+}
+
 void test_pages_and_core_builtins_use_shared_native_service() {
     TEST_ASSERT_TRUE(fixture->start());
-    TEST_ASSERT_TRUE(fixture->statusSnapshot.publish(statusValue(1U, "Main")));
+    LumaPublishedStatus current {};
+    current.value = statusValue(1U, "Main");
+    TEST_ASSERT_TRUE(fixture->statusSnapshot.publish(current));
     const char* pages[] = {"/", "/control", "/diagnostics", "/system"};
     for (const char* path : pages) {
         Writer response = fixture->transport.request(path);
@@ -481,7 +894,7 @@ void test_pages_and_core_builtins_use_shared_native_service() {
     assertContains(system.text(), "\"deviceType\":\"lighting-controller\"");
     assertContains(system.text(), "\"device_type\":\"luma\"");
     assertContains(system.text(), "\"device_id\":\"246F28A1B2C3\"");
-    TEST_ASSERT_TRUE(hasApiProtocolVersion(system.text(), 1, 0));
+    TEST_ASSERT_TRUE(hasApiProtocolVersion(system.text(), 1, 1));
     TEST_ASSERT_EQUAL_UINT16(200U, fixture->transport.request("/api/diagnostics").status);
     TEST_ASSERT_EQUAL_UINT16(404U, fixture->transport.request("/missing").status);
 }
@@ -543,9 +956,9 @@ void test_application_side_exact_results_and_authority_isolation() {
                       authority.execute(profile, 9200U));
     TEST_ASSERT_EQUAL_UINT8(2U, authority.app.config().activeProfileIndex);
     TEST_ASSERT_TRUE(authority.webApplication.publishStatus());
-    LumaStatusProjection published {};
+    LumaPublishedStatus published {};
     TEST_ASSERT_TRUE(authority.status.read(published));
-    TEST_ASSERT_EQUAL_UINT8(3U, published.activeProfile);
+    TEST_ASSERT_EQUAL_UINT8(3U, published.value.activeProfile);
     TEST_ASSERT_TRUE(authority.app.begin(0U));
     TEST_ASSERT_EQUAL_UINT8(2U, authority.app.config().activeProfileIndex);
 
@@ -772,6 +1185,13 @@ void setup() {
     UNITY_BEGIN();
     RUN_TEST(test_route_inventory_and_post_limits);
     RUN_TEST(test_status_is_snapshot_compatible_and_secret_free);
+    RUN_TEST(test_status_realtime_metadata_and_failure);
+    RUN_TEST(test_realtime_notification_wire_and_semantic_fingerprint);
+    RUN_TEST(test_realtime_baseline_restamp_and_failed_notification);
+    RUN_TEST(test_runtime_unavailable_preserves_plain_status);
+    RUN_TEST(test_realtime_startup_outcome_selects_http_protocol);
+    RUN_TEST(test_closing_without_sticky_is_serviced_without_sequence);
+    RUN_TEST(test_recycle_retries_stop_republish_and_restart);
     RUN_TEST(test_pages_and_core_builtins_use_shared_native_service);
     RUN_TEST(test_application_side_exact_results_and_authority_isolation);
     RUN_TEST(test_strict_parsers_reject_invalid_and_trailing_input);

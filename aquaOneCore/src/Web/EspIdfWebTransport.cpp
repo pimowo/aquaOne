@@ -4,6 +4,7 @@
 #include "HttpCoreReservedPaths.h"
 #include "HttpServerStopLifecycle.h"
 #include "HttpStreamingReceive.h"
+#include "WebSocketControlFrames.h"
 
 #include <cstdlib>
 #include <limits.h>
@@ -211,6 +212,22 @@ void streamOversize(void* context) {
 
 bool stopHttpd(httpd_handle_t handle, void*) {
     return httpd_stop(handle) == ESP_OK;
+}
+
+bool sendWebSocketControl(void* context, uint8_t opcode,
+                          const uint8_t* payload, size_t length) {
+    static_assert(HTTPD_WS_TYPE_CLOSE == Internal::WS_CLOSE &&
+                  HTTPD_WS_TYPE_PING == Internal::WS_PING &&
+                  HTTPD_WS_TYPE_PONG == Internal::WS_PONG,
+                  "ESP-IDF control opcodes must match RFC 6455");
+    httpd_ws_frame_t reply {};
+    reply.type = static_cast<httpd_ws_type_t>(opcode);
+    reply.final = true;
+    reply.payload = const_cast<uint8_t*>(payload);
+    reply.len = length;
+    // In the HTTPD callback this sends synchronously. No transport mutex is
+    // held, and the stack payload remains alive until the send completes.
+    return httpd_ws_send_frame(static_cast<httpd_req_t*>(context), &reply) == ESP_OK;
 }
 
 } // namespace
@@ -496,6 +513,7 @@ bool EspIdfWebTransport::begin(uint16_t port) {
         realtime.handler = realtimeDispatch;
         realtime.user_ctx = this;
         realtime.is_websocket = true;
+        // Core handles control replies. ESP-IDF still owns CLOSE teardown.
         realtime.handle_ws_control_frames = true;
         if (httpd_register_uri_handler(server_, &realtime) != ESP_OK) {
             registrationFailed_ = true;
@@ -628,16 +646,25 @@ esp_err_t EspIdfWebTransport::realtimeDispatch(httpd_req_t* request) {
     if (httpd_ws_recv_frame(request, &frame, 0U) != ESP_OK) {
         return ESP_FAIL;
     }
-    if (frame.len > REALTIME_PAYLOAD_CAPACITY) {
+    const uint8_t opcode = static_cast<uint8_t>(frame.type);
+    // Application TEXT/BINARY remain unsupported. Control frames must be
+    // final and fit the fixed RFC limit before any payload is read.
+    if (!Internal::isWebSocketControl(opcode)) return ESP_ERR_NOT_SUPPORTED;
+    if (!frame.final || frame.len > Internal::WS_CONTROL_MAX_LENGTH)
         return ESP_ERR_INVALID_SIZE;
-    }
-    uint8_t ignored[REALTIME_PAYLOAD_CAPACITY] {};
-    frame.payload = ignored;
+    uint8_t payload[Internal::WS_CONTROL_MAX_LENGTH] {};
+    frame.payload = payload;
     if (frame.len != 0U &&
         httpd_ws_recv_frame(request, &frame, frame.len) != ESP_OK) {
         return ESP_FAIL;
     }
-    return ESP_ERR_NOT_SUPPORTED;
+    const auto result = Internal::handleWebSocketControl(
+        opcode, frame.final, payload, frame.len, sendWebSocketControl, request);
+    // A callback failure closes this session through HTTPD's existing path;
+    // Application recovery reclaims its inactive token without cohort recovery.
+    // For CLOSE, HTTPD has already marked ws_close and schedules teardown after
+    // the successful reply. Do not request a second close or release a live fd.
+    return result == Internal::WebSocketControlResult::Handled ? ESP_OK : ESP_FAIL;
 }
 
 void EspIdfWebTransport::realtimeWork(void* argument) {

@@ -551,6 +551,50 @@ void test_connecting_boundary_and_bounded_client_cleanup() {
     TEST_ASSERT_FALSE(clients.hasClients());
 }
 
+void test_single_client_closing_retry_preserves_peer_and_generation() {
+    RealtimeStreamSequencer sequencer(runtime(73U));
+    RealtimeNotificationMetadata notification;
+    TEST_ASSERT_EQUAL_UINT8(
+        static_cast<uint8_t>(RealtimeSequenceIssueResult::Success),
+        static_cast<uint8_t>(sequencer.issue(notification)));
+    const RealtimeStreamPosition atOne = sequencer.currentPosition();
+
+    RealtimeClientRegistry<2U> clients;
+    RealtimeClientToken failing, healthy;
+    TEST_ASSERT_TRUE(clients.connect(7, atOne, failing));
+    TEST_ASSERT_TRUE(clients.markerSucceeded(failing, false));
+    TEST_ASSERT_TRUE(clients.connect(8, atOne, healthy));
+    TEST_ASSERT_TRUE(clients.markerSucceeded(healthy, false));
+
+    clients.sendFailed(failing);
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(RealtimeClientState::Closing),
+                            static_cast<uint8_t>(clients.slot(failing.slot)->state));
+    // Two failed dependency calls must leave the exact token available to
+    // serviceRealtimeRecovery; only a successful close marks it requested.
+    for (unsigned attempt = 0U; attempt < 2U; ++attempt) {
+        TEST_ASSERT_FALSE(clients.slot(failing.slot)->closeRequested);
+        TEST_ASSERT_TRUE(clients.isTokenCurrentForFd(failing, 7));
+    }
+    TEST_ASSERT_TRUE(clients.markCloseRequested(failing, 7));
+    TEST_ASSERT_TRUE(clients.slot(failing.slot)->closeRequested);
+    TEST_ASSERT_TRUE(clients.reclaimInactive(failing, 7));
+    TEST_ASSERT_FALSE(clients.isTokenCurrent(failing));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(RealtimeClientState::Live),
+                            static_cast<uint8_t>(clients.slot(healthy.slot)->state));
+
+    RealtimeClientToken replacement;
+    TEST_ASSERT_TRUE(clients.connect(7, atOne, replacement));
+    TEST_ASSERT_TRUE(replacement.generation > failing.generation);
+    TEST_ASSERT_TRUE(clients.markerSucceeded(replacement, false));
+    TEST_ASSERT_FALSE(clients.reclaimInactive(failing, 7));
+    TEST_ASSERT_FALSE(clients.markCloseRequested(failing, 7));
+    TEST_ASSERT_EQUAL_UINT8(static_cast<uint8_t>(RealtimeClientState::Live),
+                            static_cast<uint8_t>(clients.slot(replacement.slot)->state));
+    RealtimeRecoveryState recovery;
+    TEST_ASSERT_FALSE(recovery.isRequired());
+    TEST_ASSERT_TRUE(sequencer.currentPosition() == atOne);
+}
+
 void test_recovery_state_is_sticky_and_clear_is_position_checked() {
     RealtimeRecoveryState recovery;
     RealtimeStreamStartState state;
@@ -587,6 +631,7 @@ int main(int, char**) {
     RUN_TEST(test_invalid_and_duplicate_compositions_fail_closed);
     RUN_TEST(test_client_gate_connecting_gap_and_generation);
     RUN_TEST(test_connecting_boundary_and_bounded_client_cleanup);
+    RUN_TEST(test_single_client_closing_retry_preserves_peer_and_generation);
     RUN_TEST(test_recovery_state_is_sticky_and_clear_is_position_checked);
     RUN_TEST(test_stream_start_wire_exact_frames_and_bounds);
     RUN_TEST(test_stream_start_wire_invalid_inputs_leave_storage_unchanged);
